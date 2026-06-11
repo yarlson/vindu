@@ -1,5 +1,20 @@
 import Foundation
 
+/// Splits on commas into at most `limit` parts; the last part keeps any
+/// remaining commas verbatim (dispatcher args may contain commas).
+/// All parts are whitespace-trimmed.
+public func splitCSV(_ s: String, limit: Int) -> [String] {
+    guard limit > 1 else { return [s.trimmingCharacters(in: .whitespaces)] }
+    var parts: [String] = []
+    var rest = Substring(s)
+    while parts.count < limit - 1, let idx = rest.firstIndex(of: ",") {
+        parts.append(rest[..<idx].trimmingCharacters(in: .whitespaces))
+        rest = rest[rest.index(after: idx)...]
+    }
+    parts.append(rest.trimmingCharacters(in: .whitespaces))
+    return parts
+}
+
 public struct ConfigError: Equatable {
     public let line: Int
     public let message: String

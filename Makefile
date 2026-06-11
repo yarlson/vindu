@@ -15,12 +15,12 @@ endif
 
 PREFIX ?= /usr/local
 
-.PHONY: build test release install uninstall clean
+.PHONY: build test check-template release install uninstall clean
 
 build:
 	swift build
 
-test:
+test: check-template
 	swift test $(TEST_FLAGS)
 
 release:
@@ -40,3 +40,9 @@ uninstall:
 
 clean:
 	swift package clean
+
+# The default config template ships inside the binary; the example file must
+# stay byte-identical so docs and first-run behavior never drift apart.
+check-template:
+	@sed -n '/^let defaultConfigTemplate = """$$/,/^"""$$/p' Sources/vindud/DefaultConfig.swift | sed '1d;$$d' | diff -u - examples/vindu.conf \
+		|| { echo "examples/vindu.conf is out of sync with Sources/vindud/DefaultConfig.swift"; exit 1; }

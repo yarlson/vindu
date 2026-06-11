@@ -1,3 +1,9 @@
+import Foundation
+
+/// Written to ~/.config/vindu/vindu.conf on first launch. ALT is the
+/// default mod: SUPER (⌘) works too — bound chords are swallowed before apps
+/// see them — but ⌘ collides with too much muscle memory to be a good default.
+let defaultConfigTemplate = """
 ###############################################################################
 # vindu — tiling window manager for macOS
 # Syntax: section { key = value }, $variables, bind/binde/bindm, windowrulev2.
@@ -110,3 +116,4 @@ bindm = $mainMod, mouse:273, resizewindow
 windowrulev2 = float, class:^(System Settings)$
 windowrulev2 = float, class:^(Calculator)$
 windowrulev2 = float, class:^(Finder)$, title:^(Copy|Move|Info)
+"""
