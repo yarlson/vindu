@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the GitHub release
+  id-token: write # sign the provenance attestation
+  attestations: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      # Per-triple builds + lipo: works with any Swift toolchain, unlike
+      # `swift build --arch a --arch b`, which requires Xcode's xcbuild.
+      - name: Build universal binaries
+        run: |
+          swift build -c release --triple arm64-apple-macosx
+          swift build -c release --triple x86_64-apple-macosx
+          mkdir -p dist/vindu
+          for bin in vindud vinductl; do
+            lipo -create \
+              ".build/arm64-apple-macosx/release/$bin" \
+              ".build/x86_64-apple-macosx/release/$bin" \
+              -output "dist/vindu/$bin"
+            codesign --force --sign - "dist/vindu/$bin"
+          done
+
+      - name: Smoke test
+        run: |
+          lipo -archs dist/vindu/vindud
+          dist/vindu/vindud --version
+          dist/vindu/vinductl --version
+
+      - name: Package
+        run: |
+          cp README.md examples/vindu.conf contrib/com.vindu.daemon.plist dist/vindu/
+          tar -C dist -czf "vindu-${GITHUB_REF_NAME}-macos-universal.tar.gz" vindu
+          shasum -a 256 vindu-*.tar.gz > checksums.txt
+
+      # Cryptographic link between the tarball and this exact workflow run;
+      # verifiable with `gh attestation verify`.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: vindu-*.tar.gz
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "vindu $GITHUB_REF_NAME" \
+            --generate-notes \
+            vindu-*.tar.gz checksums.txt

@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# One run per ref; new pushes cancel the previous run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: build & test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Oldest and newest current images, both Apple Silicon.
+        os: [macos-15, macos-26]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Toolchain versions
+        run: |
+          swift --version
+          xcodebuild -version
+
+      # Exact key per commit, falling back to the latest build for this
+      # Package.swift, then any build for this image. SwiftPM reuses what it
+      # can incrementally, so even a stale cache saves most of the build.
+      - name: Cache SwiftPM build
+        uses: actions/cache@v5
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: swiftpm-${{ matrix.os }}-${{ hashFiles('Package.swift') }}-${{ github.sha }}
+          restore-keys: |
+            swiftpm-${{ matrix.os }}-${{ hashFiles('Package.swift') }}-
+            swiftpm-${{ matrix.os }}-
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test --parallel
+
+      # The release configuration catches optimizer-only breakage and proves
+      # the binaries actually start.
+      - name: Release smoke test
+        run: |
+          swift build -c release
+          .build/release/vindud --version
+          .build/release/vinductl --version

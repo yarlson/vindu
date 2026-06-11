@@ -1,5 +1,7 @@
 # vindu
 
+[![CI](https://github.com/yarlson/vindu/actions/workflows/ci.yml/badge.svg)](https://github.com/yarlson/vindu/actions/workflows/ci.yml)
+
 A dynamic tiling window manager for macOS.
 
 The name is Norwegian for "window", from Old Norse *vindauga* ("wind-eye"),
