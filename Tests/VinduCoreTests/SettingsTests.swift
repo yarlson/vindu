@@ -20,6 +20,8 @@ struct SettingsTests {
         #expect(s.get("general:col.active_border") == "rgba(33ccffee) rgba(00ff99ee) 45deg")
         #expect(s.set("general:col.inactive_border", "rgba(595959aa)") == nil)
         #expect(s.get("general:col.inactive_border") == "rgba(595959aa)")
+        #expect(s.set("general:col.submap_border", "rgba(ff0000ff)") == nil)
+        #expect(s.get("general:col.submap_border") == "rgba(ff0000ff)")
     }
 
     @Test func rangeAndTypeValidation() {

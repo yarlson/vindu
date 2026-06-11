@@ -13,6 +13,8 @@ public struct GeneralSettings: Equatable {
         angleDeg: 45
     )
     public var inactiveBorder = MLGradient(colors: [MLColor.parse("rgba(595959aa)")!])
+    /// Border while a submap (modal keymap) is active, so the mode is visible.
+    public var submapBorder = MLGradient(colors: [MLColor.parse("rgba(ff5555ee)")!])
     public var layout = LayoutKind.dwindle
 }
 
@@ -95,6 +97,7 @@ public struct Settings: Equatable {
         "general:border_size": double(\.general.borderSize),
         "general:col.active_border": gradient(\.general.activeBorder),
         "general:col.inactive_border": gradient(\.general.inactiveBorder),
+        "general:col.submap_border": gradient(\.general.submapBorder),
         "general:layout": layout(\.general.layout),
         "decoration:rounding": double(\.decoration.rounding),
         "dwindle:force_split": int(\.dwindle.forceSplit, in: 0...2),

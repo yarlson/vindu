@@ -58,3 +58,41 @@ jobs:
             --title "vindu $GITHUB_REF_NAME" \
             --generate-notes \
             vindu-*.tar.gz checksums.txt
+
+      # The published asset must round-trip before the formula points at it:
+      # download from the release URL, verify the checksum, run the binaries.
+      - name: Verify published artifact
+        run: |
+          mkdir verify && cd verify
+          curl -sSL -o release.tar.gz \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/vindu-${GITHUB_REF_NAME}-macos-universal.tar.gz"
+          echo "$(awk '{print $1}' ../checksums.txt)  release.tar.gz" | shasum -a 256 -c -
+          tar xzf release.tar.gz
+          vindu/vindud --version
+          vindu/vinductl --version
+          lipo -archs vindu/vindud | grep -q "x86_64 arm64"
+
+      - name: Update Homebrew tap
+        env:
+          TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$TAP_DEPLOY_KEY" > ~/.ssh/tap_key
+          chmod 600 ~/.ssh/tap_key
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/tap_key -o StrictHostKeyChecking=accept-new"
+          git clone --depth 1 git@github.com:yarlson/homebrew-tap.git tap
+
+          SHA=$(awk '{print $1}' checksums.txt)
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -e "s/__TAG__/${GITHUB_REF_NAME}/g" \
+              -e "s/__VERSION__/${VERSION}/g" \
+              -e "s/__SHA256__/${SHA}/g" \
+              packaging/vindu.rb.tmpl > tap/Formula/vindu.rb
+          ruby -c tap/Formula/vindu.rb
+
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/vindu.rb
+          git commit -m "vindu ${GITHUB_REF_NAME}"
+          git push

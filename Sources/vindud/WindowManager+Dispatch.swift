@@ -113,6 +113,7 @@ extension WindowManager {
         case .submap(let name):
             tap.setSubmap(name)
             broadcast(.submap(name))
+            refreshBorder()
         case .focuscurrentorlast:
             if let last = focusHistory.dropFirst().first(where: { windows[$0] != nil }) {
                 return dispatch(.focuswindow("address:\(windowAddress(last))"))

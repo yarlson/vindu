@@ -135,6 +135,7 @@ general {
     gaps_out = 12             # screen edges
     border_size = 2
     col.active_border = rgba(33ccffee) rgba(00ff99ee) 45deg
+    col.submap_border = rgba(ff5555ee)   # border while a submap is active
     layout = dwindle          # or: master
 }
 
@@ -242,6 +243,11 @@ make build      # debug
 make test       # works with Command Line Tools alone, no Xcode needed
 make release    # optimized + signed
 ```
+
+Releasing: push a `v*` tag. CI builds the universal (arm64 + x86_64)
+tarball, publishes the GitHub release with checksums and provenance, and
+bumps the Homebrew formula in `yarlson/homebrew-tap` automatically. The
+formula source of truth is `packaging/vindu.rb.tmpl` in this repo.
 
 Layout logic, the config parser, and rule matching live in `VinduCore` and
 are covered by plain `swift test` tests. The daemon is the only part that

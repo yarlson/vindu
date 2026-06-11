@@ -17,6 +17,8 @@ general {
     border_size = 2
     col.active_border = rgba(33ccffee) rgba(00ff99ee) 45deg
     col.inactive_border = rgba(595959aa)
+    # border while a submap (e.g. resize) is active
+    col.submap_border = rgba(ff5555ee)
     layout = dwindle
 }
 

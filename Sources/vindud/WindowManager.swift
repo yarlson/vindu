@@ -495,8 +495,11 @@ final class WindowManager {
             border.hide()
             return
         }
+        let gradient = tap.activeSubmap.isEmpty
+            ? settings.general.activeBorder
+            : settings.general.submapBorder
         border.show(around: state.frame,
-                    gradient: settings.general.activeBorder,
+                    gradient: gradient,
                     width: settings.general.borderSize,
                     rounding: settings.decoration.rounding,
                     primaryHeight: monitorMgr.primaryHeight)
