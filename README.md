@@ -206,8 +206,8 @@ openwindow>>0x2a51,3,Safari,GitHub
 ## How it works
 
 - `VinduCore`: the config language, binds, rules, both layout engines, gap
-  math, focus geometry, workspace registry. Pure logic, 68 tests, no GUI
-  dependencies.
+  math, focus geometry, workspace registry. Pure logic under `swift test`,
+  no GUI dependencies.
 - `vindud`: the daemon. Accessibility observers feed window events into the
   layout, a session event tap owns hotkeys and mouse drags, an overlay
   panel draws the focus border. Hidden workspaces park windows just off the

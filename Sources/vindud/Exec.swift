@@ -1,19 +1,14 @@
 import Foundation
 
 enum Exec {
-    /// `env =` entries from the config, layered over the daemon's environment
-    /// for every spawned command.
-    static var extraEnv: [String: String] = [:]
-
     /// Runs a shell command detached, like Hyprland's `exec` dispatcher.
-    /// Login shell so PATH additions from the user's profile apply.
+    /// Login shell so PATH additions from the user's profile apply. Children
+    /// inherit the daemon environment, including config `env =` entries
+    /// applied via setenv.
     static func run(_ command: String) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
         p.arguments = ["-lc", command]
-        var env = ProcessInfo.processInfo.environment
-        for (k, v) in extraEnv { env[k] = v }
-        p.environment = env
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
         do {

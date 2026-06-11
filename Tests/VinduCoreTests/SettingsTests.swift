@@ -42,10 +42,13 @@ struct SettingsTests {
     @Test func knownHyprlandKeysAreTolerated() {
         var s = Settings()
         #expect(s.set("input:kb_layout", "us") == nil)
+        #expect(s.set("animations:enabled", "true") == nil)
         #expect(s.set("animations:bezier_thing", "whatever") == nil)
         #expect(s.set("decoration:blur:size", "3") == nil)
         #expect(s.set("misc:vfr", "true") == nil)
         #expect(s.set("gestures:workspace_swipe", "true") == nil)
         #expect(s.set("general:resize_on_border", "true") == nil)
+        #expect(s.set("dwindle:pseudotile", "true") == nil)
+        #expect(s.set("dwindle:preserve_split", "true") == nil)
     }
 }

@@ -65,7 +65,6 @@ struct ConfigParserTests {
         #expect(doc.settings.general.activeBorder.colors.count == 2)
         #expect(doc.settings.general.activeBorder.angleDeg == 45)
         #expect(doc.settings.dwindle.defaultSplitRatio == 1.2)
-        #expect(doc.settings.dwindle.preserveSplit)
         #expect(doc.settings.master.newStatus == "master")
         #expect(doc.settings.master.mfact == 0.6)
         #expect(doc.settings.binds.workspaceBackAndForth)

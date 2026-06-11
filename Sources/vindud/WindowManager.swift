@@ -148,7 +148,6 @@ final class WindowManager {
         }
         doc = parser.parse(text: text, baseDir: (configPath as NSString).deletingLastPathComponent)
         for (k, v) in doc.envs {
-            Exec.extraEnv[k] = v
             setenv(k, v, 1)
         }
         tap.rebuild(binds: doc.binds)

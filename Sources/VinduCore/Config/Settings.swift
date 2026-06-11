@@ -21,11 +21,9 @@ public struct DecorationSettings: Equatable {
 }
 
 public struct DwindleSettings: Equatable {
-    public var pseudotile = false
     /// 0 = orientation from the split target's aspect ratio, 1 = new window first
     /// (left/top), 2 = new window second (right/bottom). Matches Hyprland's force_split.
     public var forceSplit = 0
-    public var preserveSplit = true
     /// Hyprland scale: 0.1–1.9 where 1.0 is an even split.
     public var defaultSplitRatio = 1.0
 }
@@ -52,12 +50,6 @@ public struct BindsSettings: Equatable {
     public var workspaceBackAndForth = false
 }
 
-public struct AnimationSettings: Equatable {
-    /// Parsed for config compatibility. macOS gives no compositor access to other
-    /// apps' windows, so animations are a permanent no-op.
-    public var enabled = true
-}
-
 public struct Settings: Equatable {
     public var general = GeneralSettings()
     public var decoration = DecorationSettings()
@@ -66,7 +58,6 @@ public struct Settings: Equatable {
     public var input = InputSettings()
     public var misc = MiscSettings()
     public var binds = BindsSettings()
-    public var animations = AnimationSettings()
 
     public init() {}
 
@@ -106,9 +97,7 @@ public struct Settings: Equatable {
         "general:col.inactive_border": gradient(\.general.inactiveBorder),
         "general:layout": layout(\.general.layout),
         "decoration:rounding": double(\.decoration.rounding),
-        "dwindle:pseudotile": bool(\.dwindle.pseudotile),
         "dwindle:force_split": int(\.dwindle.forceSplit, in: 0...2),
-        "dwindle:preserve_split": bool(\.dwindle.preserveSplit),
         "dwindle:default_split_ratio": double(\.dwindle.defaultSplitRatio, in: 0.1...1.9),
         "master:new_status": choice(\.master.newStatus, allowed: ["master", "slave", "inherit"]),
         "master:new_on_top": bool(\.master.newOnTop),
@@ -117,7 +106,6 @@ public struct Settings: Equatable {
         "input:follow_mouse": int(\.input.followMouse, in: 0...3),
         "misc:focus_on_activate": bool(\.misc.focusOnActivate),
         "binds:workspace_back_and_forth": bool(\.binds.workspaceBackAndForth),
-        "animations:enabled": bool(\.animations.enabled),
     ]
 
     private static func double(_ kp: WritableKeyPath<Settings, Double>,
@@ -216,6 +204,7 @@ public struct Settings: Equatable {
         "decoration:shadow_range", "decoration:shadow_render_power",
         "decoration:col.shadow", "decoration:dim_inactive", "decoration:dim_strength",
         "decoration:dim_special",
+        "dwindle:pseudotile", "dwindle:preserve_split",
         "dwindle:smart_split", "dwindle:smart_resizing", "dwindle:no_gaps_when_only",
         "dwindle:split_width_multiplier", "dwindle:use_active_for_splits",
         "master:allow_small_split", "master:special_scale_factor",

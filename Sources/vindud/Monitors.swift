@@ -84,24 +84,10 @@ final class MonitorManager {
     }
 
     func neighbor(of monitor: Monitor, direction: Direction) -> Monitor? {
-        let sc = CGPoint(x: monitor.frame.midX, y: monitor.frame.midY)
-        var best: (Monitor, Double)?
-        for m in monitors where m.id != monitor.id {
-            let c = CGPoint(x: m.frame.midX, y: m.frame.midY)
-            let primary: Double
-            let perp: Double
-            switch direction {
-            case .left: primary = sc.x - c.x; perp = abs(c.y - sc.y)
-            case .right: primary = c.x - sc.x; perp = abs(c.y - sc.y)
-            case .up: primary = sc.y - c.y; perp = abs(c.x - sc.x)
-            case .down: primary = c.y - sc.y; perp = abs(c.x - sc.x)
-            }
-            guard primary > 1 else { continue }
-            let score = primary + perp * 2
-            if best == nil || score < best!.1 {
-                best = (m, score)
-            }
-        }
-        return best?.0
+        let candidates = monitors
+            .filter { $0.id != monitor.id }
+            .map { (id: $0.id, rect: $0.frame) }
+        return LayoutMath.neighbor(of: monitor.frame, in: direction, candidates: candidates)
+            .flatMap(byID)
     }
 }

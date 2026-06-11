@@ -42,10 +42,10 @@ public enum LayoutMath {
 
     /// Directional focus: nearest candidate whose center lies beyond the
     /// source's center in `direction`, penalizing perpendicular offset.
-    public static func neighbor(of source: CGRect, in direction: Direction,
-                                candidates: [(id: WindowID, rect: CGRect)]) -> WindowID? {
+    public static func neighbor<ID>(of source: CGRect, in direction: Direction,
+                                    candidates: [(id: ID, rect: CGRect)]) -> ID? {
         let sc = CGPoint(x: source.midX, y: source.midY)
-        var bestID: WindowID?
+        var bestID: ID?
         var bestScore = Double.infinity
         for (id, rect) in candidates {
             let c = CGPoint(x: rect.midX, y: rect.midY)
