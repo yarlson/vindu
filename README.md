@@ -45,12 +45,14 @@ Now try, in order:
    it as you move.
 
 To stop: `alt + shift + m` exits and puts windows back where humans can
-reach them. To start at login:
+reach them. To run at login (and start right now):
 
 ```sh
-cp contrib/com.vindu.daemon.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.vindu.daemon.plist
+vindud --install-service      # writes the LaunchAgent and starts it
+vindud --uninstall-service    # undo
 ```
+
+Logs land in `/tmp/vindu.log`. A plist for manual setups is in `contrib/`.
 
 ## If something looks wrong
 

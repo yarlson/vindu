@@ -5,6 +5,8 @@ let usage = """
 vindud — the vindu tiling window manager daemon
 
 USAGE: vindud [-c|--config <path>] [--version] [--help]
+       vindud --install-service     run now and at every login (LaunchAgent)
+       vindud --uninstall-service   stop starting at login
 
 Config default: \(VinduPaths.defaultConfigPath)
 Control it with `vinductl`.
@@ -26,6 +28,10 @@ while argIndex < argv.count {
     case "--version":
         print("vindu \(VinduVersion.string)")
         exit(0)
+    case "--install-service":
+        exit(Service.install())
+    case "--uninstall-service":
+        exit(Service.uninstall())
     case "-h", "--help":
         print(usage)
         exit(0)
