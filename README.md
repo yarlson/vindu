@@ -23,9 +23,16 @@ extensions, no private frameworks.
 ## Quick start
 
 ```sh
+brew install yarlson/tap/vindu
+brew services start vindu     # runs now and at every login
+```
+
+Or from source:
+
+```sh
 git clone https://github.com/yarlson/vindu && cd vindu
-make install     # builds, signs, installs vindud + vinductl
-vindud           # writes a default config and asks for permission
+make install                  # builds, signs, installs vindud + vinductl
+vindud --install-service      # runs now and at every login
 ```
 
 macOS will prompt for Accessibility access (System Settings → Privacy &
