@@ -66,9 +66,19 @@ final class AXBridge {
     }
 
     private var apps: [pid_t: AppHandle] = [:]
+    /// Consecutive reconcile passes a tracked window was absent from the
+    /// window server's list. Two misses = really gone.
+    private var missCounts: [WindowID: Int] = [:]
     let ownPID = ProcessInfo.processInfo.processIdentifier
 
     func start() {
+        // AX destroy notifications are unreliable for some apps (the destroyed
+        // element stops comparing equal, or the event never arrives), which
+        // leaks ghost windows that hold a tile and the border. Reconcile
+        // against the window server, which never lies about what exists.
+        Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            self?.reconcile()
+        }
         let center = NSWorkspace.shared.notificationCenter
         center.addObserver(forName: NSWorkspace.didLaunchApplicationNotification,
                            object: nil, queue: .main) { [weak self] note in
@@ -182,6 +192,15 @@ final class AXBridge {
             if let idx = app.windows.firstIndex(where: { CFEqual($0.element, element) }) {
                 let id = app.windows.remove(at: idx).id
                 delegate?.windowDestroyed(id)
+            } else {
+                // Destroyed elements can lose CFEqual identity; the window id
+                // usually still resolves.
+                var wid: CGWindowID = 0
+                if _AXUIElementGetWindow(element, &wid) == .success, wid != 0,
+                   let idx = app.windows.firstIndex(where: { $0.id == wid }) {
+                    app.windows.remove(at: idx)
+                    delegate?.windowDestroyed(wid)
+                }
             }
         case kAXWindowMovedNotification, kAXWindowResizedNotification:
             if let entry = app.windows.first(where: { CFEqual($0.element, element) }) {
@@ -205,6 +224,14 @@ final class AXBridge {
     }
 
     private func classify(_ element: AXUIElement) -> WindowKind {
+        // Real windows can become the app's main window. Input-method
+        // candidate panels, picker HUDs, and other non-activating system
+        // surfaces refuse — never manage or focus those.
+        var mainSettable = DarwinBoolean(false)
+        if AXUIElementIsAttributeSettable(element, kAXMainAttribute as CFString, &mainSettable) == .success,
+           !mainSettable.boolValue {
+            return .auxiliary
+        }
         let subrole: String? = axValue(element, kAXSubroleAttribute)
         if subrole == kAXStandardWindowSubrole as String {
             return .standard
@@ -235,6 +262,31 @@ final class AXBridge {
             kind: classify(element),
             isMinimized: (axValue(element, kAXMinimizedAttribute) as Bool?) ?? false
         )
+    }
+
+    /// Reaps tracked windows the window server no longer lists. A window must
+    /// be absent on two consecutive passes before it is declared dead, so a
+    /// transient gap in the list can't kill a live window.
+    private func reconcile() {
+        guard let list = CGWindowListCopyWindowInfo(.excludeDesktopElements,
+                                                    kCGNullWindowID) as? [[String: Any]] else {
+            return
+        }
+        let alive = Set(list.compactMap { $0[kCGWindowNumber as String] as? UInt32 })
+        for app in apps.values {
+            for (_, id) in app.windows {
+                if alive.contains(id) {
+                    missCounts.removeValue(forKey: id)
+                    continue
+                }
+                let misses = (missCounts[id] ?? 0) + 1
+                missCounts[id] = misses
+                guard misses >= 2 else { continue }
+                missCounts.removeValue(forKey: id)
+                app.windows.removeAll { $0.id == id }
+                delegate?.windowDestroyed(id)
+            }
+        }
     }
 
     // MARK: - Element queries
@@ -329,6 +381,12 @@ final class AXBridge {
         guard let (el, _) = element(for: id) else { return }
         AXUIElementSetAttributeValue(el, kAXMinimizedAttribute as CFString,
                                      minimized ? kCFBooleanTrue : kCFBooleanFalse)
+    }
+
+    /// True while the window is in native macOS fullscreen (its own Space).
+    func isNativeFullscreen(_ id: WindowID) -> Bool {
+        guard let (el, _) = element(for: id) else { return false }
+        return (axValue(el, "AXFullScreen") as Bool?) ?? false
     }
 
     /// Topmost normal window at a point (top-left-origin), excluding our own

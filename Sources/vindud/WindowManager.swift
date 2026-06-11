@@ -18,6 +18,9 @@ final class WindowState {
     var pinned = false
     var fakeFullscreen = false
     var minimized = false
+    /// In native macOS fullscreen: the window lives on its own Space, outside
+    /// the layout, until it comes back.
+    var nativeFullscreen = false
     /// Stashed off-screen because its workspace is not visible.
     var hidden = false
     var floatFrame: CGRect?
@@ -257,7 +260,7 @@ final class WindowManager {
         }
 
         for id in ws.floating {
-            guard let state = windows[id], !state.minimized else { continue }
+            guard let state = windows[id], !state.minimized, !state.nativeFullscreen else { continue }
             var frame = state.floatFrame ?? defaultFloatFrame(for: ws)
             if ws.fullscreen == id {
                 frame = fullscreenFrame(for: ws)
@@ -312,7 +315,9 @@ final class WindowManager {
     /// SIP, so invisible workspaces stash windows in the monitor's bottom-right
     /// corner (the AeroSpace technique) and restore frames on show.
     func stash(_ id: WindowID) {
-        guard let state = windows[id], !state.hidden else { return }
+        // Repositioning a native-fullscreen window would rip it out of its
+        // Space; it isn't on our screen anyway.
+        guard let state = windows[id], !state.hidden, !state.nativeFullscreen else { return }
         guard let monitor = monitorMgr.byID(workspace(forID: state.workspace).monitor)
                 ?? monitorMgr.primary else { return }
         state.hidden = true
@@ -428,7 +433,10 @@ final class WindowManager {
         if let id = shownSpecial[monitorID], let ws = registry.existing(id) {
             out += ws.allWindows
         }
-        return out.filter { windows[$0]?.minimized != true }
+        return out.filter {
+            guard let state = windows[$0] else { return false }
+            return !state.minimized && !state.nativeFullscreen
+        }
     }
 
     // MARK: - Focus
@@ -472,6 +480,7 @@ final class WindowManager {
 
     func refreshBorder() {
         guard let id = focusedWindow, let state = windows[id], !state.hidden, !state.minimized,
+              !state.nativeFullscreen,
               workspace(forID: state.workspace).fullscreen != id else {
             border.hide()
             return
@@ -570,7 +579,13 @@ extension WindowManager: AXBridgeDelegate {
         broadcast(.openwindow(snap.id, workspace: ws.name, clazz: snap.clazz, title: snap.title))
         if isVisible(ws) {
             arrange(ws)
-            if !placement.silent && !state.minimized {
+            // Focus follows a new window only when the user is driving: its
+            // app is frontmost (they just opened it) or nothing holds focus.
+            // Background spawns — input panels, updaters, slow launches the
+            // user tabbed away from — get managed, not focused.
+            let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            let userDriven = snap.pid == frontmost || focusedWindow == nil
+            if !placement.silent && !state.minimized && userDriven {
                 focusWindow(snap.id)
             }
         } else {
@@ -618,7 +633,31 @@ extension WindowManager: AXBridgeDelegate {
     }
 
     func windowMovedOrResized(_ id: WindowID, frame: CGRect) {
-        guard let state = windows[id], !frame.isEmpty, !state.hidden else { return }
+        guard let state = windows[id], !frame.isEmpty else { return }
+
+        // Native fullscreen (the green button) moves the window to its own
+        // Space. Release its tile while it's away; re-adopt it when it returns.
+        let native = bridge.isNativeFullscreen(id)
+        if native != state.nativeFullscreen {
+            state.nativeFullscreen = native
+            let ws = workspace(forID: state.workspace)
+            if native {
+                if !state.floating { ws.removeTiled(id) }
+                if isVisible(ws) { arrange(ws) }
+                refreshBorder()
+            } else {
+                state.hidden = false
+                if !state.floating, !ws.master.contains(id) { insertTiled(id, into: ws) }
+                if isVisible(ws) {
+                    arrange(ws)
+                } else {
+                    stash(id)
+                }
+            }
+            return
+        }
+        if state.nativeFullscreen { return } // the system owns its frame
+        guard !state.hidden else { return }
 
         if var session = drag, session.id == id {
             // bindm drags set frames themselves; these events are our own echo.

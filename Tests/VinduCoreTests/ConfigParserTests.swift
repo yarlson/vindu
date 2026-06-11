@@ -137,6 +137,20 @@ struct ConfigParserTests {
         #expect(doc.execOnce == ["echo a # b"])
     }
 
+    @Test func bannerLinesAreComments() {
+        let doc = parseDoc("""
+        ###############################################################################
+        # vindu — tiling window manager for macOS
+        ###############################################################################
+            # indented comment
+        general {
+            gaps_in = 7
+        }
+        """)
+        #expect(doc.errors == [], "banner lines must parse as comments: \(doc.errors)")
+        #expect(doc.settings.general.gapsIn == 7)
+    }
+
     @Test func sourceDirective() {
         let parser = ConfigParser(fileLoader: { path in
             #expect(path.hasSuffix("extra.conf"))
