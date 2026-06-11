@@ -39,7 +39,7 @@ jobs:
 
       - name: Package
         run: |
-          cp README.md examples/vindu.conf contrib/com.vindu.daemon.plist dist/vindu/
+          cp README.md examples/vindu.conf dist/vindu/
           tar -C dist -czf "vindu-${GITHUB_REF_NAME}-macos-universal.tar.gz" vindu
           shasum -a 256 vindu-*.tar.gz > checksums.txt
 
