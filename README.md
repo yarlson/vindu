@@ -4,6 +4,8 @@
 
 A dynamic tiling window manager for macOS.
 
+![vindu tiling three windows: the repo in a browser, vindu.conf in an editor, and vinductl JSON output in a terminal](assets/screenshot.png)
+
 The name is Norwegian for "window", from Old Norse _vindauga_ ("wind-eye"),
 the word English _window_ comes from.
 
