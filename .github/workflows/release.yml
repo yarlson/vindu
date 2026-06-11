@@ -46,7 +46,7 @@ jobs:
       # Cryptographic link between the tarball and this exact workflow run;
       # verifiable with `gh attestation verify`.
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: vindu-*.tar.gz
 
