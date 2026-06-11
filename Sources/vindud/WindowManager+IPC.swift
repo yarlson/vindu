@@ -153,7 +153,7 @@ extension WindowManager {
     }
 
     func workspaceInfos() -> [WorkspaceInfo] {
-        workspaces.values.sorted { $0.id < $1.id }.map(workspaceInfo)
+        registry.sorted.map(workspaceInfo)
     }
 
     func workspaceText(_ w: WorkspaceInfo) -> String {
@@ -169,9 +169,9 @@ extension WindowManager {
     func monitorInfos() -> [MonitorInfo] {
         monitorMgr.monitors.map { m in
             let activeID = activeWS[m.id] ?? 1
-            let active = workspaces[activeID]
+            let active = registry.existing(activeID)
             let specialID = shownSpecial[m.id]
-            let special = specialID.flatMap { workspaces[$0] }
+            let special = specialID.flatMap { registry.existing($0) }
             return MonitorInfo(
                 id: m.index,
                 name: m.name,

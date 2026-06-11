@@ -1,7 +1,6 @@
 import CoreGraphics
 
-/// The outcome of folding window rules over a newly appeared window — pure, so
-/// rule application is testable without an accessibility session.
+/// The outcome of folding window rules over a newly appeared window.
 public struct InitialPlacement: Equatable {
     public var floating: Bool
     public var pinned = false

@@ -91,8 +91,7 @@ public struct Settings: Equatable {
 
     // MARK: - Option table
 
-    /// One entry per modeled keyword, driving both `set` and `get` so the two
-    /// can never drift apart.
+    /// One entry per modeled keyword; drives both `set` and `get`.
     private struct Option {
         let get: (Settings) -> String
         /// Returns a short problem description ("invalid number") or nil on success.

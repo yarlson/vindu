@@ -72,10 +72,9 @@ final class AXBridge {
     let ownPID = ProcessInfo.processInfo.processIdentifier
 
     func start() {
-        // AX destroy notifications are unreliable for some apps (the destroyed
-        // element stops comparing equal, or the event never arrives), which
-        // leaks ghost windows that hold a tile and the border. Reconcile
-        // against the window server, which never lies about what exists.
+        // AX destroy notifications are unreliable (destroyed elements lose
+        // CFEqual identity; some apps never send one). The window server's
+        // list is authoritative, so reap against it periodically.
         Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.reconcile()
         }
@@ -387,6 +386,14 @@ final class AXBridge {
     func isNativeFullscreen(_ id: WindowID) -> Bool {
         guard let (el, _) = element(for: id) else { return false }
         return (axValue(el, "AXFullScreen") as Bool?) ?? false
+    }
+
+    /// Frame of the window's green zoom button, for detecting clicks that are
+    /// about to start a fullscreen transition.
+    func fullscreenButtonFrame(_ id: WindowID) -> CGRect? {
+        guard let (el, _) = element(for: id),
+              let button: AXUIElement = axValue(el, "AXFullScreenButton") else { return nil }
+        return frame(of: button)
     }
 
     /// Topmost normal window at a point (top-left-origin), excluding our own

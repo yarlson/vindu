@@ -16,8 +16,7 @@ public enum UnixSocket {
         return addr
     }
 
-    /// connect(2) wrapper hiding the sockaddr pointer dance. Returns errno-style
-    /// result of `connect`, or -1 if the path doesn't fit.
+    /// Returns the connect(2) result, or -1 if the path doesn't fit sun_path.
     public static func connect(_ fd: Int32, to path: String) -> Int32 {
         guard var addr = makeAddress(path) else { return -1 }
         return withUnsafePointer(to: &addr) {

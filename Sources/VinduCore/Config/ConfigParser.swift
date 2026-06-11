@@ -84,9 +84,8 @@ public final class ConfigParser {
         var lineNo = 0
         for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
             lineNo += 1
-            // A line starting with '#' is a comment outright — banner lines of
-            // hashes included. The '##' escape applies inline only; otherwise a
-            // hash banner de-escapes into garbage that fails key=value parsing.
+            // A line starting with '#' is a comment, banner lines of hashes
+            // included; the '##' escape applies inline only.
             let raw = String(rawLine)
             if raw.trimmingCharacters(in: .whitespaces).hasPrefix("#") { continue }
             var line = stripComment(raw).trimmingCharacters(in: .whitespaces)

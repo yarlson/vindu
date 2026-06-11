@@ -9,8 +9,7 @@ import CoreGraphics
 /// (ratios, mfact, orientation, frames), not membership.
 public final class WorkspaceState {
     public let id: Int
-    /// Set at allocation, not derived from the id: named workspaces share the
-    /// negative id space, so a range check would misclassify them.
+    /// Named workspaces share the negative id space; never derive this from the id.
     public let isSpecial: Bool
     public var name: String
     public var monitor: CGDirectDisplayID

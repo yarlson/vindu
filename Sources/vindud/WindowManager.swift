@@ -2,8 +2,6 @@ import AppKit
 import VinduCore
 
 /// Per-window state the WM owns; geometry lives in top-left-origin coords.
-/// Reference type on purpose: this is a shared mutable record keyed by window
-/// id — every mutation site updates the one authoritative instance.
 final class WindowState {
     let id: WindowID
     let pid: pid_t
@@ -54,7 +52,6 @@ final class WindowManager {
     var settings: Settings { doc.settings }
 
     var windows: [WindowID: WindowState] = [:]
-    var workspaces: [Int: WorkspaceState] { registry.byID }
     /// Visible (non-special) workspace per monitor.
     var activeWS: [CGDirectDisplayID: Int] = [:]
     var prevWS: [CGDirectDisplayID: Int] = [:]
@@ -67,10 +64,14 @@ final class WindowManager {
     var drag: DragSession?
     var lastDragApply = 0.0
     private var lastReassert: [WindowID: Double] = [:]
+    private var lastFullscreenPoll: [WindowID: Double] = [:]
     private var settleWork: [WindowID: DispatchWorkItem] = [:]
     /// Last explicit switch gesture (⌘Tab, Dock click). Activations that
     /// follow one are user intent and may switch workspaces.
     private var lastUserGesture = 0.0
+    /// While set in the future, the border stays hidden — covers the native
+    /// fullscreen animation between the triggering gesture and the Space change.
+    private var borderSuppressedUntil = 0.0
 
     init(configPath: String) {
         self.configPath = configPath
@@ -98,6 +99,7 @@ final class WindowManager {
             self?.handleRawLeftMouse(point, phase)
         }
         tap.onUserGesture = { [weak self] in self?.lastUserGesture = CFAbsoluteTimeGetCurrent() }
+        tap.onFullscreenShortcut = { [weak self] in self?.suppressBorder(for: 1.2) }
         tap.onMouseMoved = { [weak self] point in self?.followMouse(point) }
         if !tap.start() {
             log("event tap unavailable — check Accessibility permission; binds disabled")
@@ -119,6 +121,13 @@ final class WindowManager {
 
         watcher = ConfigWatcher(path: configPath) { [weak self] in self?.reloadConfig() }
         watcher?.start()
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.activeSpaceChanged()
+        }
 
         arrangeAllVisible()
         if let focused = bridge.systemFocusedWindowID() {
@@ -313,7 +322,7 @@ final class WindowManager {
 
     /// macOS has no per-space window membership we can drive without disabling
     /// SIP, so invisible workspaces stash windows in the monitor's bottom-right
-    /// corner (the AeroSpace technique) and restore frames on show.
+    /// corner and restore frames on show.
     func stash(_ id: WindowID) {
         // Repositioning a native-fullscreen window would rip it out of its
         // Space; it isn't on our screen anyway.
@@ -444,14 +453,20 @@ final class WindowManager {
     func focusWindow(_ id: WindowID) {
         guard let state = windows[id] else { return }
         bridge.focus(id)
-        focusedWindow = id
+        noteFocus(state)
+    }
+
+    /// Shared focus bookkeeping for both directions: focus we initiate
+    /// (`focusWindow`) and focus the OS reports (`windowFocused`).
+    private func noteFocus(_ state: WindowState) {
+        focusedWindow = state.id
         let ws = workspace(forID: state.workspace)
-        ws.lastFocused = id
+        ws.lastFocused = state.id
         focusedMonitorID = ws.monitor
-        pushFocusHistory(id)
+        pushFocusHistory(state.id)
         refreshBorder()
         broadcast(.activewindow(clazz: state.clazz, title: state.title))
-        broadcast(.activewindowv2(id))
+        broadcast(.activewindowv2(state.id))
     }
 
     func clearFocus() {
@@ -478,7 +493,22 @@ final class WindowManager {
         }
     }
 
+    /// Hides the border for the duration of a suspected fullscreen animation;
+    /// the trailing refresh restores it if the transition never happened
+    /// (e.g. option-zoom maximizing instead).
+    func suppressBorder(for seconds: Double) {
+        borderSuppressedUntil = CFAbsoluteTimeGetCurrent() + seconds
+        border.hide()
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds + 0.05) { [weak self] in
+            self?.refreshBorder()
+        }
+    }
+
     func refreshBorder() {
+        guard CFAbsoluteTimeGetCurrent() >= borderSuppressedUntil else {
+            border.hide()
+            return
+        }
         guard let id = focusedWindow, let state = windows[id], !state.hidden, !state.minimized,
               !state.nativeFullscreen,
               workspace(forID: state.workspace).fullscreen != id else {
@@ -598,6 +628,9 @@ extension WindowManager: AXBridgeDelegate {
         let ws = workspace(forID: state.workspace)
         ws.removeWindow(id)
         focusHistory.removeAll { $0 == id }
+        lastReassert.removeValue(forKey: id)
+        lastFullscreenPoll.removeValue(forKey: id)
+        settleWork.removeValue(forKey: id)?.cancel()
         broadcast(.closewindow(id))
         if isVisible(ws) {
             arrange(ws)
@@ -623,88 +656,125 @@ extension WindowManager: AXBridgeDelegate {
                 ? .special(registry.specialName(forID: ws.id) ?? "special")
                 : .id(ws.id))
         }
-        focusedWindow = id
-        ws.lastFocused = id
-        focusedMonitorID = ws.monitor
-        pushFocusHistory(id)
-        refreshBorder()
-        broadcast(.activewindow(clazz: state.clazz, title: state.title))
-        broadcast(.activewindowv2(id))
+        noteFocus(state)
     }
 
     func windowMovedOrResized(_ id: WindowID, frame: CGRect) {
         guard let state = windows[id], !frame.isEmpty else { return }
-
-        // Native fullscreen (the green button) moves the window to its own
-        // Space. Release its tile while it's away; re-adopt it when it returns.
-        let native = bridge.isNativeFullscreen(id)
-        if native != state.nativeFullscreen {
-            state.nativeFullscreen = native
-            let ws = workspace(forID: state.workspace)
-            if native {
-                if !state.floating { ws.removeTiled(id) }
-                if isVisible(ws) { arrange(ws) }
-                refreshBorder()
-            } else {
-                state.hidden = false
-                if !state.floating, !ws.master.contains(id) { insertTiled(id, into: ws) }
-                if isVisible(ws) {
-                    arrange(ws)
-                } else {
-                    stash(id)
-                }
-            }
-            return
-        }
+        if handleFullscreenTransition(state, frame) { return }
         if state.nativeFullscreen { return } // the system owns its frame
+        if handleDragEcho(state, frame) { return }
         guard !state.hidden else { return }
-
-        if var session = drag, session.id == id {
-            // bindm drags set frames themselves; these events are our own echo.
-            guard session.source == .native else { return }
-            let movedDist = abs(frame.minX - session.startFrame.minX)
-                + abs(frame.minY - session.startFrame.minY)
-            let sizeDist = abs(frame.width - session.startFrame.width)
-                + abs(frame.height - session.startFrame.height)
-            if sizeDist > 4 {
-                session.sawResize = true
-                session.engaged = true
-            } else if movedDist > 4 {
-                session.engaged = true
-            }
-            drag = session
-            if session.engaged {
-                // Track the OS-driven drag so the border rides along.
-                state.frame = frame
-                if id == focusedWindow { refreshBorder() }
-            }
-            return
-        }
-
         if state.floating {
-            state.frame = frame
-            state.floatFrame = frame
-            if id == focusedWindow { refreshBorder() }
-            return
+            trackFloatingFrame(state, frame)
+        } else {
+            holdTile(state, frame)
         }
+    }
 
-        // Tiled windows stick to their tile. Re-assert promptly (cooldown
-        // prevents fight loops with stubborn apps), and always settle back to
-        // the exact tile once the event burst quiets down.
+    /// Native fullscreen (the green button) moves the window to its own Space.
+    /// Release its tile while it's away; re-adopt it when it returns. The AX
+    /// poll is gated: only when the flag is already set (to catch the exit) or
+    /// the event frame is monitor-sized (the only shape an enter produces).
+    private func handleFullscreenTransition(_ state: WindowState, _ frame: CGRect) -> Bool {
+        guard drag?.id != state.id else { return false }
+        let now = CFAbsoluteTimeGetCurrent()
+        let monitorSized = monitorMgr.containing(CGPoint(x: frame.midX, y: frame.midY))
+            .map { abs(frame.width - $0.frame.width) < 2 && abs(frame.height - $0.frame.height) < 2 }
+            ?? false
+        // App-internal fullscreen binds (Ghostty's ⌘↩ etc.) animate through
+        // intermediate frames, so monitor-sized alone misses the start;
+        // AXFullScreen flips when the animation begins, and a rate-limited
+        // poll catches it on the first event of the burst.
+        let pollDue = now - (lastFullscreenPoll[state.id] ?? 0) > 0.1
+        guard state.nativeFullscreen || monitorSized || pollDue else { return false }
+        lastFullscreenPoll[state.id] = now
+
+        let native = bridge.isNativeFullscreen(state.id)
+        guard native != state.nativeFullscreen else { return false }
+        applyNativeFullscreen(state, native)
+        return true
+    }
+
+    private func applyNativeFullscreen(_ state: WindowState, _ native: Bool) {
+        state.nativeFullscreen = native
+        let ws = workspace(forID: state.workspace)
+        if native {
+            if !state.floating { ws.removeTiled(state.id) }
+            if isVisible(ws) { arrange(ws) }
+            refreshBorder()
+        } else {
+            state.hidden = false
+            if !state.floating, !ws.master.contains(state.id) { insertTiled(state.id, into: ws) }
+            if isVisible(ws) {
+                arrange(ws)
+            } else {
+                stash(state.id)
+            }
+        }
+    }
+
+    /// Entering or leaving native fullscreen always switches the active Space,
+    /// and the Space transition itself often delivers no AX move event — this
+    /// notification is the reliable trigger. Sweep for flag drift and apply.
+    func activeSpaceChanged() {
+        for state in windows.values where !state.minimized && drag?.id != state.id {
+            let native = bridge.isNativeFullscreen(state.id)
+            if native != state.nativeFullscreen {
+                applyNativeFullscreen(state, native)
+            }
+        }
+        refreshBorder()
+    }
+
+    /// Move events for the window we're dragging: bindm echoes of our own
+    /// setFrame are swallowed; native drags engage the session and track the
+    /// OS-driven frame so the border rides along.
+    private func handleDragEcho(_ state: WindowState, _ frame: CGRect) -> Bool {
+        guard var session = drag, session.id == state.id else { return false }
+        guard session.source == .native else { return true }
+        let movedDist = abs(frame.minX - session.startFrame.minX)
+            + abs(frame.minY - session.startFrame.minY)
+        let sizeDist = abs(frame.width - session.startFrame.width)
+            + abs(frame.height - session.startFrame.height)
+        if sizeDist > 4 {
+            session.sawResize = true
+            session.engaged = true
+        } else if movedDist > 4 {
+            session.engaged = true
+        }
+        drag = session
+        if session.engaged {
+            state.frame = frame
+            if state.id == focusedWindow { refreshBorder() }
+        }
+        return true
+    }
+
+    private func trackFloatingFrame(_ state: WindowState, _ frame: CGRect) {
+        state.frame = frame
+        state.floatFrame = frame
+        if state.id == focusedWindow { refreshBorder() }
+    }
+
+    /// Tiled windows stick to their tile. Re-assert promptly (cooldown
+    /// prevents fight loops with stubborn apps), and always settle back to
+    /// the exact tile once the event burst quiets down.
+    private func holdTile(_ state: WindowState, _ frame: CGRect) {
         let desired = state.frame
         let drift = abs(frame.minX - desired.minX) + abs(frame.minY - desired.minY)
             + abs(frame.width - desired.width) + abs(frame.height - desired.height)
         guard drift > 4 else {
-            if id == focusedWindow { refreshBorder() }
+            if state.id == focusedWindow { refreshBorder() }
             return
         }
         let now = CFAbsoluteTimeGetCurrent()
-        if now - (lastReassert[id] ?? 0) > 0.4 {
-            lastReassert[id] = now
-            bridge.setFrame(id, desired)
+        if now - (lastReassert[state.id] ?? 0) > 0.4 {
+            lastReassert[state.id] = now
+            bridge.setFrame(state.id, desired)
         }
-        scheduleSettle(id)
-        if id == focusedWindow { refreshBorder() }
+        scheduleSettle(state.id)
+        if state.id == focusedWindow { refreshBorder() }
     }
 
     /// Debounced snap-back: after any external move/resize burst, a tiled
