@@ -4,8 +4,8 @@
 
 A dynamic tiling window manager for macOS.
 
-The name is Norwegian for "window", from Old Norse *vindauga* ("wind-eye"),
-the word English *window* comes from.
+The name is Norwegian for "window", from Old Norse _vindauga_ ("wind-eye"),
+the word English _window_ comes from.
 
 ```
 ┌────────────┬────────────┐      alt + 1…9      switch workspace
@@ -27,14 +27,6 @@ brew install yarlson/tap/vindu
 brew services start vindu     # runs now and at every login
 ```
 
-Or from source:
-
-```sh
-git clone https://github.com/yarlson/vindu && cd vindu
-make install                  # builds, signs, installs vindud + vinductl
-vindud --install-service      # runs now and at every login
-```
-
 macOS will prompt for Accessibility access (System Settings → Privacy &
 Security → Accessibility). Flip the toggle for `vindud` and your windows
 tile immediately. No restart needed.
@@ -52,13 +44,7 @@ Now try, in order:
    it as you move.
 
 To stop: `alt + shift + m` exits and puts windows back where humans can
-reach them. To run at login (and start right now):
-
-```sh
-vindud --install-service      # writes the LaunchAgent and starts it
-vindud --uninstall-service    # undo
-```
-
+reach them; `brew services stop vindu` turns the service off entirely.
 Logs land in `/tmp/vindu.log`.
 
 ## If something looks wrong
@@ -90,29 +76,29 @@ The default mod is alt. Cmd works too, vindu swallows bound chords before
 apps see them, but cmd carries too much existing muscle memory to be a good
 default.
 
-| Keys | Action |
-| --- | --- |
-| `alt + return` | open Terminal |
-| `alt + e` | open Finder |
-| `alt + h/j/k/l` | focus left/down/up/right |
-| `alt + shift + h/j/k/l` | move window (swaps tiles) |
-| `alt + tab` / `alt + shift + tab` | cycle windows on workspace |
-| `alt + 1…9` | switch workspace |
-| `alt + shift + 1…9` | send window to workspace and follow |
-| `alt + [` / `alt + ]` | previous / next workspace |
-| `alt + s` | toggle the `magic` scratchpad |
-| `alt + shift + s` | send window to scratchpad |
-| `alt + v` | float / tile |
-| `alt + f` | maximize, `alt + shift + f` fullscreen |
-| `alt + t` | toggle split direction |
-| `alt + c` | center a floating window |
-| `alt + p` | pin a floating window to all workspaces |
-| `alt + m` | swap with master |
-| `alt + r` | resize submap: `h/j/k/l` resize, `esc` exits |
-| `alt + drag` | move a tile through the grid |
-| `alt + rightdrag` | resize (split ratios when tiled) |
-| `alt + shift + q` | close window |
-| `alt + shift + m` | quit vindu |
+| Keys                              | Action                                       |
+| --------------------------------- | -------------------------------------------- |
+| `alt + return`                    | open Terminal                                |
+| `alt + e`                         | open Finder                                  |
+| `alt + h/j/k/l`                   | focus left/down/up/right                     |
+| `alt + shift + h/j/k/l`           | move window (swaps tiles)                    |
+| `alt + tab` / `alt + shift + tab` | cycle windows on workspace                   |
+| `alt + 1…9`                       | switch workspace                             |
+| `alt + shift + 1…9`               | send window to workspace and follow          |
+| `alt + [` / `alt + ]`             | previous / next workspace                    |
+| `alt + s`                         | toggle the `magic` scratchpad                |
+| `alt + shift + s`                 | send window to scratchpad                    |
+| `alt + v`                         | float / tile                                 |
+| `alt + f`                         | maximize, `alt + shift + f` fullscreen       |
+| `alt + t`                         | toggle split direction                       |
+| `alt + c`                         | center a floating window                     |
+| `alt + p`                         | pin a floating window to all workspaces      |
+| `alt + m`                         | swap with master                             |
+| `alt + r`                         | resize submap: `h/j/k/l` resize, `esc` exits |
+| `alt + drag`                      | move a tile through the grid                 |
+| `alt + rightdrag`                 | resize (split ratios when tiled)             |
+| `alt + shift + q`                 | close window                                 |
+| `alt + shift + m`                 | quit vindu                                   |
 
 Pressing a workspace number twice bounces back to the previous one
 (`workspace_back_and_forth`, on by default).
@@ -238,11 +224,21 @@ the socket conventions work unchanged. Coming from i3/sway, binds, modes
 
 ## Development
 
+Running from source instead of brew:
+
 ```sh
+git clone https://github.com/yarlson/vindu && cd vindu
 make build      # debug
 make test       # works with Command Line Tools alone, no Xcode needed
-make release    # optimized + signed
+make install    # release build, signs, installs to /usr/local/bin
+vindud --install-service      # run the dev build now and at every login
+vindud --uninstall-service    # undo
 ```
+
+Two dev-loop gotchas: a rebuilt binary is a new code identity, so re-toggle
+`vindud` in Accessibility after `make install` or binds go silently dead.
+And don't run the brew service and a dev-build service at the same time —
+two window managers fight over the same windows.
 
 Releasing: push a `v*` tag. CI builds the universal (arm64 + x86_64)
 tarball, publishes the GitHub release with checksums and provenance, and
