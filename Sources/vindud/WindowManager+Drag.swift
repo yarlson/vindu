@@ -85,15 +85,10 @@ extension WindowManager {
     func handleRawLeftMouse(_ point: CGPoint, _ phase: HotkeyTap.DragPhase) {
         switch phase {
         case .began:
-            guard let id = bridge.windowID(at: point), let state = windows[id] else { return }
-            // A click on the green zoom button is about to start the native
-            // fullscreen animation — drop the border before it begins.
-            if let button = bridge.fullscreenButtonFrame(id),
-               button.insetBy(dx: -2, dy: -2).contains(point) {
-                suppressBorder(for: 1.2)
-                return
-            }
-            guard drag == nil, !state.floating, !state.hidden, !state.minimized else { return }
+            guard drag == nil,
+                  let id = bridge.windowID(at: point),
+                  let state = windows[id], !state.floating, !state.hidden,
+                  !state.minimized else { return }
             drag = DragSession(id: id, kind: .move, source: .native, startPoint: point,
                                startFrame: state.frame, engaged: false, lastPoint: point)
         case .moved:

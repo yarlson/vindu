@@ -69,9 +69,6 @@ final class WindowManager {
     /// Last explicit switch gesture (⌘Tab, Dock click). Activations that
     /// follow one are user intent and may switch workspaces.
     private var lastUserGesture = 0.0
-    /// While set in the future, the border stays hidden — covers the native
-    /// fullscreen animation between the triggering gesture and the Space change.
-    private var borderSuppressedUntil = 0.0
 
     init(configPath: String) {
         self.configPath = configPath
@@ -99,7 +96,6 @@ final class WindowManager {
             self?.handleRawLeftMouse(point, phase)
         }
         tap.onUserGesture = { [weak self] in self?.lastUserGesture = CFAbsoluteTimeGetCurrent() }
-        tap.onFullscreenShortcut = { [weak self] in self?.suppressBorder(for: 1.2) }
         tap.onMouseMoved = { [weak self] point in self?.followMouse(point) }
         if !tap.start() {
             log("event tap unavailable — check Accessibility permission; binds disabled")
@@ -492,22 +488,7 @@ final class WindowManager {
         }
     }
 
-    /// Hides the border for the duration of a suspected fullscreen animation;
-    /// the trailing refresh restores it if the transition never happened
-    /// (e.g. option-zoom maximizing instead).
-    func suppressBorder(for seconds: Double) {
-        borderSuppressedUntil = CFAbsoluteTimeGetCurrent() + seconds
-        border.hide()
-        DispatchQueue.main.asyncAfter(deadline: .now() + seconds + 0.05) { [weak self] in
-            self?.refreshBorder()
-        }
-    }
-
     func refreshBorder() {
-        guard CFAbsoluteTimeGetCurrent() >= borderSuppressedUntil else {
-            border.hide()
-            return
-        }
         guard let id = focusedWindow, let state = windows[id], !state.hidden, !state.minimized,
               !state.nativeFullscreen,
               workspace(forID: state.workspace).fullscreen != id else {

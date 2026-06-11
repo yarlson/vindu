@@ -388,13 +388,6 @@ final class AXBridge {
         return (axValue(el, "AXFullScreen") as Bool?) ?? false
     }
 
-    /// Frame of the window's green zoom button, for detecting clicks that are
-    /// about to start a fullscreen transition.
-    func fullscreenButtonFrame(_ id: WindowID) -> CGRect? {
-        guard let (el, _) = element(for: id),
-              let button: AXUIElement = axValue(el, "AXFullScreenButton") else { return nil }
-        return frame(of: button)
-    }
 
     /// Topmost normal window at a point (top-left-origin), excluding our own
     /// overlay panels.

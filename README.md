@@ -59,7 +59,7 @@ vindud --install-service      # writes the LaunchAgent and starts it
 vindud --uninstall-service    # undo
 ```
 
-Logs land in `/tmp/vindu.log`. A plist for manual setups is in `contrib/`.
+Logs land in `/tmp/vindu.log`.
 
 ## If something looks wrong
 

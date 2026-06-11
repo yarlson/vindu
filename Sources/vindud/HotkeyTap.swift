@@ -26,9 +26,6 @@ final class HotkeyTap {
     /// Lets the WM tell a user-driven activation from an app-initiated
     /// focus steal.
     var onUserGesture: (() -> Void)?
-    /// Fires on the native fullscreen shortcuts (fn+F, ⌃⌘F) so the border can
-    /// hide before the Space animation starts.
-    var onFullscreenShortcut: (() -> Void)?
 
     private(set) var activeSubmap = ""
 
@@ -110,16 +107,10 @@ final class HotkeyTap {
         case .keyDown:
             // ⌘Tab is the system switcher; observe it (never consumable anyway)
             // so activations it causes count as user gestures.
-            let keycode = event.getIntegerValueField(.keyboardEventKeycode)
-            if keycode == 48, event.flags.contains(.maskCommand) {
+            if event.getIntegerValueField(.keyboardEventKeycode) == 48,
+               event.flags.contains(.maskCommand) {
                 switcherActive = true
                 fireUserGesture()
-            }
-            // Native fullscreen shortcuts: fn+F and ⌃⌘F (keycode 3 = F).
-            if keycode == 3,
-               event.flags.contains(.maskSecondaryFn)
-                || (event.flags.contains(.maskCommand) && event.flags.contains(.maskControl)) {
-                DispatchQueue.main.async { [weak self] in self?.onFullscreenShortcut?() }
             }
             return handleKey(event: event, isDown: true)
         case .keyUp:
