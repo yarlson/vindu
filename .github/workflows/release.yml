@@ -74,13 +74,10 @@ jobs:
 
       - name: Update Homebrew tap
         env:
-          TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "$TAP_DEPLOY_KEY" > ~/.ssh/tap_key
-          chmod 600 ~/.ssh/tap_key
-          export GIT_SSH_COMMAND="ssh -i ~/.ssh/tap_key -o StrictHostKeyChecking=accept-new"
-          git clone --depth 1 git@github.com:yarlson/homebrew-tap.git tap
+          git clone --depth 1 \
+            "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/yarlson/homebrew-tap.git" tap
 
           SHA=$(awk '{print $1}' checksums.txt)
           VERSION="${GITHUB_REF_NAME#v}"
