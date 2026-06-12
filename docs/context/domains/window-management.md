@@ -41,3 +41,11 @@ The green button moves a window onto its own Space. Detection combines an AXFull
 ## Border overlay
 
 A click-through, non-activating panel that joins all Spaces, framed around the focused window (coordinates convert to AppKit space at this boundary only). It renders the active-border gradient's first color, switches to the submap border color while a submap is active, and hides for hidden, minimized, or fullscreen windows.
+
+## Pause
+
+The `pause` dispatcher (vindu extension, default `alt+shift+p`) suspends all enforcement: arrange/stash/tile-holding no-op, the border hides, focus events stop switching workspaces, and dispatchers other than `pause`/`exit`/`exec` return an error. Floating frames are still tracked so they stay where the user leaves them. Resume re-stashes hidden workspaces and re-arranges everything — the grid reasserts; pause is a timeout, not a mode.
+
+## Menu bar and cheat sheet
+
+A status item (hidden via `misc:menu_bar = false`) shows daemon presence, dims while paused, and offers pause/resume, the keybinding cheat sheet, opening the config file, and quit — the chord-free control surface. The cheat sheet is a click-to-dismiss overlay rendered from the live parsed binds (`BindDisplay` in VinduCore: macOS modifier symbols, plain-English actions, `bindd` descriptions when present, digit runs collapsed to `1…9`); it shows automatically on the run that writes the default config.

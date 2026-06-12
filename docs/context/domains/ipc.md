@@ -9,6 +9,7 @@ Request/response, wire-compatible with Hyprland's socket1: one plain-text comman
 - The accept loop reads on a background queue, runs the handler on the main queue (the WM is single-threaded), and writes the reply on a background queue.
 - Startup probes an existing socket file: a live listener means another instance and the daemon exits; a dead file is stale and unlinked. This doubles as the single-instance mechanism.
 - Verb families: `dispatch` (the full dispatcher set), `keyword`, `reload`, info verbs (`clients`, `workspaces`, `monitors`, `activewindow`, `activeworkspace`, `binds`, `getoption`, `configerrors`, `cursorpos`, `version`), plus `notify` and `splash`. Hyprland verbs with no macOS meaning return an explicit `err: … has no macOS equivalent`; `kill` (the click-to-close picker) is impossible and says so.
+- While tiling is paused, `dispatch` rejects everything except `pause`, `exit`, and `exec` with an error pointing at the resume path.
 
 ## JSON shapes
 
@@ -16,7 +17,7 @@ Info payloads mirror `hyprctl -j` shapes where macOS has an equivalent field (`C
 
 ## Event socket
 
-Push stream, wire-compatible with Hyprland's socket2: one `EVENT>>DATA` line per state change (workspace switches, focus, window open/close/move, floating changes, fullscreen, submaps, monitor add/remove, config reload). Clients are set non-blocking so one stalled consumer cannot wedge the daemon; clients whose writes fail are pruned. Status bars consume this stream instead of polling.
+Push stream, wire-compatible with Hyprland's socket2: one `EVENT>>DATA` line per state change (workspace switches, focus, window open/close/move, floating changes, fullscreen, submaps, monitor add/remove, config reload, plus the vindu-only `pause>>0|1`). Clients are set non-blocking so one stalled consumer cannot wedge the daemon; clients whose writes fail are pruned. Status bars consume this stream instead of polling.
 
 ## vinductl
 

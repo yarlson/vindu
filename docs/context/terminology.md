@@ -24,3 +24,5 @@
 - event socket — push stream of `EVENT>>DATA` lines, wire-compatible with Hyprland's socket2.
 - tolerated keyword — Hyprland option with no macOS counterpart, accepted silently so real configs load; unknown keys in modeled sections still error.
 - user gesture — recent explicit switch action (click or ⌘Tab); decides whether an off-workspace activation may switch workspaces.
+- pause — vindu-only dispatcher suspending all tiling enforcement: frames are not asserted and non-pause chords pass through to apps; resuming reasserts the grid.
+- cheat sheet — click-to-dismiss overlay listing the root keymap, rendered from the live parsed binds; shown on first run and from the menu bar item.

@@ -4,6 +4,8 @@
 
 `HotkeyTap` creates a session CGEventTap (head-inserted, consuming) over keyboard, mouse buttons, drags, and mouse movement. Bound chords are swallowed before the frontmost app sees them — this is what lets ⌘-based binds shadow system shortcuts. The tap re-enables itself if the OS disables it (timeout or user input). All callbacks hop to the main queue.
 
+While tiling is paused, only `pause` binds match; every other chord, mouse bind, and raw-drag observation passes through untouched, so the keyboard belongs to the apps again until resume.
+
 ## Key binds
 
 - Lookup key is modifier mask + keycode + active submap. Both down and up edges of a bound chord are swallowed so apps never see half a shortcut.
