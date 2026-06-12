@@ -139,6 +139,15 @@ general {
 bind = $mainMod, T, exec, open -a kitty
 bind = $mainMod, B, workspace, name:browser
 
+bar {
+    enabled = false            # same-process workspace/app/status bar
+    position = top             # top or bottom
+    height = 0                 # 0 = auto; top matches the hidden menu bar
+    show_workspaces = true
+    show_app = true
+    show_indicators = true
+}
+
 # Modal keymaps
 bind = $mainMod, R, submap, resize
 submap = resize
@@ -158,7 +167,9 @@ Workspace targets: `3`, `+1`, `e+1` (existing only), `previous`, `empty`,
 `monitor <name>`. Matchers: `class`, `title`, `initialclass`,
 `initialtitle`, `floating`, `workspace`, `pid`, `address`.
 
-The menu bar icon can be turned off with `misc:menu_bar = false`.
+The menu bar icon can be turned off with `misc:menu_bar = false`. The desktop
+bar can be enabled live with `vinductl keyword bar:enabled true`; it reserves
+screen space and shows workspaces, the focused app/window, and state indicators.
 
 ### Layouts
 
@@ -210,9 +221,9 @@ openwindow>>0x2a51,3,Safari,GitHub
   math, focus geometry, workspace registry. Pure logic under `swift test`,
   no GUI dependencies.
 - `vindud`: the daemon. Accessibility observers feed window events into the
-  layout, a session event tap owns hotkeys and mouse drags, an overlay
-  panel draws the focus border. Hidden workspaces park windows just off the
-  visible frame and restore them on switch. That trick is the reason SIP
+  layout, a session event tap owns hotkeys and mouse drags, overlay panels draw
+  the focus border and optional desktop bar. Hidden workspaces park windows just
+  off the visible frame and restore them on switch. That trick is the reason SIP
   can stay on.
 - `vinductl`: a thin socket client.
 

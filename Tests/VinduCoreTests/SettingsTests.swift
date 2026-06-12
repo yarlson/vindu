@@ -15,6 +15,16 @@ struct SettingsTests {
         #expect(s.misc.menuBar == true)
         #expect(s.set("misc:menu_bar", "off") == nil)
         #expect(s.get("misc:menu_bar") == "false")
+        #expect(s.bar.enabled == false)
+        #expect(s.bar.height == 0)
+        #expect(s.set("bar:enabled", "true") == nil)
+        #expect(s.get("bar:enabled") == "true")
+        #expect(s.set("bar:position", "bottom") == nil)
+        #expect(s.get("bar:position") == "bottom")
+        #expect(s.set("bar:height", "32") == nil)
+        #expect(s.get("bar:height") == "32.0")
+        #expect(s.set("bar:show_app", "off") == nil)
+        #expect(s.get("bar:show_app") == "false")
     }
 
     @Test func gradientRoundTrip() {
@@ -25,6 +35,10 @@ struct SettingsTests {
         #expect(s.get("general:col.inactive_border") == "rgba(595959aa)")
         #expect(s.set("general:col.submap_border", "rgba(ff0000ff)") == nil)
         #expect(s.get("general:col.submap_border") == "rgba(ff0000ff)")
+        #expect(s.set("bar:col.background", "rgba(111111cc)") == nil)
+        #expect(s.get("bar:col.background") == "rgba(111111cc)")
+        #expect(s.set("bar:col.active", "rgba(33ccffee)") == nil)
+        #expect(s.get("bar:col.active") == "rgba(33ccffee)")
     }
 
     @Test func rangeAndTypeValidation() {
@@ -35,6 +49,10 @@ struct SettingsTests {
         #expect(s.set("general:gaps_in", "abc") != nil)
         #expect(s.set("master:new_status", "boss") != nil)
         #expect(s.set("master:new_status", "master") == nil)
+        #expect(s.set("bar:height", "-1") != nil)
+        #expect(s.set("bar:height", "120") != nil)
+        #expect(s.set("bar:position", "left") != nil)
+        #expect(s.set("bar:col.foreground", "white") != nil)
     }
 
     @Test func typosInModeledSectionsAreReported() {

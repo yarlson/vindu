@@ -34,6 +34,19 @@ struct ConfigParserTests {
             workspace_back_and_forth = true
         }
 
+        bar {
+            enabled = true
+            position = bottom
+            height = 32
+            show_workspaces = false
+            show_app = true
+            show_indicators = false
+            col.background = rgba(111111cc)
+            col.foreground = rgba(eeeeeeff)
+            col.inactive = rgba(8a8a8aff)
+            col.active = rgba(33ccffee)
+        }
+
         bind = $mainMod, Q, exec, $term --single-instance
         bind = $mainMod SHIFT, Q, killactive,
         binde = $mainMod, L, resizeactive, 10 0
@@ -68,6 +81,13 @@ struct ConfigParserTests {
         #expect(doc.settings.master.newStatus == "master")
         #expect(doc.settings.master.mfact == 0.6)
         #expect(doc.settings.binds.workspaceBackAndForth)
+        #expect(doc.settings.bar.enabled)
+        #expect(doc.settings.bar.position == .bottom)
+        #expect(doc.settings.bar.height == 32)
+        #expect(doc.settings.bar.showWorkspaces == false)
+        #expect(doc.settings.bar.showApp)
+        #expect(doc.settings.bar.showIndicators == false)
+        #expect(doc.settings.bar.background == MLColor.parse("rgba(111111cc)")!)
 
         #expect(doc.binds.count == 9)
         let execBind = doc.binds[0]
@@ -173,6 +193,8 @@ struct ConfigParserTests {
         var doc = ConfigDocument()
         #expect(ConfigParser.applyKeyword("general:gaps_in", "33", to: &doc) == nil)
         #expect(doc.settings.general.gapsIn == 33)
+        #expect(ConfigParser.applyKeyword("bar:enabled", "true", to: &doc) == nil)
+        #expect(doc.settings.bar.enabled)
         #expect(ConfigParser.applyKeyword("bind", "SUPER, Y, exec, top", to: &doc) == nil)
         #expect(doc.binds.count == 1)
         #expect(ConfigParser.applyKeyword("general:gaps_in", "abc", to: &doc) != nil)

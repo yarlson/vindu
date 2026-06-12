@@ -4,6 +4,10 @@ public enum MasterOrientation: String, Equatable {
     case left, right, top, bottom, center
 }
 
+public enum BarPosition: String, Equatable {
+    case top, bottom
+}
+
 public struct GeneralSettings: Equatable {
     public var gapsIn: Double = 5
     public var gapsOut: Double = 20
@@ -54,6 +58,21 @@ public struct BindsSettings: Equatable {
     public var workspaceBackAndForth = false
 }
 
+public struct BarSettings: Equatable {
+    public var enabled = false
+    /// 0 = automatic. Top bars use the display's top reserved strip, matching
+    /// the hidden macOS menu bar height; other cases fall back to 28 px.
+    public var height: Double = 0
+    public var position = BarPosition.top
+    public var showWorkspaces = true
+    public var showApp = true
+    public var showIndicators = true
+    public var background = MLColor.parse("rgba(111111cc)")!
+    public var foreground = MLColor.parse("rgba(eeeeeeff)")!
+    public var inactive = MLColor.parse("rgba(8a8a8aff)")!
+    public var active = MLColor.parse("rgba(33ccffee)")!
+}
+
 public struct Settings: Equatable {
     public var general = GeneralSettings()
     public var decoration = DecorationSettings()
@@ -62,6 +81,7 @@ public struct Settings: Equatable {
     public var input = InputSettings()
     public var misc = MiscSettings()
     public var binds = BindsSettings()
+    public var bar = BarSettings()
 
     public init() {}
 
@@ -112,6 +132,16 @@ public struct Settings: Equatable {
         "misc:focus_on_activate": bool(\.misc.focusOnActivate),
         "misc:menu_bar": bool(\.misc.menuBar),
         "binds:workspace_back_and_forth": bool(\.binds.workspaceBackAndForth),
+        "bar:enabled": bool(\.bar.enabled),
+        "bar:height": double(\.bar.height, in: 0...96),
+        "bar:position": barPosition(\.bar.position),
+        "bar:show_workspaces": bool(\.bar.showWorkspaces),
+        "bar:show_app": bool(\.bar.showApp),
+        "bar:show_indicators": bool(\.bar.showIndicators),
+        "bar:col.background": color(\.bar.background),
+        "bar:col.foreground": color(\.bar.foreground),
+        "bar:col.inactive": color(\.bar.inactive),
+        "bar:col.active": color(\.bar.active),
     ]
 
     private static func double(_ kp: WritableKeyPath<Settings, Double>,
@@ -147,10 +177,7 @@ public struct Settings: Equatable {
 
     private static func gradient(_ kp: WritableKeyPath<Settings, MLGradient>) -> Option {
         Option(get: { settings in
-            let colors = settings[keyPath: kp].colors.map { color in
-                String(format: "rgba(%02x%02x%02x%02x)", Int(color.r * 255), Int(color.g * 255),
-                       Int(color.b * 255), Int(color.a * 255))
-            }
+            let colors = settings[keyPath: kp].colors.map(colorString)
             let angle = settings[keyPath: kp].angleDeg
             return (colors + (angle != 0 ? ["\(Int(angle))deg"] : [])).joined(separator: " ")
         }, set: { settings, value in
@@ -158,6 +185,19 @@ public struct Settings: Equatable {
             settings[keyPath: kp] = g
             return nil
         })
+    }
+
+    private static func color(_ kp: WritableKeyPath<Settings, MLColor>) -> Option {
+        Option(get: { colorString($0[keyPath: kp]) }, set: { settings, value in
+            guard let c = MLColor.parse(value) else { return "invalid color" }
+            settings[keyPath: kp] = c
+            return nil
+        })
+    }
+
+    private static func colorString(_ color: MLColor) -> String {
+        String(format: "rgba(%02x%02x%02x%02x)", Int(color.r * 255), Int(color.g * 255),
+               Int(color.b * 255), Int(color.a * 255))
     }
 
     private static func layout(_ kp: WritableKeyPath<Settings, LayoutKind>) -> Option {
@@ -172,6 +212,14 @@ public struct Settings: Equatable {
         Option(get: { $0[keyPath: kp].rawValue }, set: { settings, value in
             guard let o = MasterOrientation(rawValue: value.lowercased()) else { return "invalid orientation" }
             settings[keyPath: kp] = o
+            return nil
+        })
+    }
+
+    private static func barPosition(_ kp: WritableKeyPath<Settings, BarPosition>) -> Option {
+        Option(get: { $0[keyPath: kp].rawValue }, set: { settings, value in
+            guard let p = BarPosition(rawValue: value.lowercased()) else { return "invalid position" }
+            settings[keyPath: kp] = p
             return nil
         })
     }

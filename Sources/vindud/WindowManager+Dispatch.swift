@@ -538,6 +538,7 @@ extension WindowManager {
             bridge.setPosition(id, CGPoint(x: container.minX + 40, y: container.minY + 40))
         }
         border.hide()
+        desktopBar.hide()
         ipc?.stop()
         events?.stop()
         watcher?.stop()

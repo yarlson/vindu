@@ -52,6 +52,20 @@ binds {
     workspace_back_and_forth = true
 }
 
+bar {
+    # same-process workspace/app/status bar; enable to reserve screen space
+    enabled = false
+    position = top
+    height = 0      # 0 = auto; top bars match the hidden menu-bar strip
+    show_workspaces = true
+    show_app = true
+    show_indicators = true
+    col.background = rgba(111111cc)
+    col.foreground = rgba(eeeeeeff)
+    col.inactive = rgba(8a8a8aff)
+    col.active = rgba(33ccffee)
+}
+
 # --- programs --------------------------------------------------------------
 bind = $mainMod, return, exec, open -a Terminal
 bind = $mainMod, E, exec, open -a Finder

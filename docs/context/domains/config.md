@@ -24,7 +24,14 @@ Parsing produces a `ConfigDocument`: settings, binds, window rules, workspace ru
 
 ## Settings
 
-`Settings` is a typed option table keyed by full keyword; each entry implements both `set` (with validation and ranges) and `get` (serves IPC `getoption`). Modeled sections: general, decoration (rounding only), dwindle, master, input, misc, binds.
+`Settings` is a typed option table keyed by full keyword; each entry implements both `set` (with validation and ranges) and `get` (serves IPC `getoption`). Modeled sections: general, decoration (rounding only), dwindle, master, input, misc, binds, bar.
+
+The `bar` section is a vindu extension for the same-process desktop bar:
+
+- `bar:enabled` turns it on/off (off by default so existing installs keep the same screen geometry).
+- `bar:position` is `top` or `bottom`; `bar:height` is 0…96 px. `0` means automatic: top bars use the display's top reserved strip (matching the hidden macOS menu-bar height), while other cases fall back to 28 px.
+- `bar:show_workspaces`, `bar:show_app`, and `bar:show_indicators` toggle the built-in item groups.
+- `bar:col.background`, `bar:col.foreground`, `bar:col.inactive`, and `bar:col.active` use the same color notation as border colors.
 
 Tolerance tiers for real Hyprland configs:
 

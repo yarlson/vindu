@@ -211,3 +211,79 @@ struct LayoutMathTests {
         #expect(rects[1] == CGRect(x: 0, y: 300, width: 300, height: 300))
     }
 }
+
+struct BarGeometryTests {
+    let display = CGRect(x: 100, y: 0, width: 1200, height: 900)
+    let usable = CGRect(x: 100, y: 50, width: 1200, height: 800)
+
+    @Test func disabledBarDoesNotReserveSpace() {
+        var settings = BarSettings()
+        settings.enabled = false
+
+        #expect(BarGeometry.contentRect(displayFrame: display, usable: usable,
+                                        settings: settings) == usable)
+    }
+
+    @Test func topBarUsesPhysicalDisplayTopWithoutReservingHiddenMenuStrip() {
+        var settings = BarSettings()
+        settings.enabled = true
+        settings.position = .top
+        settings.height = 0
+
+        #expect(BarGeometry.barRect(displayFrame: display, usable: usable,
+                                    settings: settings)
+                == CGRect(x: 100, y: 0, width: 1200, height: 50))
+        #expect(BarGeometry.contentRect(displayFrame: display, usable: usable,
+                                        settings: settings) == usable)
+    }
+
+    @Test func autoTopBarFallsBackWhenThereIsNoTopStrip() {
+        var settings = BarSettings()
+        settings.enabled = true
+        settings.position = .top
+        settings.height = 0
+        let full = CGRect(x: 100, y: 0, width: 1200, height: 900)
+
+        #expect(BarGeometry.barRect(displayFrame: full, usable: full,
+                                    settings: settings).height == 28)
+    }
+
+    @Test func topBarReservesOnlyThePartOverlappingUsableRect() {
+        var settings = BarSettings()
+        settings.enabled = true
+        settings.position = .top
+        settings.height = 60
+
+        #expect(BarGeometry.barRect(displayFrame: display, usable: usable,
+                                    settings: settings)
+                == CGRect(x: 100, y: 0, width: 1200, height: 60))
+        #expect(BarGeometry.contentRect(displayFrame: display, usable: usable,
+                                        settings: settings)
+                == CGRect(x: 100, y: 60, width: 1200, height: 790))
+    }
+
+    @Test func bottomBarReservesFromBottomOfUsableRect() {
+        var settings = BarSettings()
+        settings.enabled = true
+        settings.position = .bottom
+        settings.height = 32
+
+        #expect(BarGeometry.barRect(displayFrame: display, usable: usable,
+                                    settings: settings)
+                == CGRect(x: 100, y: 818, width: 1200, height: 32))
+        #expect(BarGeometry.contentRect(displayFrame: display, usable: usable,
+                                        settings: settings)
+                == CGRect(x: 100, y: 50, width: 1200, height: 768))
+    }
+
+    @Test func oversizedTopBarCanConsumeUsableArea() {
+        var settings = BarSettings()
+        settings.enabled = true
+        settings.height = 900
+
+        #expect(BarGeometry.barRect(displayFrame: display, usable: usable,
+                                    settings: settings).height == 899)
+        #expect(BarGeometry.contentRect(displayFrame: display, usable: usable,
+                                        settings: settings).height == 0)
+    }
+}

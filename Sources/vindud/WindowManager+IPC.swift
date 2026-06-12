@@ -32,7 +32,9 @@ extension WindowManager {
                 return "err: \(err)"
             }
             tap.rebuild(binds: doc.binds)
+            applyDesktopUISettings()
             arrangeAllVisible()
+            refreshDesktopBar()
             return "ok"
         case "reload":
             reloadConfig()
@@ -204,4 +206,3 @@ extension WindowManager {
         return "bind\(flags): \(Modifiers(rawValue: UInt8(b.modmask)).described) + \(b.key) -> \(b.dispatcher) \(b.arg)\(submap)"
     }
 }
-

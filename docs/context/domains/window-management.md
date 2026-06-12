@@ -49,3 +49,7 @@ The `pause` dispatcher (vindu extension, default `alt+shift+p`) suspends all enf
 ## Menu bar and cheat sheet
 
 A status item (hidden via `misc:menu_bar = false`) shows daemon presence, dims while paused, and offers pause/resume, the keybinding cheat sheet, opening the config file, and quit — the chord-free control surface. The cheat sheet is a click-to-dismiss overlay rendered from the live parsed binds (`BindDisplay` in VinduCore: macOS modifier symbols, plain-English actions, `bindd` descriptions when present, digit runs collapsed to `1…9`); it shows automatically on the run that writes the default config.
+
+## Desktop bar
+
+`DesktopBar` is an optional same-process AppKit bar, enabled with `bar:enabled = true`. It creates one non-activating panel per monitor, joins all Spaces, and renders built-in workspace, focused-app/window, and state-indicator groups from `WindowManager` state rather than consuming the public IPC stream. Workspace items dispatch the normal workspace switch path for their monitor. Top bars draw at the physical display top so they can occupy the hidden-menu-bar strip; layout reserves only the part of the bar overlapping the monitor's usable frame. The focused app/window label sits next to the workspace switcher instead of in the center notch area. Fonts, spacing, padding, and workspace-pill dimensions scale from the resolved bar height.

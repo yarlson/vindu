@@ -35,10 +35,11 @@ All geometry is top-left-origin global coordinates; AppKit's flipped coordinates
 
 - Layouts: dwindle (aspect-based binary splits) and master (master area + stack), switchable at runtime with window order preserved.
 - Workspaces: numbered, named, special (scratchpad overlays), per-monitor visibility, dynamic create/destroy, monitor-binding rules.
+- Desktop bar: same-process AppKit bar, configured from `vindu.conf`, showing workspaces, focused app/window, and state indicators when enabled.
 - Hyprland config compatibility with explicit tolerance lists; compositor-only options no-op cleanly.
 - Scripting: hyprctl-style command socket (plain or JSON) and a push event socket.
 - Multi-monitor: directional focus/movement across displays, workspace ↔ monitor moves, hotplug re-homing.
-- Onboarding layer: menu bar status item, first-run keybinding cheat sheet, and a pause/resume escape hatch (`pause` dispatcher) — additive UX; the grid still owns tiled windows.
+- Onboarding layer: menu bar status item, optional desktop bar, first-run keybinding cheat sheet, and a pause/resume escape hatch (`pause` dispatcher) — additive UX; the grid still owns tiled windows.
 
 ## Tech Stack
 

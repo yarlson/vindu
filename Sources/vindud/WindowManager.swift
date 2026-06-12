@@ -43,6 +43,7 @@ final class WindowManager {
     let tap = HotkeyTap()
     let border = BorderOverlay()
     let statusItem = StatusItem()
+    let desktopBar = DesktopBar()
     let cheatSheet = CheatSheet()
     let registry = WorkspaceRegistry()
     var ipc: IPCServer?
@@ -132,7 +133,12 @@ final class WindowManager {
             Exec.run("/usr/bin/open", args: ["-t", self.configPath])
         }
         statusItem.onQuit = { [weak self] in self?.shutdown() }
-        applyMenuBarSetting()
+        desktopBar.onWorkspaceSelected = { [weak self] workspaceID, monitorID in
+            guard let self else { return }
+            self.focusedMonitorID = monitorID
+            _ = self.dispatch(.workspace(.id(workspaceID)))
+        }
+        applyDesktopUISettings()
 
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification,
@@ -142,6 +148,7 @@ final class WindowManager {
         }
 
         arrangeAllVisible()
+        refreshDesktopBar()
         if let focused = bridge.systemFocusedWindowID() {
             windowFocused(focused)
         }
@@ -186,14 +193,16 @@ final class WindowManager {
     func reloadConfig() {
         loadConfig(runExecOnce: false)
         ensureWorkspacesForMonitors()
-        applyMenuBarSetting()
+        applyDesktopUISettings()
         arrangeAllVisible()
+        refreshDesktopBar()
         broadcast(.configreloaded)
         log("config reloaded")
     }
 
-    func applyMenuBarSetting() {
+    func applyDesktopUISettings() {
         statusItem.setVisible(settings.misc.menuBar)
+        refreshDesktopBar()
     }
 
     // MARK: - Workspace bookkeeping
@@ -255,13 +264,14 @@ final class WindowManager {
 
     func containerRect(for ws: WorkspaceState) -> CGRect {
         guard let monitor = monitorMgr.byID(ws.monitor) ?? monitorMgr.primary else { return .zero }
+        let usable = DesktopBar.contentRect(for: monitor, settings: settings.bar)
         if ws.isSpecial {
             // Scratchpad overlay floats inside the monitor like Hyprland's
             // special workspace.
-            return monitor.usable.insetBy(dx: monitor.usable.width * 0.08,
-                                          dy: monitor.usable.height * 0.08)
+            return usable.insetBy(dx: usable.width * 0.08,
+                                  dy: usable.height * 0.08)
         }
-        return monitor.usable
+        return usable
     }
 
     /// `excluding` skips one window's frame (a tile mid-drag follows the mouse
@@ -567,6 +577,7 @@ final class WindowManager {
         }
         ensureWorkspacesForMonitors()
         arrangeAllVisible()
+        refreshDesktopBar()
     }
 
     // MARK: - Pause
@@ -602,6 +613,37 @@ final class WindowManager {
         cheatSheet.toggle(rows: BindDisplay.rows(doc.binds),
                           monitorFrame: monitor.usable,
                           primaryHeight: monitorMgr.primaryHeight)
+    }
+
+    func refreshDesktopBar() {
+        desktopBar.update(settings: settings.bar,
+                          snapshot: desktopBarSnapshot(),
+                          primaryHeight: monitorMgr.primaryHeight)
+    }
+
+    private func desktopBarSnapshot() -> DesktopBarSnapshot {
+        let existing = registry.sorted.filter { !$0.isSpecial }
+        let positiveIDs = Set(Array(1...9) + existing.map(\.id).filter { $0 > 0 }).sorted()
+        let namedIDs = existing.map(\.id).filter { $0 <= 0 }
+        let workspaces = (positiveIDs + namedIDs).map { id -> DesktopBarWorkspace in
+            if let ws = registry.existing(id) {
+                return DesktopBarWorkspace(id: id, name: ws.name, windows: ws.allWindows.count)
+            }
+            return DesktopBarWorkspace(id: id, name: String(id), windows: 0)
+        }
+
+        let active = focusedWindow.flatMap { windows[$0] }
+        let frontmostName = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
+        return DesktopBarSnapshot(
+            monitors: monitorMgr.monitors,
+            workspaces: workspaces,
+            activeWorkspaces: activeWS,
+            appName: active?.clazz ?? frontmostName,
+            windowTitle: active?.title ?? "",
+            layout: settings.general.layout,
+            submap: tap.activeSubmap,
+            paused: paused
+        )
     }
 }
 
@@ -852,6 +894,8 @@ extension WindowManager: AXBridgeDelegate {
         windows[id]?.title = title
         if id == focusedWindow, let state = windows[id] {
             broadcast(.activewindow(clazz: state.clazz, title: state.title))
+        } else {
+            refreshDesktopBar()
         }
     }
 
@@ -888,6 +932,7 @@ extension WindowManager: AXBridgeDelegate {
 extension WindowManager {
     func broadcast(_ event: WMEvent) {
         events?.broadcast(event)
+        refreshDesktopBar()
     }
 
     func broadcastFocusedMon() {
