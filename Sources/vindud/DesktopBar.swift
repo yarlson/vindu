@@ -16,6 +16,7 @@ struct DesktopBarSnapshot {
     let layout: LayoutKind
     let submap: String
     let paused: Bool
+    let system: DesktopBarSystemInfo
 }
 
 /// Same-process desktop bar. It deliberately uses vindu's own state instead of
@@ -160,20 +161,12 @@ private final class DesktopBarView: NSView {
         }
 
         if settings.showIndicators {
-            if snapshot.paused {
-                right.addArrangedSubview(indicator("paused", color: settings.active,
-                                                   metrics: metrics))
-            }
-            if !snapshot.submap.isEmpty {
-                right.addArrangedSubview(indicator(snapshot.submap, color: settings.active,
-                                                   metrics: metrics))
-            }
-            right.addArrangedSubview(indicator(snapshot.layout.rawValue, color: settings.inactive,
-                                               metrics: metrics))
-            if let active = snapshot.activeWorkspaces[monitor.id],
-               let ws = snapshot.workspaces.first(where: { $0.id == active }) {
-                right.addArrangedSubview(indicator("\(ws.windows) win", color: settings.inactive,
-                                                   metrics: metrics))
+            for item in settings.indicators {
+                guard let value = indicatorValue(item, snapshot: snapshot, monitor: monitor) else {
+                    continue
+                }
+                let color = (item == .pause || item == .submap) ? settings.active : settings.inactive
+                right.addArrangedSubview(indicator(value, color: color, metrics: metrics))
             }
         }
     }
@@ -244,6 +237,34 @@ private final class DesktopBarView: NSView {
         label.textColor = NSColor(vinduColor: color)
         label.lineBreakMode = .byTruncatingTail
         return label
+    }
+
+    private func indicatorValue(_ item: BarIndicator, snapshot: DesktopBarSnapshot,
+                                monitor: Monitor) -> String? {
+        switch item {
+        case .pause:
+            return snapshot.paused ? "paused" : nil
+        case .submap:
+            return snapshot.submap.isEmpty ? nil : snapshot.submap
+        case .layout:
+            return snapshot.layout.rawValue
+        case .windows:
+            guard let active = snapshot.activeWorkspaces[monitor.id],
+                  let ws = snapshot.workspaces.first(where: { $0.id == active }) else {
+                return nil
+            }
+            return "\(ws.windows) win"
+        case .date:
+            return snapshot.system.date
+        case .battery:
+            return snapshot.system.battery
+        case .network:
+            return snapshot.system.network
+        case .keyboard:
+            return snapshot.system.keyboard
+        case .volume:
+            return snapshot.system.volume
+        }
     }
 }
 

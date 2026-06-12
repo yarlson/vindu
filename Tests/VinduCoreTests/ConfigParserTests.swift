@@ -41,6 +41,7 @@ struct ConfigParserTests {
             show_workspaces = false
             show_app = true
             show_indicators = false
+            indicators = layout, date, sound
             col.background = rgba(111111cc)
             col.foreground = rgba(eeeeeeff)
             col.inactive = rgba(8a8a8aff)
@@ -87,6 +88,7 @@ struct ConfigParserTests {
         #expect(doc.settings.bar.showWorkspaces == false)
         #expect(doc.settings.bar.showApp)
         #expect(doc.settings.bar.showIndicators == false)
+        #expect(doc.settings.bar.indicators == [.layout, .date, .volume])
         #expect(doc.settings.bar.background == MLColor.parse("rgba(111111cc)")!)
 
         #expect(doc.binds.count == 9)
@@ -195,6 +197,8 @@ struct ConfigParserTests {
         #expect(doc.settings.general.gapsIn == 33)
         #expect(ConfigParser.applyKeyword("bar:enabled", "true", to: &doc) == nil)
         #expect(doc.settings.bar.enabled)
+        #expect(ConfigParser.applyKeyword("bar:indicators", "windows,clock,audio", to: &doc) == nil)
+        #expect(doc.settings.bar.indicators == [.windows, .date, .volume])
         #expect(ConfigParser.applyKeyword("bind", "SUPER, Y, exec, top", to: &doc) == nil)
         #expect(doc.binds.count == 1)
         #expect(ConfigParser.applyKeyword("general:gaps_in", "abc", to: &doc) != nil)

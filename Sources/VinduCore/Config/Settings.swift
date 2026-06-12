@@ -8,6 +8,25 @@ public enum BarPosition: String, Equatable {
     case top, bottom
 }
 
+public enum BarIndicator: String, CaseIterable, Equatable {
+    case pause, submap, layout, windows, date, battery, network, keyboard, volume
+
+    public static func parse(_ raw: String) -> BarIndicator? {
+        switch raw.trimmingCharacters(in: .whitespaces).lowercased() {
+        case "pause", "paused": return .pause
+        case "submap", "mode": return .submap
+        case "layout": return .layout
+        case "windows", "window_count", "window-count": return .windows
+        case "date", "time", "clock": return .date
+        case "battery", "power": return .battery
+        case "network", "wifi", "wi-fi": return .network
+        case "keyboard", "keyboard_layout", "keyboard-layout", "input": return .keyboard
+        case "volume", "sound", "audio": return .volume
+        default: return nil
+        }
+    }
+}
+
 public struct GeneralSettings: Equatable {
     public var gapsIn: Double = 5
     public var gapsOut: Double = 20
@@ -67,6 +86,9 @@ public struct BarSettings: Equatable {
     public var showWorkspaces = true
     public var showApp = true
     public var showIndicators = true
+    public var indicators: [BarIndicator] = [
+        .pause, .submap, .layout, .windows, .date, .battery, .network, .keyboard, .volume,
+    ]
     public var background = MLColor.parse("rgba(111111cc)")!
     public var foreground = MLColor.parse("rgba(eeeeeeff)")!
     public var inactive = MLColor.parse("rgba(8a8a8aff)")!
@@ -138,6 +160,7 @@ public struct Settings: Equatable {
         "bar:show_workspaces": bool(\.bar.showWorkspaces),
         "bar:show_app": bool(\.bar.showApp),
         "bar:show_indicators": bool(\.bar.showIndicators),
+        "bar:indicators": indicatorList(\.bar.indicators),
         "bar:col.background": color(\.bar.background),
         "bar:col.foreground": color(\.bar.foreground),
         "bar:col.inactive": color(\.bar.inactive),
@@ -220,6 +243,29 @@ public struct Settings: Equatable {
         Option(get: { $0[keyPath: kp].rawValue }, set: { settings, value in
             guard let p = BarPosition(rawValue: value.lowercased()) else { return "invalid position" }
             settings[keyPath: kp] = p
+            return nil
+        })
+    }
+
+    private static func indicatorList(_ kp: WritableKeyPath<Settings, [BarIndicator]>) -> Option {
+        Option(get: { $0[keyPath: kp].map(\.rawValue).joined(separator: ",") },
+               set: { settings, value in
+            let names = value.split(separator: ",", omittingEmptySubsequences: false)
+                .map { String($0).trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            if names.isEmpty || (names.count == 1 && names[0].lowercased() == "none") {
+                settings[keyPath: kp] = []
+                return nil
+            }
+            var out: [BarIndicator] = []
+            for name in names {
+                guard let indicator = BarIndicator.parse(name) else {
+                    let allowed = BarIndicator.allCases.map(\.rawValue).joined(separator: ",")
+                    return "unknown indicator '\(name)' expected one of \(allowed)"
+                }
+                out.append(indicator)
+            }
+            settings[keyPath: kp] = out
             return nil
         })
     }

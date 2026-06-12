@@ -146,6 +146,7 @@ bar {
     show_workspaces = true
     show_app = true
     show_indicators = true
+    indicators = pause, submap, layout, windows, date, battery, network, keyboard, volume
 }
 
 # Modal keymaps
@@ -169,7 +170,8 @@ Workspace targets: `3`, `+1`, `e+1` (existing only), `previous`, `empty`,
 
 The menu bar icon can be turned off with `misc:menu_bar = false`. The desktop
 bar can be enabled live with `vinductl keyword bar:enabled true`; it reserves
-screen space and shows workspaces, the focused app/window, and state indicators.
+screen space and shows workspaces, the focused app/window, and the configured
+ordered indicators.
 
 ### Layouts
 

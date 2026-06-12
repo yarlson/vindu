@@ -49,6 +49,7 @@ final class WindowManager {
     var ipc: IPCServer?
     var events: EventBroadcaster?
     var watcher: ConfigWatcher?
+    private var desktopBarRefreshTimer: Timer?
 
     let configPath: String
     var doc = ConfigDocument()
@@ -149,6 +150,7 @@ final class WindowManager {
 
         arrangeAllVisible()
         refreshDesktopBar()
+        startDesktopBarRefreshTimer()
         if let focused = bridge.systemFocusedWindowID() {
             windowFocused(focused)
         }
@@ -616,9 +618,26 @@ final class WindowManager {
     }
 
     func refreshDesktopBar() {
+        guard settings.bar.enabled else {
+            desktopBar.hide()
+            return
+        }
         desktopBar.update(settings: settings.bar,
                           snapshot: desktopBarSnapshot(),
                           primaryHeight: monitorMgr.primaryHeight)
+    }
+
+    private func startDesktopBarRefreshTimer() {
+        desktopBarRefreshTimer?.invalidate()
+        desktopBarRefreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0,
+                                                       repeats: true) { [weak self] _ in
+            self?.refreshDesktopBar()
+        }
+    }
+
+    func stopDesktopBarRefreshTimer() {
+        desktopBarRefreshTimer?.invalidate()
+        desktopBarRefreshTimer = nil
     }
 
     private func desktopBarSnapshot() -> DesktopBarSnapshot {
@@ -642,7 +661,8 @@ final class WindowManager {
             windowTitle: active?.title ?? "",
             layout: settings.general.layout,
             submap: tap.activeSubmap,
-            paused: paused
+            paused: paused,
+            system: DesktopBarSystemInfo.current()
         )
     }
 }

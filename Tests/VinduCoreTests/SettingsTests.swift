@@ -25,6 +25,15 @@ struct SettingsTests {
         #expect(s.get("bar:height") == "32.0")
         #expect(s.set("bar:show_app", "off") == nil)
         #expect(s.get("bar:show_app") == "false")
+        #expect(s.bar.indicators == [
+            .pause, .submap, .layout, .windows, .date, .battery, .network, .keyboard, .volume,
+        ])
+        #expect(s.set("bar:indicators", "layout, date, sound, wifi, keyboard_layout") == nil)
+        #expect(s.bar.indicators == [.layout, .date, .volume, .network, .keyboard])
+        #expect(s.get("bar:indicators") == "layout,date,volume,network,keyboard")
+        #expect(s.set("bar:indicators", "none") == nil)
+        #expect(s.bar.indicators == [])
+        #expect(s.get("bar:indicators") == "")
     }
 
     @Test func gradientRoundTrip() {
@@ -52,6 +61,7 @@ struct SettingsTests {
         #expect(s.set("bar:height", "-1") != nil)
         #expect(s.set("bar:height", "120") != nil)
         #expect(s.set("bar:position", "left") != nil)
+        #expect(s.set("bar:indicators", "layout,nope") != nil)
         #expect(s.set("bar:col.foreground", "white") != nil)
     }
 
