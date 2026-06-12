@@ -1,0 +1,26 @@
+# Terminology
+
+- dispatcher — one executable WM action (`movefocus l`, `exec kitty`); the same set is reachable from binds and from the IPC `dispatch` verb.
+- bind — keyboard/mouse chord mapped to a dispatcher. Flag suffixes: `binde` repeats on autorepeat, `bindr` fires on release, `bindm` is a mouse drag, `bindd` carries a description, `bindl` is accepted but moot (event taps stop at the lock screen).
+- submap — modal keymap (i3 calls these "modes"); `""` is the root keymap. An active submap changes the border color.
+- keyword — a single live config assignment applied over IPC (`general:gaps_in 10`) without touching the file.
+- workspace target — selector syntax: `3`, `+1`, `e+1` (existing only, cyclic), `previous`, `empty`, `name:web`, `special:magic`.
+- special workspace — scratchpad overlaid on the active workspace, rendered in an inset container; ids allocated downward from −99.
+- named workspace — workspace addressed by name; ids allocated downward from −1337.
+- dwindle — layout engine: binary split tree; each new window splits the focused leaf, orientation follows the leaf's aspect ratio.
+- master — layout engine: master area plus stack, driven by `layoutmsg` commands.
+- mfact — fraction of the workspace the master area occupies.
+- master order — the per-workspace window list owned by the master layout; the canonical window order, kept in sync with the dwindle tree so layouts can switch at runtime.
+- floating — window outside the tiled structures with its own remembered frame (`floatFrame`).
+- pinned — floating window that migrates to whatever workspace becomes visible on its monitor.
+- stashed / hidden — parked as a 2-pixel sliver in the monitor's bottom-right corner because its workspace is not visible; the substitute for real Space membership.
+- native fullscreen — macOS green-button fullscreen; the window lives on its own Space, leaves the layout, and is re-adopted on return.
+- fullscreen mode — WM-managed fullscreen: mode 0 covers the display (minus the menu-bar strip the window server owns), mode 1 maximizes within gaps.
+- fakefullscreen — flag reported to clients without changing geometry.
+- window rule — `windowrulev2 = effect, matcher…`: regex matchers over window fields, effects folded in config order when a window appears.
+- auxiliary window — chromeless AX surface (autocomplete popup, tooltip, input-method panel); never managed, never focused.
+- address — window identity over IPC: the CGWindowID in hex, mirroring Hyprland's window addresses.
+- command socket — request/response Unix socket, wire-compatible with Hyprland's socket1; `j/` prefix selects JSON.
+- event socket — push stream of `EVENT>>DATA` lines, wire-compatible with Hyprland's socket2.
+- tolerated keyword — Hyprland option with no macOS counterpart, accepted silently so real configs load; unknown keys in modeled sections still error.
+- user gesture — recent explicit switch action (click or ⌘Tab); decides whether an off-workspace activation may switch workspaces.
