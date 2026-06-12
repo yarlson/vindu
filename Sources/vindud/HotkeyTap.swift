@@ -29,6 +29,12 @@ final class HotkeyTap {
 
     private(set) var activeSubmap = ""
 
+    /// While paused, only `pause` binds match — everything else passes through
+    /// to apps untouched, including mouse binds and raw drag tracking.
+    var paused = false {
+        didSet { if paused { activeDrag = nil } }
+    }
+
     private struct KeyChord: Hashable {
         let mods: UInt8
         let keycode: UInt16
@@ -158,8 +164,15 @@ final class HotkeyTap {
     private func handleKey(event: CGEvent, isDown: Bool) -> Unmanaged<CGEvent>? {
         let keycode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
         let chord = KeyChord(mods: mods(of: event), keycode: keycode, submap: activeSubmap)
-        guard let binds = keyBinds[chord], !binds.isEmpty else {
+        guard var binds = keyBinds[chord], !binds.isEmpty else {
             return Unmanaged.passUnretained(event)
+        }
+        if paused {
+            binds = binds.filter {
+                if case .pause = $0.dispatcher { return true }
+                return false
+            }
+            guard !binds.isEmpty else { return Unmanaged.passUnretained(event) }
         }
         let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
         for bind in binds {
@@ -174,6 +187,7 @@ final class HotkeyTap {
     }
 
     private func handleMouseDown(event: CGEvent, button: MouseButton) -> Unmanaged<CGEvent>? {
+        guard !paused else { return Unmanaged.passUnretained(event) }
         let chord = MouseChord(mods: mods(of: event), button: button, submap: activeSubmap)
         if chord.mods != 0, let bind = mouseBinds[chord] {
             activeDrag = (button, bind.dispatcher)
@@ -195,6 +209,7 @@ final class HotkeyTap {
     }
 
     private func handleDragged(event: CGEvent, type: CGEventType) -> Unmanaged<CGEvent>? {
+        guard !paused else { return Unmanaged.passUnretained(event) }
         if let drag = activeDrag, button(for: type) == drag.button {
             let point = event.location
             DispatchQueue.main.async { [weak self] in self?.onMouseDrag?(drag.dispatcher, point, .moved) }
@@ -212,6 +227,7 @@ final class HotkeyTap {
     }
 
     private func handleMouseUp(event: CGEvent, type: CGEventType) -> Unmanaged<CGEvent>? {
+        guard !paused else { return Unmanaged.passUnretained(event) }
         if let drag = activeDrag, button(for: type) == drag.button {
             activeDrag = nil
             let point = event.location

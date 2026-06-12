@@ -7,6 +7,15 @@ extension WindowManager {
     /// Executes one dispatcher; returns "ok" or an error string (IPC reply).
     @discardableResult
     func dispatch(_ dispatcher: Dispatcher) -> String {
+        // While paused only pause itself, quitting, and launching apps work;
+        // everything else would silently fight the free-moving windows.
+        if paused {
+            switch dispatcher {
+            case .pause, .exit, .exec: break
+            default:
+                return "err: tiling is paused — resume from the menu bar or `vinductl dispatch pause off`"
+            }
+        }
         switch dispatcher {
         case .exec(let cmd):
             Exec.run(cmd)
@@ -122,6 +131,12 @@ extension WindowManager {
             arrangeAllVisible()
         case .resizewindow:
             break // only meaningful inside a bindm drag
+        case .pause(let action):
+            switch action {
+            case .toggle: setPaused(!paused)
+            case .on: setPaused(true)
+            case .off: setPaused(false)
+            }
         }
         return "ok"
     }

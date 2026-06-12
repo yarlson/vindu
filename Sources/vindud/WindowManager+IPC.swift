@@ -56,7 +56,7 @@ extension WindowManager {
             }
             return json ? encodeJSON(info) : clientText(info)
         case "binds":
-            let infos = doc.binds.map { BindInfo($0, arg: bindArg($0)) }
+            let infos = doc.binds.map { BindInfo($0, arg: $0.dispatcher.argText) }
             return json ? encodeJSON(infos) : infos.map(bindText).joined(separator: "\n")
         case "version":
             let info = VersionInfo(version: VinduVersion.string,
@@ -195,17 +195,6 @@ extension WindowManager {
             special workspace: \(m.specialWorkspace.id) (\(m.specialWorkspace.name))
             focused: \(m.focused ? "yes" : "no")
         """
-    }
-
-    private func bindArg(_ b: Bind) -> String {
-        switch b.dispatcher {
-        case .exec(let c): return c
-        case .layoutmsg(let m): return m
-        case .closewindow(let m), .focuswindow(let m): return m
-        case .submap(let s): return s
-        case .togglespecialworkspace(let s): return s
-        default: return ""
-        }
     }
 
     func bindText(_ b: BindInfo) -> String {

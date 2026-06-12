@@ -68,6 +68,19 @@ public enum WorkspaceTarget: Equatable {
         if let n = Int(s) { return .id(n) }
         return .name(s)
     }
+
+    /// The selector in config syntax; `parse(text)` round-trips.
+    public var text: String {
+        switch self {
+        case .id(let n): return String(n)
+        case .relative(let d): return d >= 0 ? "+\(d)" : "\(d)"
+        case .relativeExisting(let d): return d >= 0 ? "e+\(d)" : "e\(d)"
+        case .previous: return "previous"
+        case .name(let s): return "name:\(s)"
+        case .special(let s): return "special:\(s)"
+        case .empty: return "empty"
+        }
+    }
 }
 
 /// Monitor selector: direction, numeric id, `+1`/`-1`, `current`, or name substring.
@@ -90,6 +103,23 @@ public enum MonitorTarget: Equatable {
         if let n = Int(s) { return .id(n) }
         return .name(s)
     }
+
+    /// The selector in config syntax; `parse(text)` round-trips.
+    public var text: String {
+        switch self {
+        case .direction(let d): return d.rawValue
+        case .id(let n): return String(n)
+        case .relative(let d): return d >= 0 ? "+\(d)" : "\(d)"
+        case .current: return "current"
+        case .name(let s): return s
+        }
+    }
+}
+
+/// Renders whole doubles without the trailing ".0" (config values are
+/// human-typed, so `30` should read back as `30`, not `30.0`).
+func plainNumber(_ v: Double) -> String {
+    v == v.rounded() && abs(v) < 1e15 ? String(Int(v)) : String(v)
 }
 
 /// A pixel or percent dimension, as accepted by `resizeactive`, `moveactive`,
@@ -118,6 +148,11 @@ public struct Delta: Equatable {
     public func resolved(against span: Double) -> Double {
         percent ? span * value / 100.0 : value
     }
+
+    /// The dimension in config syntax; `parse(text)` round-trips.
+    public var text: String {
+        plainNumber(value) + (percent ? "%" : "")
+    }
 }
 
 public enum ResizeParam: Equatable {
@@ -135,6 +170,14 @@ public enum ResizeParam: Equatable {
             return nil
         }
         return isExact ? .exact(a, b) : .relative(a, b)
+    }
+
+    /// The parameter in config syntax; `parse(text)` round-trips.
+    public var text: String {
+        switch self {
+        case .relative(let a, let b): return "\(a.text) \(b.text)"
+        case .exact(let a, let b): return "exact \(a.text) \(b.text)"
+        }
     }
 }
 

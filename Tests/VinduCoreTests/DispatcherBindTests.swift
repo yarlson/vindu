@@ -53,6 +53,34 @@ struct DispatcherTests {
         #expect(parse("notarealdispatcher") == nil)
         #expect(parse("exec") == nil)
     }
+
+    @Test func pauseDispatcher() {
+        #expect(parse("pause") == .pause(.toggle))
+        #expect(parse("pause", "toggle") == .pause(.toggle))
+        #expect(parse("pause", "on") == .pause(.on))
+        #expect(parse("pause", "1") == .pause(.on))
+        #expect(parse("pause", "off") == .pause(.off))
+        #expect(parse("pause", "0") == .pause(.off))
+        #expect(parse("pause", "maybe") == nil)
+    }
+
+    @Test func argTextRoundTripsConfigSyntax() {
+        #expect(Dispatcher.workspace(.id(3)).argText == "3")
+        #expect(Dispatcher.workspace(.relative(-1)).argText == "-1")
+        #expect(Dispatcher.workspace(.relativeExisting(1)).argText == "e+1")
+        #expect(Dispatcher.movetoworkspace(.special("magic")).argText == "special:magic")
+        #expect(Dispatcher.movefocus(.left).argText == "l")
+        #expect(Dispatcher.movewindow(.monitor(.relative(1))).argText == "mon:+1")
+        #expect(Dispatcher.resizeactive(.relative(Delta(value: 30), Delta(value: 0))).argText == "30 0")
+        #expect(Dispatcher.resizeactive(.exact(Delta(value: 50, percent: true),
+                                               Delta(value: 50, percent: true))).argText == "exact 50% 50%")
+        #expect(Dispatcher.splitratio(.exact(1.2)).argText == "exact 1.2")
+        #expect(Dispatcher.submap("").argText == "reset")
+        #expect(Dispatcher.togglespecialworkspace("special").argText == "")
+        #expect(Dispatcher.killactive.argText == "")
+        #expect(Dispatcher.pause(.toggle).argText == "")
+        #expect(Dispatcher.pause(.off).argText == "off")
+    }
 }
 
 struct BindTests {

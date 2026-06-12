@@ -45,12 +45,20 @@ Now try, in order:
 6. Hold `alt` and drag any window with the mouse. The grid re-flows around
    it as you move.
 
-To stop: `alt + shift + m` exits and puts windows back where humans can
-reach them; `brew services stop vindu` turns the service off entirely.
-Logs land in `/tmp/vindu.log`.
+The first launch shows a keybinding cheat sheet — click it away, bring it
+back any time from the vindu icon in the menu bar. The same icon pauses
+tiling and quits the daemon, no chords required.
+
+To pause instead of quitting: `alt + shift + p`. Windows move freely until
+you press it again and the grid reasserts. To stop: `alt + shift + m` exits
+and puts windows back where humans can reach them; `brew services stop
+vindu` turns the service off entirely. Logs land in `/tmp/vindu.log`.
 
 ## If something looks wrong
 
+- **I need my windows free for a minute.** `alt + shift + p` pauses tiling
+  (the menu bar icon works too). Drag things anywhere; press it again and
+  the grid reasserts.
 - **A window won't tile.** Dialogs and utility panels float on purpose.
   `alt + v` toggles any window between floating and tiled.
 - **I dragged a window and it snapped back.** That's the point. The grid
@@ -96,6 +104,7 @@ default.
 | `alt + c`                         | center a floating window                     |
 | `alt + p`                         | pin a floating window to all workspaces      |
 | `alt + m`                         | swap with master                             |
+| `alt + shift + p`                 | pause / resume tiling                        |
 | `alt + r`                         | resize submap: `h/j/k/l` resize, `esc` exits |
 | `alt + drag`                      | move a tile through the grid                 |
 | `alt + rightdrag`                 | resize (split ratios when tiled)             |
@@ -149,6 +158,8 @@ Workspace targets: `3`, `+1`, `e+1` (existing only), `previous`, `empty`,
 `monitor <name>`. Matchers: `class`, `title`, `initialclass`,
 `initialtitle`, `floating`, `workspace`, `pid`, `address`.
 
+The menu bar icon can be turned off with `misc:menu_bar = false`.
+
 ### Layouts
 
 - **dwindle**: each new window splits the focused tile, orientation follows
@@ -189,8 +200,9 @@ openwindow>>0x2a51,3,Safari,GitHub
   `getoption`, `configerrors`, `cursorpos`, `notify`, `version`. Prefix
   with `j/` (or use `vinductl -j`) for JSON.
 - Event socket: push stream of `EVENT>>DATA` lines for workspace changes,
-  focus, window lifecycle, fullscreen, submaps, monitors, config reloads.
-  Point a status bar (sketchybar etc.) at it instead of polling.
+  focus, window lifecycle, fullscreen, submaps, monitors, config reloads,
+  tiling pause. Point a status bar (sketchybar etc.) at it instead of
+  polling.
 
 ## How it works
 

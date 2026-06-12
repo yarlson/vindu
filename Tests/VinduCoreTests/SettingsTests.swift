@@ -12,6 +12,9 @@ struct SettingsTests {
         #expect(s.get("master:orientation") == "center")
         #expect(s.set("misc:focus_on_activate", "yes") == nil)
         #expect(s.get("misc:focus_on_activate") == "true")
+        #expect(s.misc.menuBar == true)
+        #expect(s.set("misc:menu_bar", "off") == nil)
+        #expect(s.get("misc:menu_bar") == "false")
     }
 
     @Test func gradientRoundTrip() {

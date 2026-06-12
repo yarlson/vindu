@@ -43,6 +43,11 @@ input {
     follow_mouse = 0
 }
 
+misc {
+    # menu bar icon: pause tiling, keybindings, quit
+    menu_bar = true
+}
+
 binds {
     workspace_back_and_forth = true
 }
@@ -73,6 +78,8 @@ bind = $mainMod, T, togglesplit,
 bind = $mainMod, P, pin,
 bind = $mainMod, C, centerwindow,
 bind = $mainMod, M, layoutmsg, swapwithmaster auto
+# let go of the grid for a moment; press again and it reasserts
+bind = $mainMod SHIFT, P, pause,
 
 # --- workspaces ---------------------------------------------------------------
 bind = $mainMod, 1, workspace, 1

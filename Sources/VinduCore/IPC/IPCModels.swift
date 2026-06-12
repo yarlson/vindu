@@ -210,6 +210,8 @@ public enum WMEvent {
     case configreloaded
     case monitoradded(String)
     case monitorremoved(String)
+    /// vindu extension: tiling suspended/resumed (no Hyprland counterpart).
+    case pause(Bool)
 
     public var line: String {
         switch self {
@@ -247,6 +249,8 @@ public enum WMEvent {
             return "monitoradded>>\(name)"
         case .monitorremoved(let name):
             return "monitorremoved>>\(name)"
+        case .pause(let on):
+            return "pause>>\(on ? 1 : 0)"
         }
     }
 }

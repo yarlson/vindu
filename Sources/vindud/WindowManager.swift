@@ -42,6 +42,8 @@ final class WindowManager {
     let monitorMgr = MonitorManager()
     let tap = HotkeyTap()
     let border = BorderOverlay()
+    let statusItem = StatusItem()
+    let cheatSheet = CheatSheet()
     let registry = WorkspaceRegistry()
     var ipc: IPCServer?
     var events: EventBroadcaster?
@@ -50,6 +52,11 @@ final class WindowManager {
     let configPath: String
     var doc = ConfigDocument()
     var settings: Settings { doc.settings }
+    /// Tiling suspended (`pause` dispatcher): no frame enforcement, non-pause
+    /// chords pass through. Resume reasserts the grid.
+    private(set) var paused = false
+    /// True when this launch wrote the default config — i.e. a first run.
+    private var wroteDefaultConfig = false
 
     var windows: [WindowID: WindowState] = [:]
     /// Visible (non-special) workspace per monitor.
@@ -118,6 +125,15 @@ final class WindowManager {
         watcher = ConfigWatcher(path: configPath) { [weak self] in self?.reloadConfig() }
         watcher?.start()
 
+        statusItem.onPauseToggle = { [weak self] in _ = self?.dispatch(.pause(.toggle)) }
+        statusItem.onShowKeybindings = { [weak self] in self?.toggleCheatSheet() }
+        statusItem.onOpenConfig = { [weak self] in
+            guard let self else { return }
+            Exec.run("/usr/bin/open", args: ["-t", self.configPath])
+        }
+        statusItem.onQuit = { [weak self] in self?.shutdown() }
+        applyMenuBarSetting()
+
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification,
             object: nil, queue: .main
@@ -128,6 +144,13 @@ final class WindowManager {
         arrangeAllVisible()
         if let focused = bridge.systemFocusedWindowID() {
             windowFocused(focused)
+        }
+        // First run: nobody knows the chords yet — show the cheat sheet once
+        // the initial tiling has settled.
+        if wroteDefaultConfig {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.toggleCheatSheet()
+            }
         }
         log("ready — \(monitorMgr.monitors.count) monitor(s), socket \(VinduPaths.commandSocketPath)")
     }
@@ -140,6 +163,7 @@ final class WindowManager {
                 atPath: (configPath as NSString).deletingLastPathComponent,
                 withIntermediateDirectories: true)
             try? defaultConfigTemplate.write(toFile: configPath, atomically: true, encoding: .utf8)
+            wroteDefaultConfig = true
             log("wrote default config to \(configPath)")
         }
         doc = parser.parse(text: text, baseDir: (configPath as NSString).deletingLastPathComponent)
@@ -162,9 +186,14 @@ final class WindowManager {
     func reloadConfig() {
         loadConfig(runExecOnce: false)
         ensureWorkspacesForMonitors()
+        applyMenuBarSetting()
         arrangeAllVisible()
         broadcast(.configreloaded)
         log("config reloaded")
+    }
+
+    func applyMenuBarSetting() {
+        statusItem.setVisible(settings.misc.menuBar)
     }
 
     // MARK: - Workspace bookkeeping
@@ -238,7 +267,7 @@ final class WindowManager {
     /// `excluding` skips one window's frame (a tile mid-drag follows the mouse
     /// while the rest of the workspace re-flows around it).
     func arrange(_ ws: WorkspaceState, excluding: WindowID? = nil) {
-        guard isVisible(ws) else { return }
+        guard isVisible(ws), !paused else { return }
         let container = containerRect(for: ws)
         let g = settings.general
 
@@ -321,7 +350,7 @@ final class WindowManager {
     func stash(_ id: WindowID) {
         // Repositioning a native-fullscreen window would rip it out of its
         // Space; it isn't on our screen anyway.
-        guard let state = windows[id], !state.hidden, !state.nativeFullscreen else { return }
+        guard !paused, let state = windows[id], !state.hidden, !state.nativeFullscreen else { return }
         guard let monitor = monitorMgr.byID(workspace(forID: state.workspace).monitor)
                 ?? monitorMgr.primary else { return }
         state.hidden = true
@@ -489,7 +518,7 @@ final class WindowManager {
     }
 
     func refreshBorder() {
-        guard let id = focusedWindow, let state = windows[id], !state.hidden, !state.minimized,
+        guard !paused, let id = focusedWindow, let state = windows[id], !state.hidden, !state.minimized,
               !state.nativeFullscreen,
               workspace(forID: state.workspace).fullscreen != id else {
             border.hide()
@@ -514,7 +543,7 @@ final class WindowManager {
     }
 
     func followMouse(_ point: CGPoint) {
-        guard settings.input.followMouse == 1 else { return }
+        guard settings.input.followMouse == 1, !paused else { return }
         if let m = monitorMgr.containing(point) {
             focusedMonitorID = m.id
         }
@@ -538,6 +567,41 @@ final class WindowManager {
         }
         ensureWorkspacesForMonitors()
         arrangeAllVisible()
+    }
+
+    // MARK: - Pause
+
+    /// Suspends or resumes all tiling enforcement. While paused: frames are
+    /// not asserted, chords (except `pause` binds) pass through to apps, and
+    /// windows move freely. Resume re-stashes hidden workspaces and reasserts
+    /// the grid — the grid owns tiled windows; pause is a timeout, not a mode.
+    func setPaused(_ on: Bool) {
+        guard paused != on else { return }
+        paused = on
+        tap.paused = on
+        drag = nil
+        statusItem.update(paused: on)
+        broadcast(.pause(on))
+        if on {
+            border.hide()
+            log("tiling paused")
+        } else {
+            for ws in registry.byID.values where !isVisible(ws) {
+                hideWorkspace(ws)
+            }
+            arrangeAllVisible()
+            refreshBorder()
+            log("tiling resumed")
+        }
+    }
+
+    // MARK: - Cheat sheet
+
+    func toggleCheatSheet() {
+        guard let monitor = monitorMgr.byID(focusedMonitorID) ?? monitorMgr.primary else { return }
+        cheatSheet.toggle(rows: BindDisplay.rows(doc.binds),
+                          monitorFrame: monitor.usable,
+                          primaryHeight: monitorMgr.primaryHeight)
     }
 }
 
@@ -632,7 +696,7 @@ extension WindowManager: AXBridgeDelegate {
         // app-initiated focus steal, which follows Hyprland's
         // focus_on_activate (default: stay put).
         let ws = workspace(forID: state.workspace)
-        if !isVisible(ws) {
+        if !isVisible(ws), !paused {
             let isUserGesture = CFAbsoluteTimeGetCurrent() - lastUserGesture < 3.0
             guard isUserGesture || settings.misc.focusOnActivate else { return }
             _ = switchWorkspace(to: ws.isSpecial
@@ -646,6 +710,12 @@ extension WindowManager: AXBridgeDelegate {
         guard let state = windows[id], !frame.isEmpty else { return }
         if handleFullscreenTransition(state, frame) { return }
         if state.nativeFullscreen { return } // the system owns its frame
+        if paused {
+            // Track floating frames so they stay where the user left them;
+            // tiled frames keep their tile assignment for the resume snap.
+            if state.floating { trackFloatingFrame(state, frame) }
+            return
+        }
         if handleDragEcho(state, frame) { return }
         guard !state.hidden else { return }
         if state.floating {

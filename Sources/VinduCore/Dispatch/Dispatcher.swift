@@ -14,6 +14,29 @@ public enum SplitRatioArg: Equatable {
         }
         return nil
     }
+
+    /// The argument in config syntax; `parse(text)` round-trips.
+    public var text: String {
+        switch self {
+        case .delta(let d): return plainNumber(d)
+        case .exact(let v): return "exact \(plainNumber(v))"
+        }
+    }
+}
+
+/// Argument of the `pause` dispatcher (a vindu extension; Hyprland has no
+/// equivalent). Pausing suspends all tiling enforcement until resumed.
+public enum PauseAction: String, Equatable {
+    case toggle, on, off
+
+    public static func parse(_ raw: String) -> PauseAction? {
+        switch raw.lowercased() {
+        case "", "toggle": return .toggle
+        case "on", "1", "true": return .on
+        case "off", "0", "false": return .off
+        default: return nil
+        }
+    }
 }
 
 public enum MoveWindowArg: Equatable {
@@ -64,6 +87,9 @@ public enum Dispatcher: Equatable {
     case forcerendererreload
     /// Mouse-drag resize; meaningful only as a `bindm` dispatcher.
     case resizewindow
+    /// Suspend/resume tiling (vindu extension): while paused, frames are not
+    /// enforced and non-pause chords pass through to apps.
+    case pause(PauseAction)
 
     public static func parse(name: String, args: String) -> Result<Dispatcher, ParseError> {
         let a = args.trimmingCharacters(in: .whitespaces)
@@ -199,6 +225,11 @@ public enum Dispatcher: Equatable {
             return .success(.focuscurrentorlast)
         case "forcerendererreload":
             return .success(.forcerendererreload)
+        case "pause":
+            guard let action = PauseAction.parse(a) else {
+                return .failure("pause takes: toggle, on, or off")
+            }
+            return .success(.pause(action))
         default:
             return .failure("unknown dispatcher: \(name)")
         }
@@ -244,6 +275,41 @@ public enum Dispatcher: Equatable {
         case .focuscurrentorlast: return "focuscurrentorlast"
         case .forcerendererreload: return "forcerendererreload"
         case .resizewindow: return "resizewindow"
+        case .pause: return "pause"
+        }
+    }
+
+    /// The argument in config syntax (empty for arg-less dispatchers), used by
+    /// the `binds` listing and the keybinding cheat sheet.
+    public var argText: String {
+        switch self {
+        case .exec(let c): return c
+        case .closewindow(let m), .focuswindow(let m): return m
+        case .workspace(let t), .movetoworkspace(let t), .movetoworkspacesilent(let t):
+            return t.text
+        case .fullscreen(let m): return String(m)
+        case .movefocus(let d), .swapwindow(let d): return d.rawValue
+        case .movewindow(let arg):
+            switch arg {
+            case .mouse: return ""
+            case .direction(let d): return d.rawValue
+            case .monitor(let m): return "mon:\(m.text)"
+            }
+        case .resizeactive(let p), .moveactive(let p): return p.text
+        case .splitratio(let a): return a.text
+        case .layoutmsg(let m): return m
+        case .togglespecialworkspace(let s): return s == "special" ? "" : s
+        case .cyclenext(let prev), .swapnext(let prev): return prev ? "prev" : ""
+        case .alterzorder(let a): return a
+        case .focusmonitor(let t), .movecurrentworkspacetomonitor(let t): return t.text
+        case .moveworkspacetomonitor(let w, let m): return "\(w.text) \(m.text)"
+        case .renameworkspace(let id, let name): return "\(id) \(name)"
+        case .submap(let s): return s.isEmpty ? "reset" : s
+        case .pause(let a): return a == .toggle ? "" : a.rawValue
+        case .killactive, .exit, .togglefloating, .setfloating, .settiled, .fakefullscreen,
+             .centerwindow, .togglesplit, .swapsplit, .pin, .bringactivetotop,
+             .focuscurrentorlast, .forcerendererreload, .resizewindow:
+            return ""
         }
     }
 }

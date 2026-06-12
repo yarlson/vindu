@@ -46,6 +46,8 @@ public struct InputSettings: Equatable {
 
 public struct MiscSettings: Equatable {
     public var focusOnActivate = false
+    /// Menu bar status item (pause, keybindings, quit). vindu extension.
+    public var menuBar = true
 }
 
 public struct BindsSettings: Equatable {
@@ -108,6 +110,7 @@ public struct Settings: Equatable {
         "master:orientation": orientation(\.master.orientation),
         "input:follow_mouse": int(\.input.followMouse, in: 0...3),
         "misc:focus_on_activate": bool(\.misc.focusOnActivate),
+        "misc:menu_bar": bool(\.misc.menuBar),
         "binds:workspace_back_and_forth": bool(\.binds.workspaceBackAndForth),
     ]
 
