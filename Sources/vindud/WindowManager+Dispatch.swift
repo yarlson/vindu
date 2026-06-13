@@ -539,7 +539,7 @@ extension WindowManager {
         }
         border.hide()
         desktopBar.hide()
-        stopDesktopBarRefreshTimer()
+        desktopBarRefresh.stop()
         ipc?.stop()
         events?.stop()
         watcher?.stop()

@@ -134,7 +134,7 @@ private final class DesktopBarView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor(vinduColor: settings.background).cgColor
         left.spacing = metrics.spacing
-        right.spacing = metrics.spacing
+        right.spacing = metrics.indicatorSpacing
         leftLeading?.constant = metrics.horizontalPadding
         rightTrailing?.constant = -metrics.horizontalPadding
         leftToRightGap?.constant = -metrics.horizontalPadding
@@ -165,8 +165,13 @@ private final class DesktopBarView: NSView {
                 guard let value = indicatorValue(item, snapshot: snapshot, monitor: monitor) else {
                     continue
                 }
-                let color = (item == .pause || item == .submap) ? settings.active : settings.inactive
-                right.addArrangedSubview(indicator(value, color: color, metrics: metrics))
+                let color = (item == .pause || item == .submap) ? settings.active : settings.foreground
+                let presentation = DesktopBarIndicatorPresentation(item: item,
+                                                                    text: value,
+                                                                    color: color)
+                right.addArrangedSubview(
+                    DesktopBarIndicatorView(presentation: presentation, metrics: metrics)
+                )
             }
         }
     }
@@ -230,15 +235,6 @@ private final class DesktopBarView: NSView {
         return out
     }
 
-    private func indicator(_ text: String, color: MLColor,
-                           metrics: DesktopBarMetrics) -> NSTextField {
-        let label = NSTextField(labelWithString: text)
-        label.font = .monospacedSystemFont(ofSize: metrics.secondaryFontSize, weight: .medium)
-        label.textColor = NSColor(vinduColor: color)
-        label.lineBreakMode = .byTruncatingTail
-        return label
-    }
-
     private func indicatorValue(_ item: BarIndicator, snapshot: DesktopBarSnapshot,
                                 monitor: Monitor) -> String? {
         switch item {
@@ -268,7 +264,7 @@ private final class DesktopBarView: NSView {
     }
 }
 
-private struct DesktopBarMetrics {
+struct DesktopBarMetrics {
     let height: Double
 
     var horizontalPadding: CGFloat {
@@ -277,6 +273,18 @@ private struct DesktopBarMetrics {
 
     var spacing: CGFloat {
         CGFloat(min(max(height * 0.22, 5), 10))
+    }
+
+    var indicatorSpacing: CGFloat {
+        CGFloat(min(max(height * 0.46, 10), 15))
+    }
+
+    var iconTextSpacing: CGFloat {
+        CGFloat(min(max(height * 0.14, 3), 6))
+    }
+
+    var indicatorHeight: CGFloat {
+        CGFloat(min(max(height * 0.62, 15), 18))
     }
 
     var pillHeight: CGFloat {
@@ -301,6 +309,18 @@ private struct DesktopBarMetrics {
 
     var secondaryFontSize: CGFloat {
         CGFloat(min(max(height * 0.38, 11), 14))
+    }
+
+    var iconPointSize: CGFloat {
+        CGFloat(min(max(height * 0.54, 13), 16))
+    }
+
+    var iconBoxSize: CGFloat {
+        iconPointSize + 1
+    }
+
+    var iconCenterOffset: CGFloat {
+        -0.5
     }
 }
 
@@ -346,7 +366,7 @@ private final class WorkspaceButton: NSButton {
     }
 }
 
-private extension NSColor {
+extension NSColor {
     convenience init(vinduColor color: MLColor) {
         self.init(calibratedRed: color.r, green: color.g, blue: color.b, alpha: color.a)
     }

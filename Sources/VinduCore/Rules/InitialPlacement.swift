@@ -9,6 +9,7 @@ public struct InitialPlacement: Equatable {
     public var workspaceTarget: WorkspaceTarget?
     public var monitorName: String?
     public var floatFrame: CGRect?
+    public var followsWorkspace: Bool { workspaceTarget != nil && !silent }
 
     public init(floating: Bool) {
         self.floating = floating

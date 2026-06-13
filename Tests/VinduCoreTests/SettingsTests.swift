@@ -26,7 +26,7 @@ struct SettingsTests {
         #expect(s.set("bar:show_app", "off") == nil)
         #expect(s.get("bar:show_app") == "false")
         #expect(s.bar.indicators == [
-            .pause, .submap, .layout, .windows, .date, .battery, .network, .keyboard, .volume,
+            .pause, .submap, .windows, .date, .battery, .network, .keyboard, .volume,
         ])
         #expect(s.set("bar:indicators", "layout, date, sound, wifi, keyboard_layout") == nil)
         #expect(s.bar.indicators == [.layout, .date, .volume, .network, .keyboard])

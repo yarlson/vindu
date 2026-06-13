@@ -1,5 +1,4 @@
 import Carbon
-import CoreAudio
 import CoreWLAN
 import Darwin
 import Foundation
@@ -42,17 +41,17 @@ struct DesktopBarSystemInfo {
                 continue
             }
             let charging = (raw[kIOPSIsChargingKey] as? Bool) == true
-            return "bat \(capacity)%\(charging ? "+" : "")"
+            return "\(capacity)%\(charging ? "+" : "")"
         }
         return nil
     }
 
     private static func currentNetwork() -> String? {
         if let ssid = CWWiFiClient.shared().interface()?.ssid(), !ssid.isEmpty {
-            return "wifi \(ssid)"
+            return ssid
         }
         if let name = activeInterfaceName() {
-            return "net \(name)"
+            return name
         }
         return "offline"
     }
@@ -86,10 +85,10 @@ struct DesktopBarSystemInfo {
             return nil
         }
         if let name = inputSourceString(source, kTISPropertyLocalizedName) {
-            return "kbd \(shortKeyboardName(name))"
+            return shortKeyboardName(name)
         }
         if let id = inputSourceString(source, kTISPropertyInputSourceID) {
-            return "kbd \(shortKeyboardName(id))"
+            return shortKeyboardName(id)
         }
         return nil
     }
@@ -108,59 +107,6 @@ struct DesktopBarSystemInfo {
     }
 
     private static func currentVolume() -> String? {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var device = AudioDeviceID()
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject),
-                                         &address, 0, nil, &size, &device) == noErr,
-              device != kAudioObjectUnknown else {
-            return nil
-        }
-
-        if let muted = outputMute(for: device), muted {
-            return "vol muted"
-        }
-        guard let volume = outputVolume(for: device) else { return nil }
-        return "vol \(Int((volume * 100).rounded()))%"
-    }
-
-    private static func outputVolume(for device: AudioDeviceID) -> Float32? {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyVolumeScalar,
-            mScope: kAudioDevicePropertyScopeOutput,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        if !AudioObjectHasProperty(device, &address) {
-            address.mElement = 1
-        }
-        guard AudioObjectHasProperty(device, &address) else { return nil }
-        var volume = Float32(0)
-        var size = UInt32(MemoryLayout<Float32>.size)
-        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &volume) == noErr else {
-            return nil
-        }
-        return volume
-    }
-
-    private static func outputMute(for device: AudioDeviceID) -> Bool? {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyMute,
-            mScope: kAudioDevicePropertyScopeOutput,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        if !AudioObjectHasProperty(device, &address) {
-            address.mElement = 1
-        }
-        guard AudioObjectHasProperty(device, &address) else { return nil }
-        var muted = UInt32(0)
-        var size = UInt32(MemoryLayout<UInt32>.size)
-        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &muted) == noErr else {
-            return nil
-        }
-        return muted != 0
+        DesktopBarAudioState.currentVolumeText()
     }
 }

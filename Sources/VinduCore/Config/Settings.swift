@@ -87,7 +87,7 @@ public struct BarSettings: Equatable {
     public var showApp = true
     public var showIndicators = true
     public var indicators: [BarIndicator] = [
-        .pause, .submap, .layout, .windows, .date, .battery, .network, .keyboard, .volume,
+        .pause, .submap, .windows, .date, .battery, .network, .keyboard, .volume,
     ]
     public var background = MLColor.parse("rgba(111111cc)")!
     public var foreground = MLColor.parse("rgba(eeeeeeff)")!

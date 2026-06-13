@@ -45,7 +45,15 @@ struct InitialPlacementTests {
         let p = evaluate(["workspace 2 silent, class:kitty", "monitor DP-1, class:kitty"])
         #expect(p.workspaceTarget == .id(2))
         #expect(p.silent)
+        #expect(!p.followsWorkspace)
         #expect(p.monitorName == "DP-1")
+    }
+
+    @Test func workspaceWithoutSilentFollows() {
+        let p = evaluate(["workspace 9, class:kitty"])
+        #expect(p.workspaceTarget == .id(9))
+        #expect(!p.silent)
+        #expect(p.followsWorkspace)
     }
 
     @Test func pinAndFullscreen() {

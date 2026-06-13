@@ -146,7 +146,7 @@ bar {
     show_workspaces = true
     show_app = true
     show_indicators = true
-    indicators = pause, submap, layout, windows, date, battery, network, keyboard, volume
+    indicators = pause, submap, windows, date, battery, network, keyboard, volume
 }
 
 # Modal keymaps

@@ -44,12 +44,12 @@ final class WindowManager {
     let border = BorderOverlay()
     let statusItem = StatusItem()
     let desktopBar = DesktopBar()
+    let desktopBarRefresh = DesktopBarRefreshCoordinator()
     let cheatSheet = CheatSheet()
     let registry = WorkspaceRegistry()
     var ipc: IPCServer?
     var events: EventBroadcaster?
     var watcher: ConfigWatcher?
-    private var desktopBarRefreshTimer: Timer?
 
     let configPath: String
     var doc = ConfigDocument()
@@ -139,6 +139,7 @@ final class WindowManager {
             self.focusedMonitorID = monitorID
             _ = self.dispatch(.workspace(.id(workspaceID)))
         }
+        desktopBarRefresh.onChange = { [weak self] in self?.refreshDesktopBar() }
         applyDesktopUISettings()
 
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -150,7 +151,6 @@ final class WindowManager {
 
         arrangeAllVisible()
         refreshDesktopBar()
-        startDesktopBarRefreshTimer()
         if let focused = bridge.systemFocusedWindowID() {
             windowFocused(focused)
         }
@@ -204,6 +204,7 @@ final class WindowManager {
 
     func applyDesktopUISettings() {
         statusItem.setVisible(settings.misc.menuBar)
+        desktopBarRefresh.sync(settings: settings.bar)
         refreshDesktopBar()
     }
 
@@ -627,19 +628,6 @@ final class WindowManager {
                           primaryHeight: monitorMgr.primaryHeight)
     }
 
-    private func startDesktopBarRefreshTimer() {
-        desktopBarRefreshTimer?.invalidate()
-        desktopBarRefreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0,
-                                                       repeats: true) { [weak self] _ in
-            self?.refreshDesktopBar()
-        }
-    }
-
-    func stopDesktopBarRefreshTimer() {
-        desktopBarRefreshTimer?.invalidate()
-        desktopBarRefreshTimer = nil
-    }
-
     private func desktopBarSnapshot() -> DesktopBarSnapshot {
         let existing = registry.sorted.filter { !$0.isSpecial }
         let positiveIDs = Set(Array(1...9) + existing.map(\.id).filter { $0 > 0 }).sorted()
@@ -720,13 +708,17 @@ extension WindowManager: AXBridgeDelegate {
             arrange(ws)
             // Focus follows a new window only when the user is driving: its
             // app is frontmost (they just opened it) or nothing holds focus.
-            // Background spawns — input panels, updaters, slow launches the
-            // user tabbed away from — get managed, not focused.
+            // Explicit non-silent workspace rules also follow: use `silent`
+            // when a window should move there without changing what you see.
             let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier
             let userDriven = snap.pid == frontmost || focusedWindow == nil
-            if !placement.silent && !state.minimized && userDriven {
+            if !placement.silent && !state.minimized && (userDriven || placement.followsWorkspace) {
                 focusWindow(snap.id)
             }
+        } else if placement.followsWorkspace, !state.minimized,
+                  let target = placement.workspaceTarget {
+            ws.lastFocused = snap.id
+            _ = switchWorkspace(to: target)
         } else {
             stash(snap.id)
         }
