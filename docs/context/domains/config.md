@@ -31,7 +31,8 @@ The `bar` section is a vindu extension for the same-process desktop bar:
 - `bar:enabled` turns it on/off (off by default so existing installs keep the same screen geometry).
 - `bar:position` is `top` or `bottom`; `bar:height` is 0…96 px. `0` means automatic: top bars use the display's top reserved strip (matching the hidden macOS menu-bar height), while other cases fall back to 28 px.
 - `bar:show_workspaces`, `bar:show_app`, and `bar:show_indicators` toggle the built-in item groups.
-- `bar:indicators` is a comma-separated ordered list for the right-side group. Allowed values are `pause`, `submap`, `layout`, `windows`, `date`, `battery`, `network`, `keyboard`, and `volume`; `none` clears the list. Aliases such as `paused`, `mode`, `clock`, `wifi`, `keyboard_layout`, `sound`, and `audio` are accepted.
+- `bar:indicators` is a comma-separated ordered list for the right-side group. Allowed values are `pause`, `submap`, `layout`, `windows`, `date`, `battery`, `network`, `keyboard`, `volume`, and `weather`; `none` clears the list. Aliases such as `paused`, `mode`, `clock`, `wifi`, `keyboard_layout`, `sound`, `audio`, `temperature`, and `temp` are accepted.
+- `bar:weather_location` is `latitude,longitude` for the Open-Meteo-backed weather indicator; empty or `none` disables weather fetches. `bar:weather_refresh_minutes` controls the refresh interval, 5…180 minutes, default 15.
 - `bar:col.background`, `bar:col.foreground`, `bar:col.inactive`, and `bar:col.active` use the same color notation as border colors.
 
 Tolerance tiers for real Hyprland configs:

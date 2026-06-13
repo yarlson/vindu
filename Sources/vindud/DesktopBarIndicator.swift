@@ -7,9 +7,10 @@ struct DesktopBarIndicatorPresentation {
     let symbolNames: [String]
     let color: MLColor
 
-    init(item: BarIndicator, text: String, color: MLColor) {
+    init(item: BarIndicator, text: String, color: MLColor,
+         symbolNames: [String]? = nil) {
         self.text = text
-        self.symbolNames = Self.symbolNames(for: item, text: text)
+        self.symbolNames = symbolNames ?? Self.symbolNames(for: item, text: text)
         self.color = color
 
         switch item {
@@ -42,6 +43,8 @@ struct DesktopBarIndicatorPresentation {
             return text == "muted"
                 ? ["speaker.slash.fill", "speaker.slash"]
                 : ["speaker.wave.2.fill", "speaker.wave.2"]
+        case .weather:
+            return ["cloud.sun.fill", "cloud.sun"]
         }
     }
 

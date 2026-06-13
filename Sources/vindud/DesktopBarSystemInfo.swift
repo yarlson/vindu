@@ -10,14 +10,16 @@ struct DesktopBarSystemInfo {
     var network: String?
     var keyboard: String?
     var volume: String?
+    var weather: DesktopBarWeatherInfo?
 
-    static func current() -> DesktopBarSystemInfo {
+    static func current(weather: DesktopBarWeatherInfo?) -> DesktopBarSystemInfo {
         DesktopBarSystemInfo(
             date: currentDate(),
             battery: currentBattery(),
             network: currentNetwork(),
             keyboard: currentKeyboard(),
-            volume: currentVolume()
+            volume: currentVolume(),
+            weather: weather
         )
     }
 

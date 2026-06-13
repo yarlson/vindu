@@ -3,11 +3,19 @@ import VinduCore
 
 final class DesktopBarRefreshCoordinator {
     var onChange: (() -> Void)? {
-        didSet { systemObserver.onChange = onChange }
+        didSet {
+            systemObserver.onChange = onChange
+            weather.onChange = onChange
+        }
     }
 
     private let systemObserver = DesktopBarSystemObserver()
+    private let weather = DesktopBarWeatherService()
     private var clockTimer: Timer?
+
+    var currentWeather: DesktopBarWeatherInfo? {
+        weather.current
+    }
 
     func sync(settings: BarSettings) {
         guard settings.enabled, settings.showIndicators else {
@@ -22,10 +30,15 @@ final class DesktopBarRefreshCoordinator {
         } else {
             stopClockTimer()
         }
+
+        weather.sync(location: settings.weatherLocation,
+                     refreshMinutes: settings.weatherRefreshMinutes,
+                     enabled: settings.indicators.contains(.weather))
     }
 
     func stop() {
         systemObserver.stop()
+        weather.stop()
         stopClockTimer()
     }
 

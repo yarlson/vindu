@@ -650,7 +650,7 @@ final class WindowManager {
             layout: settings.general.layout,
             submap: tap.activeSubmap,
             paused: paused,
-            system: DesktopBarSystemInfo.current()
+            system: DesktopBarSystemInfo.current(weather: desktopBarRefresh.currentWeather)
         )
     }
 }

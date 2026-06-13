@@ -28,9 +28,16 @@ struct SettingsTests {
         #expect(s.bar.indicators == [
             .pause, .submap, .windows, .date, .battery, .network, .keyboard, .volume,
         ])
-        #expect(s.set("bar:indicators", "layout, date, sound, wifi, keyboard_layout") == nil)
-        #expect(s.bar.indicators == [.layout, .date, .volume, .network, .keyboard])
-        #expect(s.get("bar:indicators") == "layout,date,volume,network,keyboard")
+        #expect(s.set("bar:indicators", "layout, date, sound, wifi, keyboard_layout, weather") == nil)
+        #expect(s.bar.indicators == [.layout, .date, .volume, .network, .keyboard, .weather])
+        #expect(s.get("bar:indicators") == "layout,date,volume,network,keyboard,weather")
+        #expect(s.set("bar:weather_location", "56.9496,24.1052") == nil)
+        #expect(s.bar.weatherLocation == WeatherLocation(latitude: 56.9496, longitude: 24.1052))
+        #expect(s.get("bar:weather_location") == "56.9496,24.1052")
+        #expect(s.set("bar:weather_location", "none") == nil)
+        #expect(s.bar.weatherLocation == nil)
+        #expect(s.set("bar:weather_refresh_minutes", "20") == nil)
+        #expect(s.get("bar:weather_refresh_minutes") == "20")
         #expect(s.set("bar:indicators", "none") == nil)
         #expect(s.bar.indicators == [])
         #expect(s.get("bar:indicators") == "")
@@ -62,6 +69,9 @@ struct SettingsTests {
         #expect(s.set("bar:height", "120") != nil)
         #expect(s.set("bar:position", "left") != nil)
         #expect(s.set("bar:indicators", "layout,nope") != nil)
+        #expect(s.set("bar:weather_location", "Riga") != nil)
+        #expect(s.set("bar:weather_location", "91,24") != nil)
+        #expect(s.set("bar:weather_refresh_minutes", "3") != nil)
         #expect(s.set("bar:col.foreground", "white") != nil)
     }
 

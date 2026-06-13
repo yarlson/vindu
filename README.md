@@ -147,6 +147,9 @@ bar {
     show_app = true
     show_indicators = true
     indicators = pause, submap, windows, date, battery, network, keyboard, volume
+    # Open-Meteo weather; add weather to indicators after setting lat,lon
+    weather_location =
+    weather_refresh_minutes = 15
 }
 
 # Modal keymaps
@@ -172,6 +175,10 @@ The menu bar icon can be turned off with `misc:menu_bar = false`. The desktop
 bar can be enabled live with `vinductl keyword bar:enabled true`; it reserves
 screen space and shows workspaces, the focused app/window, and the configured
 ordered indicators.
+
+Weather is opt-in and uses Open-Meteo. For Riga:
+`vinductl keyword bar:weather_location 56.9496,24.1052`, then include
+`weather` in `bar:indicators`.
 
 ### Layouts
 

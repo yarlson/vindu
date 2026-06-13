@@ -9,7 +9,7 @@ public enum BarPosition: String, Equatable {
 }
 
 public enum BarIndicator: String, CaseIterable, Equatable {
-    case pause, submap, layout, windows, date, battery, network, keyboard, volume
+    case pause, submap, layout, windows, date, battery, network, keyboard, volume, weather
 
     public static func parse(_ raw: String) -> BarIndicator? {
         switch raw.trimmingCharacters(in: .whitespaces).lowercased() {
@@ -22,8 +22,19 @@ public enum BarIndicator: String, CaseIterable, Equatable {
         case "network", "wifi", "wi-fi": return .network
         case "keyboard", "keyboard_layout", "keyboard-layout", "input": return .keyboard
         case "volume", "sound", "audio": return .volume
+        case "weather", "temperature", "temp": return .weather
         default: return nil
         }
+    }
+}
+
+public struct WeatherLocation: Equatable {
+    public var latitude: Double
+    public var longitude: Double
+
+    public init(latitude: Double, longitude: Double) {
+        self.latitude = latitude
+        self.longitude = longitude
     }
 }
 
@@ -89,6 +100,8 @@ public struct BarSettings: Equatable {
     public var indicators: [BarIndicator] = [
         .pause, .submap, .windows, .date, .battery, .network, .keyboard, .volume,
     ]
+    public var weatherLocation: WeatherLocation?
+    public var weatherRefreshMinutes = 15
     public var background = MLColor.parse("rgba(111111cc)")!
     public var foreground = MLColor.parse("rgba(eeeeeeff)")!
     public var inactive = MLColor.parse("rgba(8a8a8aff)")!
@@ -161,6 +174,8 @@ public struct Settings: Equatable {
         "bar:show_app": bool(\.bar.showApp),
         "bar:show_indicators": bool(\.bar.showIndicators),
         "bar:indicators": indicatorList(\.bar.indicators),
+        "bar:weather_location": weatherLocation(\.bar.weatherLocation),
+        "bar:weather_refresh_minutes": int(\.bar.weatherRefreshMinutes, in: 5...180),
         "bar:col.background": color(\.bar.background),
         "bar:col.foreground": color(\.bar.foreground),
         "bar:col.inactive": color(\.bar.inactive),
@@ -266,6 +281,29 @@ public struct Settings: Equatable {
                 out.append(indicator)
             }
             settings[keyPath: kp] = out
+            return nil
+        })
+    }
+
+    private static func weatherLocation(_ kp: WritableKeyPath<Settings, WeatherLocation?>) -> Option {
+        Option(get: { settings in
+            guard let location = settings[keyPath: kp] else { return "" }
+            return "\(location.latitude),\(location.longitude)"
+        }, set: { settings, value in
+            let trimmed = value.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || trimmed.lowercased() == "none" {
+                settings[keyPath: kp] = nil
+                return nil
+            }
+            let parts = splitCSV(trimmed, limit: 2)
+            guard parts.count == 2,
+                  let latitude = Double(parts[0]),
+                  let longitude = Double(parts[1]) else {
+                return "expected latitude,longitude"
+            }
+            guard (-90...90).contains(latitude) else { return "latitude out of range -90...90" }
+            guard (-180...180).contains(longitude) else { return "longitude out of range -180...180" }
+            settings[keyPath: kp] = WeatherLocation(latitude: latitude, longitude: longitude)
             return nil
         })
     }

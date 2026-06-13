@@ -162,13 +162,11 @@ private final class DesktopBarView: NSView {
 
         if settings.showIndicators {
             for item in settings.indicators {
-                guard let value = indicatorValue(item, snapshot: snapshot, monitor: monitor) else {
+                guard let presentation = indicatorPresentation(item, snapshot: snapshot,
+                                                               monitor: monitor,
+                                                               settings: settings) else {
                     continue
                 }
-                let color = (item == .pause || item == .submap) ? settings.active : settings.foreground
-                let presentation = DesktopBarIndicatorPresentation(item: item,
-                                                                    text: value,
-                                                                    color: color)
                 right.addArrangedSubview(
                     DesktopBarIndicatorView(presentation: presentation, metrics: metrics)
                 )
@@ -235,6 +233,23 @@ private final class DesktopBarView: NSView {
         return out
     }
 
+    private func indicatorPresentation(_ item: BarIndicator, snapshot: DesktopBarSnapshot,
+                                       monitor: Monitor,
+                                       settings: BarSettings) -> DesktopBarIndicatorPresentation? {
+        let color = (item == .pause || item == .submap) ? settings.active : settings.foreground
+        if item == .weather {
+            guard let weather = snapshot.system.weather else { return nil }
+            return DesktopBarIndicatorPresentation(item: item,
+                                                   text: weather.text,
+                                                   color: color,
+                                                   symbolNames: weather.symbolNames)
+        }
+        guard let value = indicatorValue(item, snapshot: snapshot, monitor: monitor) else {
+            return nil
+        }
+        return DesktopBarIndicatorPresentation(item: item, text: value, color: color)
+    }
+
     private func indicatorValue(_ item: BarIndicator, snapshot: DesktopBarSnapshot,
                                 monitor: Monitor) -> String? {
         switch item {
@@ -260,6 +275,8 @@ private final class DesktopBarView: NSView {
             return snapshot.system.keyboard
         case .volume:
             return snapshot.system.volume
+        case .weather:
+            return snapshot.system.weather?.text
         }
     }
 }
