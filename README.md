@@ -175,7 +175,7 @@ Workspace targets: `3`, `+1`, `e+1` (existing only), `previous`, `empty`,
 
 The menu bar icon can be turned off with `misc:menu_bar = false`. The desktop
 bar can be enabled live with `vinductl keyword bar:enabled true`; it reserves
-screen space and shows workspaces, the focused app/window, and the configured
+screen space and shows workspaces, the focused app icon/window, and the configured
 ordered indicators.
 
 Weather is opt-in and uses Open-Meteo. For Riga:

@@ -645,12 +645,13 @@ final class WindowManager {
         }
 
         let active = focusedWindow.flatMap { windows[$0] }
-        let frontmostName = NSWorkspace.shared.frontmostApplication?.localizedName ?? ""
+        let frontmost = NSWorkspace.shared.frontmostApplication
         return DesktopBarSnapshot(
             monitors: monitorMgr.monitors,
             workspaces: workspaces,
             activeWorkspaces: activeWS,
-            appName: active?.clazz ?? frontmostName,
+            appProcessIdentifier: active?.pid ?? frontmost?.processIdentifier,
+            appName: active?.clazz ?? frontmost?.localizedName ?? "",
             windowTitle: active?.title ?? "",
             layout: settings.general.layout,
             submap: tap.activeSubmap,

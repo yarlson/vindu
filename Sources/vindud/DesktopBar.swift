@@ -11,6 +11,7 @@ struct DesktopBarSnapshot {
     let monitors: [Monitor]
     let workspaces: [DesktopBarWorkspace]
     let activeWorkspaces: [CGDirectDisplayID: Int]
+    let appProcessIdentifier: pid_t?
     let appName: String
     let windowTitle: String
     let layout: LayoutKind
@@ -113,7 +114,7 @@ private final class DesktopBarView: NSView {
     var onWorkspaceSelected: ((Int) -> Void)?
 
     private let left = NSStackView()
-    private let appLabel = NSTextField(labelWithString: "")
+    private let appView = DesktopBarAppView()
     private let right = NSStackView()
 
     override init(frame frameRect: NSRect) {
@@ -156,9 +157,10 @@ private final class DesktopBarView: NSView {
         }
 
         if settings.showApp {
-            appLabel.attributedStringValue = appTitle(snapshot, settings: settings,
-                                                      metrics: metrics)
-            left.addArrangedSubview(appLabel)
+            appView.render(title: appTitle(snapshot, settings: settings, metrics: metrics),
+                           processIdentifier: snapshot.appProcessIdentifier,
+                           metrics: metrics)
+            left.addArrangedSubview(appView)
         }
 
         if settings.showIndicators {
@@ -189,10 +191,6 @@ private final class DesktopBarView: NSView {
             stack.translatesAutoresizingMaskIntoConstraints = false
             addSubview(stack)
         }
-
-        appLabel.lineBreakMode = .byTruncatingTail
-        appLabel.maximumNumberOfLines = 1
-        appLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let leftLeading = left.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12)
         let rightTrailing = right.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12)
@@ -307,6 +305,58 @@ private final class DesktopBarView: NSView {
     }
 }
 
+private final class DesktopBarAppView: NSStackView {
+    private let iconView = NSImageView()
+    private let label = NSTextField(labelWithString: "")
+    private var iconWidth: NSLayoutConstraint?
+    private var iconHeight: NSLayoutConstraint?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        configure()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configure()
+    }
+
+    func render(title: NSAttributedString, processIdentifier: pid_t?,
+                metrics: DesktopBarMetrics) {
+        spacing = metrics.iconTextSpacing
+        label.attributedStringValue = title
+        iconWidth?.constant = metrics.appIconSize
+        iconHeight?.constant = metrics.appIconSize
+
+        let image = processIdentifier.flatMap {
+            NSRunningApplication(processIdentifier: $0)?.icon
+        }
+        iconView.image = image
+        iconView.isHidden = image == nil
+    }
+
+    private func configure() {
+        orientation = .horizontal
+        alignment = .centerY
+        spacing = 4
+        translatesAutoresizingMaskIntoConstraints = false
+
+        iconView.imageAlignment = .alignCenter
+        iconView.imageScaling = .scaleProportionallyUpOrDown
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconWidth = iconView.widthAnchor.constraint(equalToConstant: 16)
+        iconHeight = iconView.heightAnchor.constraint(equalToConstant: 16)
+
+        label.lineBreakMode = .byTruncatingTail
+        label.maximumNumberOfLines = 1
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        addArrangedSubview(iconView)
+        addArrangedSubview(label)
+        NSLayoutConstraint.activate([iconWidth, iconHeight].compactMap { $0 })
+    }
+}
+
 struct DesktopBarMetrics {
     let height: Double
 
@@ -328,6 +378,10 @@ struct DesktopBarMetrics {
 
     var indicatorHeight: CGFloat {
         CGFloat(min(max(height * 0.62, 15), 18))
+    }
+
+    var appIconSize: CGFloat {
+        indicatorHeight
     }
 
     var pillHeight: CGFloat {
