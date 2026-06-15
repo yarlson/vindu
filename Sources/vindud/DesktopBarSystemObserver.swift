@@ -164,7 +164,7 @@ final class DesktopBarSystemObserver: NSObject, CWEventDelegate {
         removeOutputDeviceListeners()
 
         guard let device = DesktopBarAudioState.currentOutputDevice() else { return }
-        for address in DesktopBarAudioState.outputValueAddresses(for: device) {
+        for address in DesktopBarAudioState.outputChangeAddresses(for: device) {
             var mutable = address
             let status = AudioObjectAddPropertyListenerBlock(
                 device,

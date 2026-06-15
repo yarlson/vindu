@@ -259,6 +259,14 @@ private final class DesktopBarView: NSView {
                                                    color: color,
                                                    symbolNames: weather.symbolNames)
         }
+        if item == .volume {
+            guard let volume = snapshot.system.volume else { return nil }
+            return DesktopBarIndicatorPresentation(item: item,
+                                                   text: volume.text,
+                                                   color: color,
+                                                   symbolNames: DesktopBarIndicatorPresentation
+                                                       .volumeSymbolNames(volume))
+        }
         guard let value = indicatorValue(item, snapshot: snapshot, monitor: monitor) else {
             return nil
         }
@@ -298,7 +306,7 @@ private final class DesktopBarView: NSView {
         case .keyboard:
             return snapshot.system.keyboard
         case .volume:
-            return snapshot.system.volume
+            return snapshot.system.volume?.text
         case .weather:
             return snapshot.system.weather?.text
         }

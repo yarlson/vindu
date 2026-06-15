@@ -9,7 +9,7 @@ struct DesktopBarSystemInfo {
     var battery: String?
     var network: String?
     var keyboard: String?
-    var volume: String?
+    var volume: DesktopBarVolumeInfo?
     var weather: DesktopBarWeatherInfo?
 
     static func current(weather: DesktopBarWeatherInfo?) -> DesktopBarSystemInfo {
@@ -108,7 +108,7 @@ struct DesktopBarSystemInfo {
         return String(trimmed.prefix(8))
     }
 
-    private static func currentVolume() -> String? {
-        DesktopBarAudioState.currentVolumeText()
+    private static func currentVolume() -> DesktopBarVolumeInfo? {
+        DesktopBarAudioState.currentVolumeInfo()
     }
 }

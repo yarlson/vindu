@@ -28,6 +28,13 @@ struct DesktopBarIndicatorPresentation {
         self.textWithSymbol = text.isEmpty ? nil : text
     }
 
+    static func volumeSymbolNames(_ volume: DesktopBarVolumeInfo) -> [String] {
+        if volume.usesHeadset {
+            return ["headphones", "speaker.wave.2.fill", "speaker.wave.2"]
+        }
+        return symbolNames(for: .volume, text: volume.text)
+    }
+
     private static func symbolNames(for item: BarIndicator, text: String) -> [String] {
         switch item {
         case .pause:
