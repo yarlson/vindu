@@ -25,5 +25,5 @@ While tiling is paused, only `pause` binds match; every other chord, mouse bind,
 
 ## User gestures and submaps
 
-- Clicks and ⌘Tab activity (each Tab press, and the ⌘ release that commits the switcher) stamp a "user gesture" time; window activations shortly after one may switch workspaces, anything else is treated as an app-initiated focus steal.
+- Clicks and ⌘Tab activity (each Tab press, and the ⌘ release that confirms the switcher) stamp a "user gesture" time; window activations shortly after one may switch workspaces, anything else is treated as an app-initiated focus steal.
 - The active submap lives in the tap. The `submap` dispatcher sets it, broadcasts the event, and recolors the focus border so the mode is visible.

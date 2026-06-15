@@ -19,7 +19,7 @@ Binary split tree (`DwindleTree`), Hyprland semantics:
 
 - mfact and orientation have runtime overrides that fall back to the `master:*` settings.
 - Five orientations: left/right/top/bottom/center; center alternates the stack onto both sides of a centered master area.
-- `master:new_status` ("master"/"slave") and `master:new_on_top` control where new windows enter.
+- `master:new_status` accepts `master`, `slave`, or `inherit`; `master` inserts at the front, otherwise `master:new_on_top` controls whether new windows enter above the stack or append.
 
 ## Geometry
 

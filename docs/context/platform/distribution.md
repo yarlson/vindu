@@ -16,7 +16,7 @@ macOS ties the Accessibility grant to the binary's code identity. Release and in
 
 ## CI
 
-Build-and-test matrix on the oldest and newest macOS runner images (both Apple Silicon), with a SwiftPM cache keyed commit → manifest → image. A release-configuration build plus `--version` smoke runs catch optimizer-only breakage and prove the binaries start.
+Build-and-test matrix on the oldest and newest macOS runner images (both Apple Silicon), with a SwiftPM cache keyed by source revision, manifest, and image. A release-configuration build plus `--version` smoke runs catch optimizer-only breakage and prove the binaries start.
 
 ## Release pipeline
 
