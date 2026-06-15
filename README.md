@@ -150,6 +150,8 @@ bar {
     # Open-Meteo weather; add weather to indicators after setting lat,lon
     weather_location =
     weather_refresh_minutes = 15
+    # Custom script item:
+    # add plugin:mail to indicators, then configure bar:plugin:mail:*
 }
 
 # Modal keymaps
@@ -179,6 +181,32 @@ ordered indicators.
 Weather is opt-in and uses Open-Meteo. For Riga:
 `vinductl keyword bar:weather_location 56.9496,24.1052`, then include
 `weather` in `bar:indicators`.
+
+Custom bar items are opt-in script plugins. Add `plugin:<id>` anywhere in
+`bar:indicators`, then configure `bar:plugin:<id>:command`. Scripts run
+asynchronously, and stdout renders as the item text. JSON stdout can set text,
+SF Symbols, color, and visibility:
+
+```conf
+bar {
+    indicators = weather,plugin:mail,network,battery,date
+    plugin {
+        mail {
+            command = ~/.config/vindu/bar/mail.sh
+            refresh_seconds = 300
+            events = workspace,activewindow
+            timeout_ms = 1000
+        }
+    }
+}
+```
+
+```sh
+#!/bin/sh
+printf '{"text":"3","symbols":["envelope.badge.fill","envelope"],"color":"foreground"}\n'
+```
+
+Use `vinductl barplugin refresh mail` to queue a manual refresh.
 
 ### Layouts
 

@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import VinduCore
 
@@ -41,13 +42,21 @@ struct ConfigParserTests {
             show_workspaces = false
             show_app = true
             show_indicators = false
-            indicators = layout, date, sound, weather
+            indicators = layout, plugin:mail, date, sound, weather
             weather_location = 56.9496,24.1052
             weather_refresh_minutes = 20
             col.background = rgba(111111cc)
             col.foreground = rgba(eeeeeeff)
             col.inactive = rgba(8a8a8aff)
             col.active = rgba(33ccffee)
+            plugin {
+                mail {
+                    command = ~/.config/vindu/bar/mail.sh
+                    refresh_seconds = 300
+                    events = workspace,activewindow
+                    timeout_ms = 750
+                }
+            }
         }
 
         bind = $mainMod, Q, exec, $term --single-instance
@@ -90,7 +99,15 @@ struct ConfigParserTests {
         #expect(doc.settings.bar.showWorkspaces == false)
         #expect(doc.settings.bar.showApp)
         #expect(doc.settings.bar.showIndicators == false)
+        #expect(doc.settings.bar.items == [.builtin(.layout), .plugin("mail"),
+                                           .builtin(.date), .builtin(.volume), .builtin(.weather)])
         #expect(doc.settings.bar.indicators == [.layout, .date, .volume, .weather])
+        #expect(doc.settings.bar.plugins["mail"] == BarPluginConfig(
+            command: "~/.config/vindu/bar/mail.sh",
+            refreshSeconds: 300,
+            events: ["workspace", "activewindow"],
+            timeoutMs: 750
+        ))
         #expect(doc.settings.bar.weatherLocation == WeatherLocation(latitude: 56.9496, longitude: 24.1052))
         #expect(doc.settings.bar.weatherRefreshMinutes == 20)
         #expect(doc.settings.bar.background == MLColor.parse("rgba(111111cc)")!)
@@ -201,14 +218,78 @@ struct ConfigParserTests {
         #expect(doc.settings.general.gapsIn == 33)
         #expect(ConfigParser.applyKeyword("bar:enabled", "true", to: &doc) == nil)
         #expect(doc.settings.bar.enabled)
+        #expect(ConfigParser.applyKeyword("bar:plugin:mail:command", "echo mail", to: &doc) == nil)
         #expect(ConfigParser.applyKeyword("bar:indicators", "windows,clock,audio,weather", to: &doc) == nil)
         #expect(doc.settings.bar.indicators == [.windows, .date, .volume, .weather])
+        #expect(ConfigParser.applyKeyword("bar:indicators", "windows,plugin:mail,weather", to: &doc) == nil)
+        #expect(doc.settings.bar.items == [.builtin(.windows), .plugin("mail"), .builtin(.weather)])
+        #expect(ConfigParser.applyKeyword("bar:indicators", "plugin:missing", to: &doc) != nil)
+        #expect(doc.settings.bar.items == [.builtin(.windows), .plugin("mail"), .builtin(.weather)])
         #expect(ConfigParser.applyKeyword("bar:weather_location", "56.9496,24.1052", to: &doc) == nil)
         #expect(doc.settings.bar.weatherLocation == WeatherLocation(latitude: 56.9496, longitude: 24.1052))
         #expect(ConfigParser.applyKeyword("bind", "SUPER, Y, exec, top", to: &doc) == nil)
         #expect(doc.binds.count == 1)
         #expect(ConfigParser.applyKeyword("general:gaps_in", "abc", to: &doc) != nil)
         #expect(ConfigParser.applyKeyword("nope:nope", "1", to: &doc) != nil)
+    }
+
+    @Test func barPluginValidation() {
+        let missing = parseDoc("""
+        bar {
+            indicators = plugin:mail
+        }
+        """)
+        #expect(missing.errors.map(\.message).contains("bar plugin 'mail' needs command"))
+
+        let badEvent = parseDoc("""
+        bar {
+            plugin {
+                mail {
+                    command = echo mail
+                    events = nope
+                }
+            }
+        }
+        """)
+        #expect(badEvent.errors.count == 1)
+        #expect(badEvent.errors[0].message.contains("unknown bar plugin event"))
+    }
+
+    @Test func applyKeywordKeepsSettingsValidationAtomic() {
+        var doc = parseDoc("""
+        bar {
+            indicators = plugin:mail
+        }
+        """)
+        #expect(doc.errors.map(\.message) == ["bar plugin 'mail' needs command"])
+
+        #expect(ConfigParser.applyKeyword("general:gaps_in", "9", to: &doc) == nil)
+        #expect(doc.settings.general.gapsIn == 9)
+        #expect(doc.errors.map(\.message) == ["bar plugin 'mail' needs command"])
+
+        #expect(ConfigParser.applyKeyword("bar:plugin:mail:command", "echo mail", to: &doc) == nil)
+        #expect(doc.errors == [])
+        #expect(doc.settings.bar.plugins["mail"]?.command == "echo mail")
+
+        #expect(ConfigParser.applyKeyword("bar:indicators", "plugin:missing", to: &doc)
+                == "bar plugin 'missing' needs command")
+        #expect(doc.settings.bar.items == [.plugin("mail")])
+    }
+
+    @Test func barPluginOutputParsing() {
+        #expect(BarPluginOutput.parse(Data("12\n".utf8)) == .success(BarPluginValue(text: "12")))
+        #expect(BarPluginOutput.parse(Data("""
+        {"text":"12","symbols":["envelope.badge.fill","envelope"],"color":"active"}
+        """.utf8)) == .success(BarPluginValue(text: "12",
+                                               symbolNames: ["envelope.badge.fill", "envelope"],
+                                               color: .active)))
+        #expect(BarPluginOutput.parse(Data("{\"visible\":false}".utf8)) == .success(nil))
+
+        if case .failure(let error) = BarPluginOutput.parse(Data("{".utf8)) {
+            #expect(error.message == "invalid plugin json")
+        } else {
+            Issue.record("invalid json should fail")
+        }
     }
 
     @Test func unclosedSectionReported() {

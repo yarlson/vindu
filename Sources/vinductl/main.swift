@@ -12,6 +12,7 @@ COMMANDS:
     reload                         reload the config file
     clients | workspaces | monitors | activewindow | activeworkspace | binds
     getoption <keyword>            read a config value
+    barplugin refresh <id>         queue a desktop bar plugin refresh
     configerrors                   show config parse errors
     cursorpos | version | splash
     notify <text>                  post a notification

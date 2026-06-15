@@ -540,11 +540,16 @@ final class WindowManager {
         let gradient = tap.activeSubmap.isEmpty
             ? settings.general.activeBorder
             : settings.general.submapBorder
-        border.show(around: state.frame,
+        border.show(around: borderFrame(for: state),
                     gradient: gradient,
                     width: settings.general.borderSize,
                     rounding: settings.decoration.rounding,
                     primaryHeight: monitorMgr.primaryHeight)
+    }
+
+    private func borderFrame(for state: WindowState) -> CGRect {
+        guard let live = bridge.frame(of: state.id), !live.isEmpty else { return state.frame }
+        return live
     }
 
     /// Applies a frame to a floating window and keeps every dependent in sync.
@@ -650,7 +655,8 @@ final class WindowManager {
             layout: settings.general.layout,
             submap: tap.activeSubmap,
             paused: paused,
-            system: DesktopBarSystemInfo.current(weather: desktopBarRefresh.currentWeather)
+            system: DesktopBarSystemInfo.current(weather: desktopBarRefresh.currentWeather),
+            plugins: desktopBarRefresh.currentPlugins
         )
     }
 }
@@ -869,19 +875,52 @@ extension WindowManager: AXBridgeDelegate {
     /// the exact tile once the event burst quiets down.
     private func holdTile(_ state: WindowState, _ frame: CGRect) {
         let desired = state.frame
-        let drift = abs(frame.minX - desired.minX) + abs(frame.minY - desired.minY)
-            + abs(frame.width - desired.width) + abs(frame.height - desired.height)
+        if let centered = centeredConstrainedFrame(frame, in: desired) {
+            if frameDistance(frame, centered) > 4 {
+                reassertFrame(centered, for: state.id)
+            }
+            if state.id == focusedWindow { refreshBorder() }
+            return
+        }
+
+        let drift = frameDistance(frame, desired)
         guard drift > 4 else {
             if state.id == focusedWindow { refreshBorder() }
             return
         }
-        let now = CFAbsoluteTimeGetCurrent()
-        if now - (lastReassert[state.id] ?? 0) > 0.4 {
-            lastReassert[state.id] = now
-            bridge.setFrame(state.id, desired)
-        }
+        reassertFrame(desired, for: state.id)
         scheduleSettle(state.id)
         if state.id == focusedWindow { refreshBorder() }
+    }
+
+    private func frameDistance(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
+        abs(lhs.minX - rhs.minX) + abs(lhs.minY - rhs.minY)
+            + abs(lhs.width - rhs.width) + abs(lhs.height - rhs.height)
+    }
+
+    private func centeredConstrainedFrame(_ actual: CGRect, in desired: CGRect) -> CGRect? {
+        let tolerance: CGFloat = 4
+        let constrainedWidth = actual.width < desired.width - tolerance
+        let constrainedHeight = actual.height < desired.height - tolerance
+        guard constrainedWidth || constrainedHeight else { return nil }
+
+        var frame = desired
+        if constrainedWidth {
+            frame.origin.x = desired.midX - actual.width / 2
+            frame.size.width = actual.width
+        }
+        if constrainedHeight {
+            frame.origin.y = desired.midY - actual.height / 2
+            frame.size.height = actual.height
+        }
+        return frame
+    }
+
+    private func reassertFrame(_ frame: CGRect, for id: WindowID) {
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - (lastReassert[id] ?? 0) > 0.4 else { return }
+        lastReassert[id] = now
+        bridge.setFrame(id, frame)
     }
 
     /// Debounced snap-back: after any external move/resize burst, a tiled
@@ -944,6 +983,7 @@ extension WindowManager: AXBridgeDelegate {
 extension WindowManager {
     func broadcast(_ event: WMEvent) {
         events?.broadcast(event)
+        desktopBarRefresh.handle(event: event)
         refreshDesktopBar()
     }
 

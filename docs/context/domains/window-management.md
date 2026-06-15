@@ -32,7 +32,7 @@ Every AXWindow is classified before management:
 
 ## Tiled frame enforcement
 
-Tiled windows stick to their assigned tile: drift beyond a few pixels is re-asserted under a cooldown (prevents fight loops with apps that resist), and a debounced settle snaps the exact frame once the event burst quiets. Floating windows simply track the OS frame.
+Tiled windows stick to their assigned tile: drift beyond a few pixels is re-asserted under a cooldown (prevents fight loops with apps that resist), and a debounced settle snaps the exact frame once the event burst quiets. If an app refuses the tile's full size, the accepted smaller frame is centered inside the assigned tile instead of being pinned to the tile origin. Floating windows simply track the OS frame.
 
 ## Native fullscreen
 
@@ -40,7 +40,7 @@ The green button moves a window onto its own Space. Detection combines an AXFull
 
 ## Border overlay
 
-A click-through, non-activating panel that joins all Spaces, framed around the focused window (coordinates convert to AppKit space at this boundary only). It renders the active-border gradient's first color, switches to the submap border color while a submap is active, and hides for hidden, minimized, or fullscreen windows.
+A click-through, non-activating panel that joins all Spaces, framed around the focused window's live frame (coordinates convert to AppKit space at this boundary only). It renders the active-border gradient's first color, switches to the submap border color while a submap is active, and hides for hidden, minimized, or fullscreen windows.
 
 ## Pause
 
@@ -52,4 +52,4 @@ A status item (hidden via `misc:menu_bar = false`) shows daemon presence, dims w
 
 ## Desktop bar
 
-`DesktopBar` is an optional same-process AppKit bar, enabled with `bar:enabled = true`. It creates one non-activating panel per monitor, joins all Spaces, and renders built-in workspace, focused-app/window, and configured state-indicator groups from `WindowManager` state rather than consuming the public IPC stream. Workspace items dispatch the normal workspace switch path for their monitor. Top bars draw at the physical display top so they can occupy the hidden-menu-bar strip; layout reserves only the part of the bar overlapping the monitor's usable frame. The focused app/window label sits next to the workspace switcher instead of in the center notch area. Fonts, spacing, padding, workspace-pill dimensions, and SF Symbol indicator icons scale from the resolved bar height. The right-side indicator sequence comes from `bar:indicators`; OS listeners are enabled only for configured indicators, with keyboard/input-source, power, CoreWLAN/path network, and output-volume changes refreshing the bar from events. A minute-aligned timer is enabled only when the date indicator is configured. Weather is opt-in, fetched asynchronously from Open-Meteo for `bar:weather_location`, cached, and refreshed on `bar:weather_refresh_minutes`. Network and volume render as icon-only when symbols are available; date/time renders as text only.
+`DesktopBar` is an optional same-process AppKit bar, enabled with `bar:enabled = true`. It creates one non-activating panel per monitor, joins all Spaces, and renders built-in workspace, focused-app/window, and configured state-indicator groups from `WindowManager` state rather than consuming the public IPC stream. Workspace items dispatch the normal workspace switch path for their monitor. Top bars draw at the physical display top so they can occupy the hidden-menu-bar strip; layout reserves only the part of the bar overlapping the monitor's usable frame. The focused app/window label sits next to the workspace switcher instead of in the center notch area. Fonts, spacing, padding, workspace-pill dimensions, and SF Symbol indicator icons scale from the resolved bar height. The right-side item sequence comes from `bar:indicators`; OS listeners are enabled only for configured built-ins, with keyboard/input-source, power, CoreWLAN/path network, and output-volume changes refreshing the bar from events. A minute-aligned timer is enabled only when the date indicator is configured. Weather is opt-in, fetched asynchronously from Open-Meteo for `bar:weather_location`, cached, and refreshed on `bar:weather_refresh_minutes`. Custom `plugin:<id>` items are daemon-run shell commands with cached output; scripts run off the render path, refresh on intervals, selected Vindu events, config changes, or `vinductl barplugin refresh <id>`, and render plain text or JSON-provided text/SF Symbols/color. Network and volume render as icon-only when symbols are available; date/time renders as text only.

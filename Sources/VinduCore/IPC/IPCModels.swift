@@ -213,44 +213,71 @@ public enum WMEvent {
     /// vindu extension: tiling suspended/resumed (no Hyprland counterpart).
     case pause(Bool)
 
-    public var line: String {
+    public var name: String {
+        switch self {
+        case .workspace: return "workspace"
+        case .workspacev2: return "workspacev2"
+        case .focusedmon: return "focusedmon"
+        case .activewindow: return "activewindow"
+        case .activewindowv2: return "activewindowv2"
+        case .openwindow: return "openwindow"
+        case .closewindow: return "closewindow"
+        case .movewindow: return "movewindow"
+        case .fullscreen: return "fullscreen"
+        case .changefloatingmode: return "changefloatingmode"
+        case .createworkspace: return "createworkspace"
+        case .destroyworkspace: return "destroyworkspace"
+        case .renameworkspace: return "renameworkspace"
+        case .submap: return "submap"
+        case .configreloaded: return "configreloaded"
+        case .monitoradded: return "monitoradded"
+        case .monitorremoved: return "monitorremoved"
+        case .pause: return "pause"
+        }
+    }
+
+    public var payload: String {
         switch self {
         case .workspace(let name):
-            return "workspace>>\(name)"
+            return name
         case .workspacev2(let id, let name):
-            return "workspacev2>>\(id),\(name)"
+            return "\(id),\(name)"
         case .focusedmon(let mon, let ws):
-            return "focusedmon>>\(mon),\(ws)"
+            return "\(mon),\(ws)"
         case .activewindow(let clazz, let title):
-            return "activewindow>>\(clazz),\(title)"
+            return "\(clazz),\(title)"
         case .activewindowv2(let id):
-            return "activewindowv2>>\(id.map(windowAddress) ?? "")"
+            return id.map(windowAddress) ?? ""
         case .openwindow(let id, let ws, let clazz, let title):
-            return "openwindow>>\(windowAddress(id)),\(ws),\(clazz),\(title)"
+            return "\(windowAddress(id)),\(ws),\(clazz),\(title)"
         case .closewindow(let id):
-            return "closewindow>>\(windowAddress(id))"
+            return windowAddress(id)
         case .movewindow(let id, let ws):
-            return "movewindow>>\(windowAddress(id)),\(ws)"
+            return "\(windowAddress(id)),\(ws)"
         case .fullscreen(let on):
-            return "fullscreen>>\(on ? 1 : 0)"
+            return on ? "1" : "0"
         case .changefloatingmode(let id, let floating):
-            return "changefloatingmode>>\(windowAddress(id)),\(floating ? 1 : 0)"
+            return "\(windowAddress(id)),\(floating ? 1 : 0)"
         case .createworkspace(let name):
-            return "createworkspace>>\(name)"
+            return name
         case .destroyworkspace(let name):
-            return "destroyworkspace>>\(name)"
+            return name
         case .renameworkspace(let id, let name):
-            return "renameworkspace>>\(id),\(name)"
+            return "\(id),\(name)"
         case .submap(let name):
-            return "submap>>\(name)"
+            return name
         case .configreloaded:
-            return "configreloaded>>"
+            return ""
         case .monitoradded(let name):
-            return "monitoradded>>\(name)"
+            return name
         case .monitorremoved(let name):
-            return "monitorremoved>>\(name)"
+            return name
         case .pause(let on):
-            return "pause>>\(on ? 1 : 0)"
+            return on ? "1" : "0"
         }
+    }
+
+    public var line: String {
+        "\(name)>>\(payload)"
     }
 }

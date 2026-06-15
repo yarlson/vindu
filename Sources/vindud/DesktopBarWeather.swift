@@ -62,6 +62,7 @@ final class DesktopBarWeatherService {
     }
 
     func stop() {
+        let hadWeather = current != nil
         request?.cancel()
         request = nil
         refreshTimer?.invalidate()
@@ -69,6 +70,9 @@ final class DesktopBarWeatherService {
         configuration = nil
         fetching = false
         current = nil
+        if hadWeather {
+            onChange?()
+        }
     }
 
     private func scheduleNextRefresh() {

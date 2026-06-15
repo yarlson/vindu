@@ -97,15 +97,40 @@ public struct BarSettings: Equatable {
     public var showWorkspaces = true
     public var showApp = true
     public var showIndicators = true
-    public var indicators: [BarIndicator] = [
-        .pause, .submap, .windows, .date, .battery, .network, .keyboard, .volume,
+    public var items: [BarItem] = [
+        .builtin(.pause), .builtin(.submap), .builtin(.windows), .builtin(.date),
+        .builtin(.battery), .builtin(.network), .builtin(.keyboard), .builtin(.volume),
     ]
+    public var plugins: [String: BarPluginConfig] = [:]
     public var weatherLocation: WeatherLocation?
     public var weatherRefreshMinutes = 15
     public var background = MLColor.parse("rgba(111111cc)")!
     public var foreground = MLColor.parse("rgba(eeeeeeff)")!
     public var inactive = MLColor.parse("rgba(8a8a8aff)")!
     public var active = MLColor.parse("rgba(33ccffee)")!
+
+    public var indicators: [BarIndicator] {
+        get {
+            items.compactMap {
+                if case .builtin(let indicator) = $0 { return indicator }
+                return nil
+            }
+        }
+        set {
+            items = newValue.map(BarItem.builtin)
+        }
+    }
+
+    public var pluginIDs: [String] {
+        items.compactMap {
+            if case .plugin(let id) = $0 { return id }
+            return nil
+        }
+    }
+
+    public func contains(_ indicator: BarIndicator) -> Bool {
+        items.contains(.builtin(indicator))
+    }
 }
 
 public struct Settings: Equatable {
@@ -125,6 +150,14 @@ public struct Settings: Equatable {
     public mutating func set(_ keyword: String, _ rawValue: String) -> String? {
         let key = keyword.lowercased()
         let value = rawValue.trimmingCharacters(in: .whitespaces)
+        switch BarPluginKeyword.set(key, value: value, settings: &self) {
+        case .notPlugin:
+            break
+        case .applied:
+            return nil
+        case .failed(let error):
+            return "\(error) for \(keyword): \(rawValue)"
+        }
         if let option = Settings.options[key] {
             return option.set(&self, value).map { "\($0) for \(keyword): \(rawValue)" }
         }
@@ -136,7 +169,13 @@ public struct Settings: Equatable {
 
     /// Reads back a keyword's current value (IPC `getoption`).
     public func get(_ keyword: String) -> String? {
-        Settings.options[keyword.lowercased()]?.get(self)
+        let key = keyword.lowercased()
+        if let value = BarPluginKeyword.get(key, settings: self) { return value }
+        return Settings.options[key]?.get(self)
+    }
+
+    public func validationErrors() -> [String] {
+        BarPluginKeyword.validationErrors(settings: self)
     }
 
     // MARK: - Option table
@@ -173,7 +212,7 @@ public struct Settings: Equatable {
         "bar:show_workspaces": bool(\.bar.showWorkspaces),
         "bar:show_app": bool(\.bar.showApp),
         "bar:show_indicators": bool(\.bar.showIndicators),
-        "bar:indicators": indicatorList(\.bar.indicators),
+        "bar:indicators": barItemList(\.bar.items),
         "bar:weather_location": weatherLocation(\.bar.weatherLocation),
         "bar:weather_refresh_minutes": int(\.bar.weatherRefreshMinutes, in: 5...180),
         "bar:col.background": color(\.bar.background),
@@ -262,8 +301,8 @@ public struct Settings: Equatable {
         })
     }
 
-    private static func indicatorList(_ kp: WritableKeyPath<Settings, [BarIndicator]>) -> Option {
-        Option(get: { $0[keyPath: kp].map(\.rawValue).joined(separator: ",") },
+    private static func barItemList(_ kp: WritableKeyPath<Settings, [BarItem]>) -> Option {
+        Option(get: { $0[keyPath: kp].map(\.text).joined(separator: ",") },
                set: { settings, value in
             let names = value.split(separator: ",", omittingEmptySubsequences: false)
                 .map { String($0).trimmingCharacters(in: .whitespaces) }
@@ -272,13 +311,14 @@ public struct Settings: Equatable {
                 settings[keyPath: kp] = []
                 return nil
             }
-            var out: [BarIndicator] = []
+            var out: [BarItem] = []
             for name in names {
-                guard let indicator = BarIndicator.parse(name) else {
-                    let allowed = BarIndicator.allCases.map(\.rawValue).joined(separator: ",")
-                    return "unknown indicator '\(name)' expected one of \(allowed)"
+                switch BarItem.parse(name) {
+                case .success(let item):
+                    out.append(item)
+                case .failure(let error):
+                    return error.message
                 }
-                out.append(indicator)
             }
             settings[keyPath: kp] = out
             return nil

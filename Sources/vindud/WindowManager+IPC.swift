@@ -39,6 +39,8 @@ extension WindowManager {
         case "reload":
             reloadConfig()
             return "ok"
+        case "barplugin":
+            return handleBarPluginIPC(arg)
         case "clients":
             let infos = clientInfos()
             return json ? encodeJSON(infos) : infos.map(clientText).joined(separator: "\n")
@@ -90,6 +92,20 @@ extension WindowManager {
         default:
             return "err: unknown request: \(cmd)"
         }
+    }
+
+    private func handleBarPluginIPC(_ arg: String) -> String {
+        let parts = arg.split(separator: " ", maxSplits: 1).map(String.init)
+        guard parts.first == "refresh" else {
+            return "err: barplugin needs: refresh <id>"
+        }
+        guard parts.count == 2, !parts[1].isEmpty else {
+            return "err: bar plugin id required"
+        }
+        guard desktopBarRefresh.refreshPlugin(id: parts[1]) else {
+            return "err: unknown bar plugin: \(parts[1])"
+        }
+        return "ok"
     }
 
     // MARK: Info builders

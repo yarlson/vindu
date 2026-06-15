@@ -21,6 +21,13 @@ struct DesktopBarIndicatorPresentation {
         }
     }
 
+    init(text: String, color: MLColor, symbolNames: [String]) {
+        self.text = text
+        self.symbolNames = symbolNames
+        self.color = color
+        self.textWithSymbol = text.isEmpty ? nil : text
+    }
+
     private static func symbolNames(for item: BarIndicator, text: String) -> [String] {
         switch item {
         case .pause:

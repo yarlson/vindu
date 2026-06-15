@@ -64,6 +64,16 @@ bar {
     # Open-Meteo weather: add `weather` to indicators after setting lat,lon
     weather_location =
     weather_refresh_minutes = 15
+    # Custom script item:
+    # add `plugin:mail` to indicators, then configure:
+    # plugin {
+    #     mail {
+    #         command = ~/.config/vindu/bar/mail.sh
+    #         refresh_seconds = 300
+    #         events = none
+    #         timeout_ms = 1000
+    #     }
+    # }
     col.background = rgba(111111cc)
     col.foreground = rgba(eeeeeeff)
     col.inactive = rgba(8a8a8aff)

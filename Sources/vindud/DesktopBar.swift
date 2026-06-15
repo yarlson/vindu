@@ -17,6 +17,7 @@ struct DesktopBarSnapshot {
     let submap: String
     let paused: Bool
     let system: DesktopBarSystemInfo
+    let plugins: [String: BarPluginValue]
 }
 
 /// Same-process desktop bar. It deliberately uses vindu's own state instead of
@@ -161,7 +162,7 @@ private final class DesktopBarView: NSView {
         }
 
         if settings.showIndicators {
-            for item in settings.indicators {
+            for item in settings.items {
                 guard let presentation = indicatorPresentation(item, snapshot: snapshot,
                                                                monitor: monitor,
                                                                settings: settings) else {
@@ -233,9 +234,25 @@ private final class DesktopBarView: NSView {
         return out
     }
 
-    private func indicatorPresentation(_ item: BarIndicator, snapshot: DesktopBarSnapshot,
+    private func indicatorPresentation(_ item: BarItem, snapshot: DesktopBarSnapshot,
                                        monitor: Monitor,
                                        settings: BarSettings) -> DesktopBarIndicatorPresentation? {
+        switch item {
+        case .builtin(let indicator):
+            return builtinIndicatorPresentation(indicator, snapshot: snapshot,
+                                                monitor: monitor,
+                                                settings: settings)
+        case .plugin(let id):
+            guard let value = snapshot.plugins[id] else { return nil }
+            return DesktopBarIndicatorPresentation(text: value.text,
+                                                   color: pluginColor(value.color, settings: settings),
+                                                   symbolNames: value.symbolNames)
+        }
+    }
+
+    private func builtinIndicatorPresentation(_ item: BarIndicator, snapshot: DesktopBarSnapshot,
+                                              monitor: Monitor,
+                                              settings: BarSettings) -> DesktopBarIndicatorPresentation? {
         let color = (item == .pause || item == .submap) ? settings.active : settings.foreground
         if item == .weather {
             guard let weather = snapshot.system.weather else { return nil }
@@ -248,6 +265,15 @@ private final class DesktopBarView: NSView {
             return nil
         }
         return DesktopBarIndicatorPresentation(item: item, text: value, color: color)
+    }
+
+    private func pluginColor(_ color: BarPluginColor, settings: BarSettings) -> MLColor {
+        switch color {
+        case .foreground: return settings.foreground
+        case .inactive: return settings.inactive
+        case .active: return settings.active
+        case .custom(let custom): return custom
+        }
     }
 
     private func indicatorValue(_ item: BarIndicator, snapshot: DesktopBarSnapshot,

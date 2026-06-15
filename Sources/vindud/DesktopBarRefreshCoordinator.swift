@@ -6,15 +6,21 @@ final class DesktopBarRefreshCoordinator {
         didSet {
             systemObserver.onChange = onChange
             weather.onChange = onChange
+            plugins.onChange = onChange
         }
     }
 
     private let systemObserver = DesktopBarSystemObserver()
     private let weather = DesktopBarWeatherService()
+    private let plugins = DesktopBarPluginService()
     private var clockTimer: Timer?
 
     var currentWeather: DesktopBarWeatherInfo? {
         weather.current
+    }
+
+    var currentPlugins: [String: BarPluginValue] {
+        plugins.current
     }
 
     func sync(settings: BarSettings) {
@@ -23,9 +29,9 @@ final class DesktopBarRefreshCoordinator {
             return
         }
 
-        systemObserver.update(events: Self.systemEvents(for: settings.indicators))
+        systemObserver.update(events: Self.systemEvents(for: settings))
 
-        if settings.indicators.contains(.date) {
+        if settings.contains(.date) {
             startClockTimer()
         } else {
             stopClockTimer()
@@ -33,12 +39,22 @@ final class DesktopBarRefreshCoordinator {
 
         weather.sync(location: settings.weatherLocation,
                      refreshMinutes: settings.weatherRefreshMinutes,
-                     enabled: settings.indicators.contains(.weather))
+                     enabled: settings.contains(.weather))
+        plugins.sync(settings: settings, enabled: true)
+    }
+
+    func refreshPlugin(id: String) -> Bool {
+        plugins.refresh(id: id)
+    }
+
+    func handle(event: WMEvent) {
+        plugins.handle(event: event)
     }
 
     func stop() {
         systemObserver.stop()
         weather.stop()
+        plugins.stop()
         stopClockTimer()
     }
 
@@ -61,12 +77,12 @@ final class DesktopBarRefreshCoordinator {
         clockTimer = nil
     }
 
-    private static func systemEvents(for indicators: [BarIndicator]) -> DesktopBarSystemEvents {
+    private static func systemEvents(for settings: BarSettings) -> DesktopBarSystemEvents {
         var events: DesktopBarSystemEvents = []
-        if indicators.contains(.keyboard) { events.insert(.keyboard) }
-        if indicators.contains(.battery) { events.insert(.power) }
-        if indicators.contains(.network) { events.insert(.network) }
-        if indicators.contains(.volume) { events.insert(.audio) }
+        if settings.contains(.keyboard) { events.insert(.keyboard) }
+        if settings.contains(.battery) { events.insert(.power) }
+        if settings.contains(.network) { events.insert(.network) }
+        if settings.contains(.volume) { events.insert(.audio) }
         return events
     }
 }

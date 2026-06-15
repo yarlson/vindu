@@ -77,6 +77,7 @@ public final class ConfigParser {
         if !state.sections.isEmpty {
             doc.errors.append(ConfigError(line: 0, message: "unclosed section: \(state.sections.joined(separator: ":"))"))
         }
+        doc.errors.append(contentsOf: settingsValidationErrors(doc.settings))
         return doc
     }
 
@@ -84,14 +85,35 @@ public final class ConfigParser {
     /// `bind SUPER,T,exec,kitty`) to an existing document. Returns an error message or nil.
     public static func applyKeyword(_ key: String, _ value: String, to doc: inout ConfigDocument) -> String? {
         let parser = ConfigParser(fileLoader: { _ in throw CocoaError(.fileReadNoSuchFile) })
+        let originalValidation = Set(doc.settings.validationErrors())
+        var candidate = doc
+        parser.removeSettingsValidationErrors(from: &candidate, matching: originalValidation)
         var state = ParseState()
-        let before = doc.errors.count
-        parser.handleAssignment(key: key, value: value, doc: &doc, state: &state,
+        let before = candidate.errors.count
+        parser.handleAssignment(key: key, value: value, doc: &candidate, state: &state,
                                 line: 0, baseDir: NSHomeDirectory(), depth: 0)
-        if doc.errors.count > before {
-            return doc.errors.removeLast().message
+        if candidate.errors.count > before {
+            let error = candidate.errors.last?.message ?? "invalid keyword"
+            return error
         }
+
+        let nextValidation = candidate.settings.validationErrors()
+        let introduced = nextValidation.filter { !originalValidation.contains($0) }
+        if let error = introduced.first {
+            return error
+        }
+        candidate.errors.append(contentsOf: parser.settingsValidationErrors(candidate.settings))
+        doc = candidate
         return nil
+    }
+
+    private func settingsValidationErrors(_ settings: Settings) -> [ConfigError] {
+        settings.validationErrors().map { ConfigError(line: 0, message: $0) }
+    }
+
+    private func removeSettingsValidationErrors(from doc: inout ConfigDocument,
+                                                matching messages: Set<String>) {
+        doc.errors.removeAll { $0.line == 0 && messages.contains($0.message) }
     }
 
     private func parseLines(_ text: String, into doc: inout ConfigDocument,
