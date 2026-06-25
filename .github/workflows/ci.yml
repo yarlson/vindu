@@ -35,7 +35,7 @@ jobs:
       # Package.swift, then any build for this image. SwiftPM reuses what it
       # can incrementally, so even a stale cache saves most of the build.
       - name: Cache SwiftPM build
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             .build
