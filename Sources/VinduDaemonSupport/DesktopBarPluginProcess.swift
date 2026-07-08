@@ -83,6 +83,8 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
         }
 
         do {
+            try setSocketNonBlocking(stdoutPipe[0])
+            try setSocketNonBlocking(stderrPipe[0])
             let childPid = try spawn(stdoutPipe: stdoutPipe, stderrPipe: stderrPipe)
             close(stdoutPipe[1])
             close(stderrPipe[1])
@@ -314,7 +316,6 @@ private final class PipeCapture {
         self.fd = fd
         self.queue = queue
         self.source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
-        setSocketNonBlocking(fd)
     }
 
     func start() {

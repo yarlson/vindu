@@ -125,10 +125,10 @@ public enum SocketSecurity {
     }
 }
 
-func setSocketNonBlocking(_ fd: Int32) {
+func setSocketNonBlocking(_ fd: Int32) throws {
     let flags = fcntl(fd, F_GETFL)
-    if flags >= 0 {
-        _ = fcntl(fd, F_SETFL, flags | O_NONBLOCK)
+    guard flags >= 0, fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0 else {
+        throw SecureSocketError.socketFailed("fcntl(O_NONBLOCK): \(errno)")
     }
 }
 
@@ -141,7 +141,7 @@ func bindAndListen(path: String) throws -> Int32 {
         close(fd)
         throw SecureSocketError.socketFailed("bind/listen failed for \(path): \(e)")
     }
-    setSocketNonBlocking(fd)
+    try setSocketNonBlocking(fd)
     _ = chmod(path, S_IRUSR | S_IWUSR)
     return fd
 }

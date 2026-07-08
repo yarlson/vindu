@@ -86,8 +86,12 @@ public final class IPCServer {
                 Darwin.close(conn)
                 continue
             }
-            setSocketNonBlocking(conn)
-            track(conn)
+            do {
+                try setSocketNonBlocking(conn)
+                track(conn)
+            } catch {
+                Darwin.close(conn)
+            }
         }
     }
 
@@ -269,8 +273,12 @@ public final class EventBroadcaster {
                 close(conn)
                 continue
             }
-            setSocketNonBlocking(conn)
-            clients.append(conn)
+            do {
+                try setSocketNonBlocking(conn)
+                clients.append(conn)
+            } catch {
+                close(conn)
+            }
         }
     }
 

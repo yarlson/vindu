@@ -25,10 +25,6 @@ private final class ShortTemporaryDirectory {
     }
 }
 
-private func tempRoot() throws -> URL {
-    try ShortTemporaryDirectory().url
-}
-
 private func connectUnixSocket(_ path: String) throws -> Int32 {
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
     guard fd >= 0 else { throw SecureSocketError.socketFailed("socket(): \(errno)") }
