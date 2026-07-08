@@ -1,14 +1,17 @@
 import Foundation
 import VinduCore
 
-final class DesktopBarPluginService {
-    var onChange: (() -> Void)?
+public final class DesktopBarPluginService {
+    public typealias Logger = (String) -> Void
+    typealias ProcessFactory = (DesktopBarPluginRunRequest) -> DesktopBarPluginRunning
+
+    public var onChange: (() -> Void)?
 
     private final class State {
         var config: BarPluginConfig
         var current: BarPluginValue?
         var timer: Timer?
-        var run: DesktopBarPluginProcess?
+        var run: DesktopBarPluginRunning?
         var pending: Refresh?
 
         init(config: BarPluginConfig) {
@@ -22,13 +25,25 @@ final class DesktopBarPluginService {
         let eventPayload: String
     }
 
+    private let log: Logger
+    private let makeProcess: ProcessFactory
     private var states: [String: State] = [:]
 
-    var current: [String: BarPluginValue] {
+    public var current: [String: BarPluginValue] {
         states.compactMapValues(\.current)
     }
 
-    func sync(settings: BarSettings, enabled: Bool) {
+    public convenience init(log: @escaping Logger = { _ in }) {
+        self.init(log: log, makeProcess: { DesktopBarPluginProcess(request: $0) })
+    }
+
+    init(log: @escaping Logger,
+         makeProcess: @escaping ProcessFactory) {
+        self.log = log
+        self.makeProcess = makeProcess
+    }
+
+    public func sync(settings: BarSettings, enabled: Bool) {
         guard enabled else {
             stop()
             return
@@ -62,7 +77,7 @@ final class DesktopBarPluginService {
         }
     }
 
-    func stop() {
+    public func stop() {
         let hadValues = states.values.contains { $0.current != nil }
         for id in Array(states.keys) {
             _ = stop(id: id)
@@ -72,13 +87,13 @@ final class DesktopBarPluginService {
         }
     }
 
-    func refresh(id: String) -> Bool {
+    public func refresh(id: String) -> Bool {
         guard states[id] != nil else { return false }
         refresh(id: id, Refresh(reason: "manual", eventName: "", eventPayload: ""))
         return true
     }
 
-    func handle(event: WMEvent) {
+    public func handle(event: WMEvent) {
         for (id, state) in states where state.config.events.contains(event.name) {
             refresh(id: id, Refresh(reason: "event",
                                     eventName: event.name,
@@ -107,7 +122,7 @@ final class DesktopBarPluginService {
                                                  reason: refresh.reason,
                                                  eventName: refresh.eventName,
                                                  eventPayload: refresh.eventPayload)
-        let run = DesktopBarPluginProcess(request: request)
+        let run = makeProcess(request)
         state.run = run
         do {
             try run.start { [weak self, weak run] result in
@@ -120,14 +135,14 @@ final class DesktopBarPluginService {
     }
 
     private func finish(_ result: DesktopBarPluginRunResult,
-                        run: DesktopBarPluginProcess?) {
+                        run: DesktopBarPluginRunning?) {
         guard let state = states[result.id], state.run === run else { return }
         state.run = nil
 
         if result.timedOut {
             log("bar plugin \(result.id): timed out")
         } else if result.exitCode != 0 {
-            log("bar plugin \(result.id): exited \(result.exitCode)\(logSuffix(result.stderr))")
+            log("bar plugin \(result.id): exited \(result.exitCode)")
         } else {
             applyOutput(result.stdout, to: result.id, state: state)
         }
@@ -155,9 +170,5 @@ final class DesktopBarPluginService {
         state.timer?.invalidate()
         state.run?.terminate()
         return state.current != nil
-    }
-
-    private func logSuffix(_ stderr: String) -> String {
-        stderr.isEmpty ? "" : ": \(stderr)"
     }
 }

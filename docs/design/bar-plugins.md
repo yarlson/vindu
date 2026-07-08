@@ -75,14 +75,16 @@ Rules:
 ## Script execution
 
 Commands run through `/bin/sh -lc`, matching the existing `exec` dispatcher
-behavior and preserving shell-script ergonomics. The daemon captures stdout and
-stderr, enforces the timeout, and kills timed-out processes.
+behavior and preserving shell-script ergonomics. The daemon starts each run in
+its own process group, captures stdout and stderr, enforces the timeout with
+TERM then KILL, and also cleans up background descendants after the shell exits.
 
 One execution may be in flight per plugin. If another refresh is requested while
 the command is running, the service records one pending refresh and runs it after
-the current process exits. Event bursts are debounced before starting a command.
+the current process exits.
 
-Environment passed to scripts:
+Environment passed to scripts is intentionally minimal: `HOME`, `USER`,
+`LOGNAME`, `SHELL`, `TMPDIR`, locale variables, a safe PATH, plus:
 
 - `VINDU_BAR_PLUGIN_ID`
 - `VINDU_BAR_PLUGIN_REASON` = `startup`, `interval`, `event`, or `manual`
@@ -93,7 +95,9 @@ Environment passed to scripts:
 
 Scripts can use `vinductl -j clients`, `vinductl events`, and other existing
 IPC commands for richer state. The plugin runner does not invent a second query
-API.
+API. `env = NAME,value` config entries are inherited by `exec` commands, not by
+bar plugins; plugins that need credentials should read them from Keychain or
+their own private files.
 
 ## Output contract
 
@@ -134,8 +138,8 @@ output are failures.
 - If a plugin has a last valid value, failures keep rendering that value.
 - If a plugin has no valid value yet, failures hide the item.
 - Timeout, non-zero exit, invalid output, and missing command are logged with
-  the plugin id.
-- Stderr is never rendered in the bar. Log at most the first line, truncated.
+  the plugin id/status.
+- Stderr is never rendered in the bar and is not logged by default.
 - Config reload cancels removed plugins and refreshes changed plugins.
 
 ## Event model

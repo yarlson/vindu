@@ -278,6 +278,10 @@ public enum WMEvent {
     }
 
     public var line: String {
-        "\(name)>>\(payload)"
+        "\(name)>>\(WMEvent.lineSafe(payload))"
+    }
+
+    private static func lineSafe(_ value: String) -> String {
+        String(value.map { $0 == "\n" || $0 == "\r" ? " " : $0 })
     }
 }

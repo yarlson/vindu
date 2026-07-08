@@ -63,5 +63,7 @@ struct RuleTests {
         #expect(WMEvent.openwindow(42, workspace: "2", clazz: "Safari", title: "t").line ==
                 "openwindow>>0x2a,2,Safari,t")
         #expect(WMEvent.configreloaded.line == "configreloaded>>")
+        #expect(WMEvent.activewindow(clazz: "term\nx", title: "vim\ry").line ==
+                "activewindow>>term x,vim y")
     }
 }

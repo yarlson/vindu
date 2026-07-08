@@ -1,5 +1,6 @@
 import AppKit
 import VinduCore
+import VinduDaemonSupport
 
 /// Per-window state the WM owns; geometry lives in top-left-origin coords.
 final class WindowState {
@@ -58,7 +59,8 @@ final class WindowManager {
     /// chords pass through. Resume reasserts the grid.
     private(set) var paused = false
     /// True when this launch wrote the default config — i.e. a first run.
-    private var wroteDefaultConfig = false
+    var wroteDefaultConfig = false
+    var shutdownRequested = false
 
     var windows: [WindowID: WindowState] = [:]
     /// Visible (non-special) workspace per monitor.
@@ -75,6 +77,7 @@ final class WindowManager {
     private var lastReassert: [WindowID: Double] = [:]
     private var lastFullscreenPoll: [WindowID: Double] = [:]
     private var settleWork: [WindowID: DispatchWorkItem] = [:]
+    var desktopBarRefreshQueued = false
     /// Last explicit switch gesture (⌘Tab, Dock click). Activations that
     /// follow one are user intent and may switch workspaces.
     private var lastUserGesture = 0.0
@@ -88,9 +91,9 @@ final class WindowManager {
     // MARK: - Bootstrap
 
     func bootstrap() {
-        loadConfig(runExecOnce: true)
+        guard loadInitialConfig() else { exit(1) }
         monitorMgr.start()
-        monitorMgr.onChange = { [weak self] in self?.monitorsChanged() }
+        monitorMgr.onChange = { [weak self] change in self?.monitorsChanged(change) }
         ensureWorkspacesForMonitors()
         focusedMonitorID = monitorMgr.primary?.id ?? 0
 
@@ -158,48 +161,10 @@ final class WindowManager {
         // the initial tiling has settled.
         if wroteDefaultConfig {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                self?.toggleCheatSheet()
+                self?.showCheatSheetIfHidden()
             }
         }
         log("ready — \(monitorMgr.monitors.count) monitor(s), socket \(VinduPaths.commandSocketPath)")
-    }
-
-    func loadConfig(runExecOnce: Bool) {
-        let parser = ConfigParser()
-        let text = (try? String(contentsOfFile: configPath, encoding: .utf8)) ?? defaultConfigTemplate
-        if !FileManager.default.fileExists(atPath: configPath) {
-            try? FileManager.default.createDirectory(
-                atPath: (configPath as NSString).deletingLastPathComponent,
-                withIntermediateDirectories: true)
-            try? defaultConfigTemplate.write(toFile: configPath, atomically: true, encoding: .utf8)
-            wroteDefaultConfig = true
-            log("wrote default config to \(configPath)")
-        }
-        doc = parser.parse(text: text, baseDir: (configPath as NSString).deletingLastPathComponent)
-        for (k, v) in doc.envs {
-            setenv(k, v, 1)
-        }
-        tap.rebuild(binds: doc.binds)
-        if !doc.errors.isEmpty {
-            for e in doc.errors.prefix(5) {
-                log("config:\(e.line): \(e.message)")
-            }
-            Exec.notify("config has \(doc.errors.count) error(s) — see configerrors")
-        }
-        if runExecOnce {
-            for cmd in doc.execOnce { Exec.run(cmd) }
-        }
-        for cmd in doc.exec { Exec.run(cmd) }
-    }
-
-    func reloadConfig() {
-        loadConfig(runExecOnce: false)
-        ensureWorkspacesForMonitors()
-        applyDesktopUISettings()
-        arrangeAllVisible()
-        refreshDesktopBar()
-        broadcast(.configreloaded)
-        log("config reloaded")
     }
 
     func applyDesktopUISettings() {
@@ -572,7 +537,7 @@ final class WindowManager {
 
     // MARK: - Monitors changed
 
-    func monitorsChanged() {
+    func monitorsChanged(_ change: MonitorChange) {
         let alive = Set(monitorMgr.monitors.map(\.id))
         let fallback = monitorMgr.primary?.id ?? 0
         for ws in registry.byID.values where !alive.contains(ws.monitor) {
@@ -586,6 +551,12 @@ final class WindowManager {
         ensureWorkspacesForMonitors()
         arrangeAllVisible()
         refreshDesktopBar()
+        for name in change.removed {
+            broadcast(.monitorremoved(name))
+        }
+        for name in change.added {
+            broadcast(.monitoradded(name))
+        }
     }
 
     // MARK: - Pause
@@ -614,52 +585,6 @@ final class WindowManager {
         }
     }
 
-    // MARK: - Cheat sheet
-
-    func toggleCheatSheet() {
-        guard let monitor = monitorMgr.byID(focusedMonitorID) ?? monitorMgr.primary else { return }
-        cheatSheet.toggle(rows: BindDisplay.rows(doc.binds),
-                          monitorFrame: monitor.usable,
-                          primaryHeight: monitorMgr.primaryHeight)
-    }
-
-    func refreshDesktopBar() {
-        guard settings.bar.enabled else {
-            desktopBar.hide()
-            return
-        }
-        desktopBar.update(settings: settings.bar,
-                          snapshot: desktopBarSnapshot(),
-                          primaryHeight: monitorMgr.primaryHeight)
-    }
-
-    private func desktopBarSnapshot() -> DesktopBarSnapshot {
-        let existing = registry.sorted.filter { !$0.isSpecial }
-        let positiveIDs = Set(Array(1...9) + existing.map(\.id).filter { $0 > 0 }).sorted()
-        let namedIDs = existing.map(\.id).filter { $0 <= 0 }
-        let workspaces = (positiveIDs + namedIDs).map { id -> DesktopBarWorkspace in
-            if let ws = registry.existing(id) {
-                return DesktopBarWorkspace(id: id, name: ws.name, windows: ws.allWindows.count)
-            }
-            return DesktopBarWorkspace(id: id, name: String(id), windows: 0)
-        }
-
-        let active = focusedWindow.flatMap { windows[$0] }
-        let frontmost = NSWorkspace.shared.frontmostApplication
-        return DesktopBarSnapshot(
-            monitors: monitorMgr.monitors,
-            workspaces: workspaces,
-            activeWorkspaces: activeWS,
-            appProcessIdentifier: active?.pid ?? frontmost?.processIdentifier,
-            appName: active?.clazz ?? frontmost?.localizedName ?? "",
-            windowTitle: active?.title ?? "",
-            layout: settings.general.layout,
-            submap: tap.activeSubmap,
-            paused: paused,
-            system: DesktopBarSystemInfo.current(weather: desktopBarRefresh.currentWeather),
-            plugins: desktopBarRefresh.currentPlugins
-        )
-    }
 }
 
 // MARK: - AXBridgeDelegate

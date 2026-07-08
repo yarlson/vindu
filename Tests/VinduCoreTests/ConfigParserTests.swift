@@ -203,6 +203,23 @@ struct ConfigParserTests {
         #expect(doc.settings.general.gapsIn == 99)
     }
 
+    @Test func sourceDirectiveFileCountLimit() {
+        let parser = ConfigParser(
+            limits: ConfigParserLimits(maxSourceDepth: 10, maxSourceFiles: 1, maxSourceBytes: 1024),
+            fileLoader: { _ in "source = next.conf\n" })
+        let doc = parser.parse(text: "source = first.conf")
+        #expect(doc.errors.map(\.message).contains("too many sourced config files"))
+    }
+
+    @Test func sourceDirectiveByteLimit() {
+        let parser = ConfigParser(
+            limits: ConfigParserLimits(maxSourceDepth: 10, maxSourceFiles: 10, maxSourceBytes: 4),
+            fileLoader: { _ in "general:gaps_in = 99\n" })
+        let doc = parser.parse(text: "source = too-large.conf")
+        #expect(doc.errors.map(\.message).contains("sourced config files are too large"))
+        #expect(doc.settings.general.gapsIn != 99)
+    }
+
     @Test func unbindRemovesBind() {
         let doc = parseDoc("""
         bind = SUPER, T, exec, kitty

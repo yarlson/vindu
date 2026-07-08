@@ -531,6 +531,8 @@ extension WindowManager {
     // MARK: Shutdown
 
     func shutdown() {
+        guard !shutdownRequested else { return }
+        shutdownRequested = true
         // Bring every stashed window back where a human can reach it.
         for (id, state) in windows where state.hidden {
             let ws = workspace(forID: state.workspace)

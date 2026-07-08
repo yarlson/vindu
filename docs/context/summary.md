@@ -10,10 +10,11 @@ Dynamic tiling window manager for macOS. Single Swift package, zero external dep
 
 ## Architecture
 
-Three targets with a hard purity boundary:
+Four targets with a hard purity boundary:
 
 - `VinduCore` — library holding all logic that can be pure: config language, settings, binds, dispatchers, window rules, both layout engines, workspace registry, IPC models and wire formats. No GUI dependencies; covered by `swift test`.
-- `vindud` — the daemon. Owns every OS integration: AX observers (`AXBridge`), the event tap (`HotkeyTap`), monitors, border overlay, Unix sockets, config watcher, launchd self-install. Single-threaded: AX events, hotkeys, and IPC all funnel into `WindowManager` on the main queue.
+- `VinduDaemonSupport` — testable daemon infrastructure that does not need AX/AppKit window access: config file loading, IPC/socket helpers, config watching, LaunchAgent plist rendering, service log paths, desktop-bar plugin execution, and weather fetches.
+- `vindud` — the daemon. Owns every OS integration: AX observers (`AXBridge`), the event tap (`HotkeyTap`), monitors, border overlay, AppKit desktop-bar panels, and launch orchestration. Single-threaded: AX events, hotkeys, and IPC all funnel into `WindowManager` on the main queue.
 - `vinductl` — thin socket-client CLI.
 
 All geometry is top-left-origin global coordinates; AppKit's flipped coordinates appear only at the border-overlay and cursor-position boundaries.
@@ -29,7 +30,7 @@ All geometry is top-left-origin global coordinates; AppKit's flipped coordinates
 ## System State
 
 - Working WM distributed via Homebrew (`yarlson/tap/vindu`) and source builds, with launchd service self-install.
-- VinduCore behavior is unit-tested with swift-testing; the daemon layer is deliberately untested — it requires the Accessibility grant and a live window session.
+- VinduCore and VinduDaemonSupport behavior are unit-tested with swift-testing. Live `vindud` behavior still requires the Accessibility grant and a real window session.
 
 ## Capabilities
 

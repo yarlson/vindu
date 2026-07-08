@@ -3,6 +3,8 @@ import CoreWLAN
 import Darwin
 import Foundation
 import IOKit.ps
+import VinduCore
+import VinduDaemonSupport
 
 struct DesktopBarSystemInfo {
     var date: String
@@ -12,14 +14,15 @@ struct DesktopBarSystemInfo {
     var volume: DesktopBarVolumeInfo?
     var weather: DesktopBarWeatherInfo?
 
-    static func current(weather: DesktopBarWeatherInfo?) -> DesktopBarSystemInfo {
+    static func current(requests: DesktopBarSystemInfoRequests,
+                        weather: DesktopBarWeatherInfo?) -> DesktopBarSystemInfo {
         DesktopBarSystemInfo(
-            date: currentDate(),
-            battery: currentBattery(),
-            network: currentNetwork(),
-            keyboard: currentKeyboard(),
-            volume: currentVolume(),
-            weather: weather
+            date: requests.date ? currentDate() : "",
+            battery: requests.battery ? currentBattery() : nil,
+            network: requests.network ? currentNetwork() : nil,
+            keyboard: requests.keyboard ? currentKeyboard() : nil,
+            volume: requests.volume ? currentVolume() : nil,
+            weather: requests.weather ? weather : nil
         )
     }
 
@@ -110,5 +113,24 @@ struct DesktopBarSystemInfo {
 
     private static func currentVolume() -> DesktopBarVolumeInfo? {
         DesktopBarAudioState.currentVolumeInfo()
+    }
+}
+
+struct DesktopBarSystemInfoRequests: Equatable {
+    var date = false
+    var battery = false
+    var network = false
+    var keyboard = false
+    var volume = false
+    var weather = false
+
+    init(settings: BarSettings) {
+        guard settings.enabled, settings.showIndicators else { return }
+        date = settings.contains(.date)
+        battery = settings.contains(.battery)
+        network = settings.contains(.network)
+        keyboard = settings.contains(.keyboard)
+        volume = settings.contains(.volume)
+        weather = settings.contains(.weather)
     }
 }

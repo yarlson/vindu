@@ -12,26 +12,38 @@ struct Monitor {
     let scale: Double
 }
 
+struct MonitorChange: Equatable {
+    var added: [String] = []
+    var removed: [String] = []
+
+    var isEmpty: Bool {
+        added.isEmpty && removed.isEmpty
+    }
+}
+
 final class MonitorManager {
     private(set) var monitors: [Monitor] = []
-    var onChange: (() -> Void)?
+    var onChange: ((MonitorChange) -> Void)?
 
     /// Height of the primary screen; converts top-left CG coords to AppKit's
     /// bottom-left for NSWindow placement.
     private(set) var primaryHeight: Double = 0
 
     func start() {
-        rebuild()
+        _ = rebuild()
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            self?.rebuild()
-            self?.onChange?()
+            guard let self else { return }
+            let change = self.rebuild()
+            self.onChange?(change)
         }
     }
 
-    func rebuild() {
+    @discardableResult
+    func rebuild() -> MonitorChange {
+        let previous = Dictionary(uniqueKeysWithValues: monitors.map { ($0.id, $0.name) })
         primaryHeight = Double(NSScreen.screens.first?.frame.height ?? 0)
         var out: [Monitor] = []
         for (i, screen) in NSScreen.screens.enumerated() {
@@ -53,6 +65,7 @@ final class MonitorManager {
                                scale: Double(screen.backingScaleFactor)))
         }
         monitors = out
+        return Self.change(from: previous, to: monitors)
     }
 
     var primary: Monitor? { monitors.first }
@@ -89,5 +102,19 @@ final class MonitorManager {
             .map { (id: $0.id, rect: $0.frame) }
         return LayoutMath.neighbor(of: monitor.frame, in: direction, candidates: candidates)
             .flatMap(byID)
+    }
+
+    private static func change(from previous: [CGDirectDisplayID: String],
+                               to monitors: [Monitor]) -> MonitorChange {
+        let current = Dictionary(uniqueKeysWithValues: monitors.map { ($0.id, $0.name) })
+        let added = current.keys
+            .filter { previous[$0] == nil }
+            .sorted()
+            .compactMap { current[$0] }
+        let removed = previous.keys
+            .filter { current[$0] == nil }
+            .sorted()
+            .compactMap { previous[$0] }
+        return MonitorChange(added: added, removed: removed)
     }
 }

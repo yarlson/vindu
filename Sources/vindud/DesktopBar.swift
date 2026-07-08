@@ -1,5 +1,6 @@
 import AppKit
 import VinduCore
+import VinduDaemonSupport
 
 struct DesktopBarWorkspace {
     let id: Int
@@ -450,12 +451,17 @@ private final class WorkspaceButton: NSButton {
         isBordered = false
         bezelStyle = .regularSquare
         setButtonType(.momentaryChange)
+        target = self
+        action = #selector(activateWorkspace)
         wantsLayer = true
         layer?.cornerRadius = metrics.cornerRadius
         layer?.backgroundColor = active
             ? NSColor(vinduColor: settings.active).cgColor
             : NSColor.clear.cgColor
         contentTintColor = foreground
+        setAccessibilityLabel("Workspace \(workspace.name)")
+        setAccessibilityValue(active ? "active" : "\(workspace.windows) windows")
+        setAccessibilityHelp("Switch to workspace \(workspace.name)")
         translatesAutoresizingMaskIntoConstraints = false
         heightAnchor.constraint(equalToConstant: metrics.pillHeight).isActive = true
         widthAnchor.constraint(greaterThanOrEqualToConstant: metrics.pillMinWidth).isActive = true
@@ -466,7 +472,7 @@ private final class WorkspaceButton: NSButton {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func mouseDown(with event: NSEvent) {
+    @objc private func activateWorkspace() {
         onClick?(workspaceID)
     }
 }

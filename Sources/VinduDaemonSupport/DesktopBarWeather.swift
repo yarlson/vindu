@@ -1,15 +1,20 @@
 import Foundation
 import VinduCore
 
-struct DesktopBarWeatherInfo: Equatable {
-    let temperatureC: Double
-    let weatherCode: Int
+public struct DesktopBarWeatherInfo: Equatable {
+    public let temperatureC: Double
+    public let weatherCode: Int
 
-    var text: String {
+    public init(temperatureC: Double, weatherCode: Int) {
+        self.temperatureC = temperatureC
+        self.weatherCode = weatherCode
+    }
+
+    public var text: String {
         "\(Int(temperatureC.rounded()))°C"
     }
 
-    var symbolNames: [String] {
+    public var symbolNames: [String] {
         switch weatherCode {
         case 0:
             return ["sun.max.fill", "sun.max"]
@@ -33,21 +38,45 @@ struct DesktopBarWeatherInfo: Equatable {
     }
 }
 
-final class DesktopBarWeatherService {
-    var onChange: (() -> Void)?
-    private(set) var current: DesktopBarWeatherInfo?
+public final class DesktopBarWeatherService {
+    public typealias Logger = (String) -> Void
+
+    public static let maxResponseBytes = 64 * 1024
+
+    public var onChange: (() -> Void)?
+    public private(set) var current: DesktopBarWeatherInfo?
 
     private struct Configuration: Equatable {
         var location: WeatherLocation
         var refreshMinutes: Int
     }
 
+    private enum FetchResult {
+        case success(DesktopBarWeatherInfo)
+        case failure(String)
+    }
+
+    private let session: URLSession
+    private let decodeQueue: DispatchQueue
+    private let callbackQueue: DispatchQueue
+    private let log: Logger
     private var configuration: Configuration?
     private var refreshTimer: Timer?
     private var request: URLSessionDataTask?
     private var fetching = false
 
-    func sync(location: WeatherLocation?, refreshMinutes: Int, enabled: Bool) {
+    public init(session: URLSession = DesktopBarWeatherService.defaultSession(),
+                decodeQueue: DispatchQueue = DispatchQueue(label: "vindu.weather.decode",
+                                                           qos: .utility),
+                callbackQueue: DispatchQueue = .main,
+                log: @escaping Logger = { _ in }) {
+        self.session = session
+        self.decodeQueue = decodeQueue
+        self.callbackQueue = callbackQueue
+        self.log = log
+    }
+
+    public func sync(location: WeatherLocation?, refreshMinutes: Int, enabled: Bool) {
         guard enabled, let location else {
             stop()
             return
@@ -61,7 +90,7 @@ final class DesktopBarWeatherService {
         scheduleNextRefresh()
     }
 
-    func stop() {
+    public func stop() {
         let hadWeather = current != nil
         request?.cancel()
         request = nil
@@ -93,22 +122,35 @@ final class DesktopBarWeatherService {
         }
 
         fetching = true
-        request = URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            DispatchQueue.main.async {
-                guard let self, self.configuration == configuration else { return }
-                self.fetching = false
-                self.request = nil
-                guard let data,
-                      let weather = Self.decode(data) else {
-                    return
-                }
-                if self.current != weather {
-                    self.current = weather
-                    self.onChange?()
+        request = session.dataTask(with: url) { [weak self] data, response, error in
+            guard let self else { return }
+            self.decodeQueue.async {
+                let result = Self.result(data: data, response: response, error: error)
+                self.callbackQueue.async {
+                    guard self.configuration == configuration else { return }
+                    self.fetching = false
+                    self.request = nil
+                    switch result {
+                    case .success(let weather):
+                        if self.current != weather {
+                            self.current = weather
+                            self.onChange?()
+                        }
+                    case .failure(let message):
+                        self.log("weather: \(message)")
+                    }
                 }
             }
         }
         request?.resume()
+    }
+
+    public static func defaultSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 8
+        configuration.timeoutIntervalForResource = 12
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: configuration)
     }
 
     private static func url(for location: WeatherLocation) -> URL? {
@@ -120,6 +162,34 @@ final class DesktopBarWeatherService {
             URLQueryItem(name: "timezone", value: "auto"),
         ]
         return components?.url
+    }
+
+    private static func result(data: Data?,
+                               response: URLResponse?,
+                               error: Error?) -> FetchResult {
+        if let error = error as NSError?, error.domain == NSURLErrorDomain,
+           error.code == NSURLErrorCancelled {
+            return .failure("request cancelled")
+        }
+        if error != nil {
+            return .failure("request failed")
+        }
+        guard let http = response as? HTTPURLResponse else {
+            return .failure("missing http response")
+        }
+        guard http.statusCode == 200 else {
+            return .failure("http \(http.statusCode)")
+        }
+        guard let data else {
+            return .failure("empty response")
+        }
+        guard data.count <= maxResponseBytes else {
+            return .failure("response too large")
+        }
+        guard let weather = decode(data) else {
+            return .failure("invalid response")
+        }
+        return .success(weather)
     }
 
     private static func decode(_ data: Data) -> DesktopBarWeatherInfo? {

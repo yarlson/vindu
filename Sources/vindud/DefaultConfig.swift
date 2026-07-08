@@ -61,7 +61,8 @@ bar {
     show_app = true
     show_indicators = true
     indicators = pause, submap, windows, date, battery, network, keyboard, volume
-    # Open-Meteo weather: add `weather` to indicators after setting lat,lon
+    # Open-Meteo weather: add `weather` to indicators after setting lat,lon.
+    # Enabling it sends those configured coordinates to Open-Meteo.
     weather_location =
     weather_refresh_minutes = 15
     # Custom script item:

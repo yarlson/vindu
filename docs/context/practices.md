@@ -6,7 +6,7 @@
 - The window manager is single-threaded on the main queue. Tap callbacks, IPC reads, and timers hop to main before touching state.
 - Tiled membership changes only through `WorkspaceState.insertTiled/removeTiled/removeWindow/swapTiled` — the single place that keeps master order and the dwindle tree in lockstep. Layout-specific APIs (ratios, mfact, orientation) never change membership.
 - Master order is the canonical window order; the dwindle tree is rebuilt from it when the layout switches.
-- Config errors never crash the daemon: they are collected with line numbers, readable via `configerrors`, and surfaced as a user notification.
+- Config parse errors never crash the daemon: they are collected with line numbers, readable via `configerrors`, and surfaced as a user notification. Config file read failures are different: startup fails closed, while reload keeps the last good config and reports a line-0 load error.
 - The default config template ships inside the binary (`DefaultConfig.swift`); `examples/vindu.conf` must stay byte-identical. `make test` enforces this (`check-template`).
 - One daemon per user: the command socket file is probed before bind — a live listener aborts startup, a dead file is unlinked.
 
@@ -25,7 +25,7 @@
 
 ## Testing and verification
 
-- All logic that can be pure lives in VinduCore and is tested with swift-testing; the daemon is the untestable shell. New logic lands in VinduCore when feasible.
+- All logic that can be pure lives in VinduCore and is tested with swift-testing. Daemon support logic that does not require live AX/AppKit window access lives in VinduDaemonSupport and is tested there. Live `vindud` behavior remains outside automated tests unless explicitly consented to.
 - `make test` injects Command Line Tools framework paths so `swift test` works without full Xcode.
 - The daemon re-tiles the user's real windows; runtime verification needs a live session and explicit user consent.
 

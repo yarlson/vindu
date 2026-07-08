@@ -52,6 +52,20 @@ public struct ConfigDocument {
     public init() {}
 }
 
+public struct ConfigParserLimits {
+    public var maxSourceDepth: Int
+    public var maxSourceFiles: Int
+    public var maxSourceBytes: Int
+
+    public init(maxSourceDepth: Int = 10,
+                maxSourceFiles: Int = 64,
+                maxSourceBytes: Int = 1_048_576) {
+        self.maxSourceDepth = maxSourceDepth
+        self.maxSourceFiles = maxSourceFiles
+        self.maxSourceBytes = maxSourceBytes
+    }
+}
+
 /// Parses the Hyprland config dialect: `key = value`, `section { … }`,
 /// `$variables`, `source =`, `#` comments (`##` escapes a literal `#`),
 /// and submap blocks delimited by `submap = name` / `submap = reset`.
@@ -59,15 +73,20 @@ public final class ConfigParser {
     public typealias FileLoader = (String) throws -> String
 
     private let loadFile: FileLoader
+    private let limits: ConfigParserLimits
 
-    public init(fileLoader: @escaping FileLoader = { try String(contentsOfFile: $0, encoding: .utf8) }) {
+    public init(limits: ConfigParserLimits = ConfigParserLimits(),
+                fileLoader: @escaping FileLoader = { try String(contentsOfFile: $0, encoding: .utf8) }) {
         self.loadFile = fileLoader
+        self.limits = limits
     }
 
     private struct ParseState {
         var vars: [String: String] = [:]
         var sections: [String] = []
         var submap = ""
+        var sourceFiles = 0
+        var sourceBytes = 0
     }
 
     public func parse(text: String, baseDir: String = NSHomeDirectory()) -> ConfigDocument {
@@ -177,14 +196,25 @@ public final class ConfigParser {
 
         switch k {
         case "source":
-            guard depth < 10 else {
+            guard depth < limits.maxSourceDepth else {
                 doc.errors.append(ConfigError(line: line, message: "source nesting too deep"))
+                return
+            }
+            guard state.sourceFiles < limits.maxSourceFiles else {
+                doc.errors.append(ConfigError(line: line, message: "too many sourced config files"))
                 return
             }
             let expanded = (value as NSString).expandingTildeInPath
             let path = expanded.hasPrefix("/") ? expanded : (baseDir as NSString).appendingPathComponent(expanded)
             do {
                 let text = try loadFile(path)
+                let bytes = text.utf8.count
+                guard state.sourceBytes + bytes <= limits.maxSourceBytes else {
+                    doc.errors.append(ConfigError(line: line, message: "sourced config files are too large"))
+                    return
+                }
+                state.sourceFiles += 1
+                state.sourceBytes += bytes
                 let dir = (path as NSString).deletingLastPathComponent
                 parseLines(text, into: &doc, state: &state, baseDir: dir, depth: depth + 1)
             } catch {

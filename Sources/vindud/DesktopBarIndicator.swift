@@ -6,12 +6,14 @@ struct DesktopBarIndicatorPresentation {
     let textWithSymbol: String?
     let symbolNames: [String]
     let color: MLColor
+    let accessibilityLabel: String
 
     init(item: BarIndicator, text: String, color: MLColor,
          symbolNames: [String]? = nil) {
         self.text = text
         self.symbolNames = symbolNames ?? Self.symbolNames(for: item, text: text)
         self.color = color
+        self.accessibilityLabel = Self.accessibilityLabel(for: item, text: text)
 
         switch item {
         case .network, .volume:
@@ -25,6 +27,7 @@ struct DesktopBarIndicatorPresentation {
         self.text = text
         self.symbolNames = symbolNames
         self.color = color
+        self.accessibilityLabel = text
         self.textWithSymbol = text.isEmpty ? nil : text
     }
 
@@ -80,6 +83,23 @@ struct DesktopBarIndicatorPresentation {
             return ["battery.0", "battery.100"]
         }
     }
+
+    private static func accessibilityLabel(for item: BarIndicator, text: String) -> String {
+        let name: String
+        switch item {
+        case .pause: name = "Pause"
+        case .submap: name = "Submap"
+        case .layout: name = "Layout"
+        case .windows: name = "Windows"
+        case .date: name = "Date"
+        case .battery: name = "Battery"
+        case .network: name = "Network"
+        case .keyboard: name = "Keyboard"
+        case .volume: name = "Volume"
+        case .weather: name = "Weather"
+        }
+        return text.isEmpty ? name : "\(name): \(text)"
+    }
 }
 
 final class DesktopBarIndicatorView: NSView {
@@ -88,6 +108,9 @@ final class DesktopBarIndicatorView: NSView {
 
         translatesAutoresizingMaskIntoConstraints = false
         heightAnchor.constraint(equalToConstant: metrics.indicatorHeight).isActive = true
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
+        setAccessibilityLabel(presentation.accessibilityLabel)
 
         let tint = NSColor(vinduColor: presentation.color)
         let image = Self.symbolImage(names: presentation.symbolNames, metrics: metrics)
@@ -124,6 +147,7 @@ final class DesktopBarIndicatorView: NSView {
         imageView.contentTintColor = tint
         imageView.imageAlignment = .alignCenter
         imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.setAccessibilityElement(false)
         imageView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(imageView)
 
@@ -166,6 +190,7 @@ final class DesktopBarIndicatorView: NSView {
         label.textColor = tint
         label.lineBreakMode = .byTruncatingTail
         label.maximumNumberOfLines = 1
+        label.setAccessibilityElement(false)
         label.setContentHuggingPriority(.required, for: .horizontal)
         label.translatesAutoresizingMaskIntoConstraints = false
         return label

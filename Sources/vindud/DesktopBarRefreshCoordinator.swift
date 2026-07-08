@@ -1,5 +1,6 @@
 import Foundation
 import VinduCore
+import VinduDaemonSupport
 
 final class DesktopBarRefreshCoordinator {
     var onChange: (() -> Void)? {
@@ -11,8 +12,8 @@ final class DesktopBarRefreshCoordinator {
     }
 
     private let systemObserver = DesktopBarSystemObserver()
-    private let weather = DesktopBarWeatherService()
-    private let plugins = DesktopBarPluginService()
+    private let weather = DesktopBarWeatherService(log: log)
+    private let plugins = DesktopBarPluginService(log: log)
     private var clockTimer: Timer?
 
     var currentWeather: DesktopBarWeatherInfo? {

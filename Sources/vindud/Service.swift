@@ -1,4 +1,5 @@
 import Foundation
+import VinduDaemonSupport
 
 /// Self-service launchd management: writes a LaunchAgent pointing at the
 /// current binary and (un)registers it with launchctl, so "start at login"
@@ -10,25 +11,17 @@ enum Service {
         NSHomeDirectory() + "/Library/LaunchAgents/\(label).plist"
     }
 
-    static func install() -> Int32 {
+    static func install(configPath: String) -> Int32 {
         guard let binary = Bundle.main.executableURL?.resolvingSymlinksInPath().path else {
             log("cannot resolve own binary path")
             return 1
         }
-        let plist: [String: Any] = [
-            "Label": label,
-            "ProgramArguments": [binary],
-            "RunAtLoad": true,
-            "KeepAlive": ["SuccessfulExit": false],
-            "StandardOutPath": "/tmp/vindu.log",
-            "StandardErrorPath": "/tmp/vindu.log",
-        ]
+        let logPath = VinduLogPaths.daemonLogPath()
         do {
-            let dir = (plistPath as NSString).deletingLastPathComponent
-            try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            let data = try PropertyListSerialization.data(fromPropertyList: plist,
-                                                          format: .xml, options: 0)
-            try data.write(to: URL(fileURLWithPath: plistPath))
+            try LaunchAgentPlist.write(binaryPath: binary,
+                                       configPath: configPath,
+                                       logPath: logPath,
+                                       to: plistPath)
         } catch {
             log("cannot write \(plistPath): \(error.localizedDescription)")
             return 1
@@ -38,7 +31,7 @@ enum Service {
         let status = launchctl("bootstrap", "gui/\(getuid())", plistPath)
         if status == 0 {
             print("service installed: \(plistPath)")
-            print("vindu is running and will start at login (logs: /tmp/vindu.log)")
+            print("vindu is running and will start at login (logs: \(logPath))")
         } else {
             log("launchctl bootstrap failed (\(status))")
         }

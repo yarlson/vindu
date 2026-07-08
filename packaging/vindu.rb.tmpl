@@ -3,7 +3,7 @@
 class Vindu < Formula
   desc "Dynamic tiling window manager for macOS"
   homepage "https://github.com/yarlson/vindu"
-  url "https://github.com/yarlson/vindu/releases/download/__TAG__/vindu-__TAG__-macos-universal.tar.gz"
+  url "https://github.com/yarlson/vindu/releases/download/__TAG__/vindu-__TAG__-macos-universal.zip"
   sha256 "__SHA256__"
   version "__VERSION__"
 
@@ -18,8 +18,8 @@ class Vindu < Formula
   service do
     run [opt_bin/"vindud"]
     keep_alive successful_exit: false
-    log_path "/tmp/vindu.log"
-    error_log_path "/tmp/vindu.log"
+    log_path var/"log/vindu.log"
+    error_log_path var/"log/vindu.err.log"
   end
 
   def caveats

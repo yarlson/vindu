@@ -37,8 +37,7 @@ extension WindowManager {
             refreshDesktopBar()
             return "ok"
         case "reload":
-            reloadConfig()
-            return "ok"
+            return reloadConfig() ? "ok" : "err: config reload failed"
         case "barplugin":
             return handleBarPluginIPC(arg)
         case "clients":

@@ -1,5 +1,6 @@
 import Foundation
 import VinduCore
+import VinduDaemonSupport
 
 let usage = """
 vinductl — control the vindu window manager
@@ -25,12 +26,14 @@ Sockets: \(VinduPaths.commandSocketPath)
          \(VinduPaths.eventSocketPath)
 """
 
-func connectSocket(path: String) -> Int32? {
+func connectSocket(path: String) throws -> Int32 {
+    try SocketSecurity.validateSocketPathForConnect(path)
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-    guard fd >= 0 else { return nil }
+    guard fd >= 0 else { throw SecureSocketError.socketFailed("socket(): \(errno)") }
     guard UnixSocket.connect(fd, to: path) == 0 else {
+        let e = errno
         close(fd)
-        return nil
+        throw SecureSocketError.socketFailed("connect \(path): \(e)")
     }
     return fd
 }
@@ -41,11 +44,16 @@ func die(_ message: String) -> Never {
 }
 
 func request(_ line: String) -> String {
-    guard let fd = connectSocket(path: VinduPaths.commandSocketPath) else {
-        die("cannot connect to \(VinduPaths.commandSocketPath) — is vindud running?")
+    let fd: Int32
+    do {
+        fd = try connectSocket(path: VinduPaths.commandSocketPath)
+    } catch {
+        die("cannot connect to \(VinduPaths.commandSocketPath) — is vindud running? (\(error))")
     }
     defer { close(fd) }
-    Array(line.utf8).withUnsafeBytes { _ = write(fd, $0.baseAddress, $0.count) }
+    guard writeAll(fd, data: Array(line.utf8)) else {
+        die("cannot write request to \(VinduPaths.commandSocketPath)")
+    }
     shutdown(fd, SHUT_WR)
     var out = Data()
     var buf = [UInt8](repeating: 0, count: 64 * 1024)
@@ -58,8 +66,11 @@ func request(_ line: String) -> String {
 }
 
 func streamEvents() -> Never {
-    guard let fd = connectSocket(path: VinduPaths.eventSocketPath) else {
-        die("cannot connect to \(VinduPaths.eventSocketPath) — is vindud running?")
+    let fd: Int32
+    do {
+        fd = try connectSocket(path: VinduPaths.eventSocketPath)
+    } catch {
+        die("cannot connect to \(VinduPaths.eventSocketPath) — is vindud running? (\(error))")
     }
     var buf = [UInt8](repeating: 0, count: 4096)
     while true {

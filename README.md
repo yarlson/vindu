@@ -52,7 +52,8 @@ tiling and quits the daemon, no chords required.
 To pause instead of quitting: `alt + shift + p`. Windows move freely until
 you press it again and the grid reasserts. To stop: `alt + shift + m` exits
 and puts windows back where humans can reach them; `brew services stop
-vindu` turns the service off entirely. Logs land in `/tmp/vindu.log`.
+vindu` turns the service off entirely. Source/self-install logs land in
+`~/Library/Logs/vindu/vindud.log`; Homebrew logs under its `var/log` tree.
 
 ## If something looks wrong
 
@@ -73,8 +74,10 @@ vindu` turns the service off entirely. Logs land in `/tmp/vindu.log`.
 - **I want my config back to defaults.** Delete
   `~/.config/vindu/vindu.conf` and restart `vindud`. It writes a fresh one.
 
-Config errors never crash the daemon. Check `vinductl configerrors` if
-something in the file isn't taking effect.
+Config parse errors never crash the daemon. Check `vinductl configerrors`
+if something in the file isn't taking effect. If the config file itself
+cannot be read, startup stops; a failed live reload keeps the last good
+config active and reports the load error there.
 
 ---
 
@@ -116,8 +119,10 @@ Pressing a workspace number twice bounces back to the previous one
 
 ## Configuration
 
-One file: `~/.config/vindu/vindu.conf`. Saves apply immediately, no
-restart. Live experiments without touching the file:
+One plaintext trusted config file: `~/.config/vindu/vindu.conf`. Saves
+apply immediately, no restart. Do not use it as a secret store; scripts
+that need credentials should read Keychain or their own private files.
+Live experiments without touching the file:
 
 ```sh
 vinductl keyword general:gaps_in 12
@@ -178,14 +183,18 @@ bar can be enabled live with `vinductl keyword bar:enabled true`; it reserves
 screen space and shows workspaces, the focused app icon/window, and the configured
 ordered indicators.
 
-Weather is opt-in and uses Open-Meteo. For Riga:
+Weather is opt-in and uses Open-Meteo. When enabled, vindu sends the configured
+latitude/longitude to Open-Meteo for each refresh. For Riga:
 `vinductl keyword bar:weather_location 56.9496,24.1052`, then include
 `weather` in `bar:indicators`.
 
 Custom bar items are opt-in script plugins. Add `plugin:<id>` anywhere in
 `bar:indicators`, then configure `bar:plugin:<id>:command`. Scripts run
-asynchronously, and stdout renders as the item text. JSON stdout can set text,
-SF Symbols, color, and visibility:
+asynchronously in a short-lived process group. The plugin environment is
+minimal: home/user/shell/temp/locale, a safe PATH, `VINDU_BAR_PLUGIN_*`, and the
+two socket paths. Config `env =` values are inherited by `exec` commands, not by
+bar plugins. Stdout renders as the item text; stderr is not shown or logged by
+default. JSON stdout can set text, SF Symbols, color, and visibility:
 
 ```conf
 bar {
@@ -294,6 +303,7 @@ make build      # debug
 make test       # works with Command Line Tools alone, no Xcode needed
 make install    # release build, signs, installs to /usr/local/bin
 vindud --install-service      # run the dev build now and at every login
+vindud --config ./vindu.conf --install-service
 vindud --uninstall-service    # undo
 ```
 
@@ -302,10 +312,11 @@ Two dev-loop gotchas: a rebuilt binary is a new code identity, so re-toggle
 And don't run the brew service and a dev-build service at the same time —
 two window managers fight over the same windows.
 
-Releasing: push a `v*` tag. CI builds the universal (arm64 + x86_64)
-tarball, publishes the GitHub release with checksums and provenance, and
-bumps the Homebrew formula in `yarlson/homebrew-tap` automatically. The
-formula source of truth is `packaging/vindu.rb.tmpl` in this repo.
+Releasing: push a `v*` tag. CI builds the universal (arm64 + x86_64) ZIP,
+publishes the GitHub release with checksums and provenance, and bumps the
+Homebrew formula in `yarlson/homebrew-tap` automatically only when the
+artifact is Developer ID signed and notarized. The formula source of truth is
+`packaging/vindu.rb.tmpl` in this repo.
 
 Layout logic, the config parser, and rule matching live in `VinduCore` and
 are covered by plain `swift test` tests. The daemon is the only part that
