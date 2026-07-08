@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 25
     steps:
       # actions/checkout v6
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       # Per-triple builds + lipo: works with any Swift toolchain, unlike
       # `swift build --arch a --arch b`, which requires Xcode's xcbuild.
@@ -192,7 +192,7 @@ jobs:
       # actions/checkout v6
       - name: Checkout Homebrew tap
         if: steps.signing.outputs.enabled == 'true' && steps.tap.outputs.enabled == 'true'
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           repository: yarlson/homebrew-tap
           path: tap
