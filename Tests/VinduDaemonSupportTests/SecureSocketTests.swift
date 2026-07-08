@@ -128,7 +128,7 @@ private func connectUnixSocket(_ path: String) throws -> Int32 {
         let owner = try ShortTemporaryDirectory()
         let path = owner.url.appendingPathComponent("vindu.sock").path
         let queue = DispatchQueue(label: "vindu.ipc.test")
-        let server = IPCServer(path: path, queue: queue, peerValidator: { _ in true }) {
+        let server = IPCServer(path: path, queue: queue) {
             "reply:\($0)"
         }
         try server.start()
@@ -211,7 +211,7 @@ private func connectUnixSocket(_ path: String) throws -> Int32 {
         let owner = try ShortTemporaryDirectory()
         let path = owner.url.appendingPathComponent("vindu.events.sock").path
         let queue = DispatchQueue(label: "vindu.events.test")
-        let events = EventBroadcaster(path: path, queue: queue, peerValidator: { _ in true })
+        let events = EventBroadcaster(path: path, queue: queue)
         try events.start()
         defer { events.stop() }
 
