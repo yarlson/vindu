@@ -12,7 +12,7 @@ macOS ties the Accessibility grant to the binary's code identity. Release and in
 
 ## Service management
 
-`vindud --install-service` writes a LaunchAgent (`com.vindu.daemon`) pointing at the current binary and bootstraps it via launchctl: runs at load, kept alive unless it exits cleanly, and logs to `~/Library/Logs/vindu/vindud.log`. If `--config <path>` is provided, the LaunchAgent stores that resolved path in `ProgramArguments`. `--uninstall-service` reverses it. Reinstalls boot the old instance out first so they cannot fail on an already-loaded service. Homebrew users get the same lifecycle via `brew services`, with logs under Homebrew's private `var/log` path.
+`vindud --install-service` writes a LaunchAgent (`com.vindu.daemon`) pointing at the current binary and bootstraps it via launchctl: runs at load, kept alive unless it exits cleanly, and logs to `~/Library/Logs/vindu/vindud.log`. If `--config <path>` is provided, the LaunchAgent stores that resolved path in `ProgramArguments`. `--uninstall-service` reverses it. Reinstalls boot the old instance out first so they cannot fail on an already-loaded service. Homebrew users get the same lifecycle via `brew services`; the formula creates the same private per-user log directory.
 
 ## CI
 

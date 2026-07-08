@@ -15,11 +15,17 @@ class Vindu < Formula
     doc.install "README.md"
   end
 
+  def post_install
+    log_dir = Pathname.new("~/Library/Logs/vindu").expand_path
+    log_dir.mkpath
+    chmod 0700, log_dir
+  end
+
   service do
     run [opt_bin/"vindud"]
     keep_alive successful_exit: false
-    log_path var/"log/vindu.log"
-    error_log_path var/"log/vindu.err.log"
+    log_path Pathname.new("~/Library/Logs/vindu/vindud.log").expand_path
+    error_log_path Pathname.new("~/Library/Logs/vindu/vindud.log").expand_path
   end
 
   def caveats

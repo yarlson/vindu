@@ -52,8 +52,8 @@ tiling and quits the daemon, no chords required.
 To pause instead of quitting: `alt + shift + p`. Windows move freely until
 you press it again and the grid reasserts. To stop: `alt + shift + m` exits
 and puts windows back where humans can reach them; `brew services stop
-vindu` turns the service off entirely. Source/self-install logs land in
-`~/Library/Logs/vindu/vindud.log`; Homebrew logs under its `var/log` tree.
+vindu` turns the service off entirely. Service logs land in
+`~/Library/Logs/vindu/vindud.log`.
 
 ## If something looks wrong
 
