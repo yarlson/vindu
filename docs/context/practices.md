@@ -21,7 +21,7 @@
 - SIP stays on; the WindowServer is closed. Animations, blur, per-window opacity, rounded clipping of other apps' windows, and a click-to-kill picker are deliberately impossible — features must not assume compositor access.
 - Workspace hiding is frame-stashing, not Space membership; anything repositioning windows must respect the `hidden` and `nativeFullscreen` flags.
 - Swift language mode 5 (under tools 6.0): the daemon passes callback pointers to C APIs (AX observers, CGEvent taps) that Swift 6 strict concurrency cannot model usefully.
-- The Accessibility grant is tied to code identity: release/install builds are ad-hoc signed so rebuilds of the same tree keep the grant; a genuinely new binary needs a re-toggle in System Settings.
+- The Accessibility grant is tied to the designated requirement. `vindud` uses the stable signing identifier `com.vindu.daemon`; preserving its grant across builds also requires signing with the same persistent certificate. Ad-hoc builds require a re-toggle in System Settings.
 
 ## Testing and verification
 

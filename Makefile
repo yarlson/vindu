@@ -14,6 +14,9 @@ TEST_FLAGS := -Xswiftc -F -Xswiftc $(CLT_FRAMEWORKS) \
 endif
 
 PREFIX ?= /usr/local
+VINDU_CODESIGN_IDENTITY ?= -
+VINDUD_CODESIGN_IDENTIFIER := com.vindu.daemon
+VINDUCTL_CODESIGN_IDENTIFIER := com.vindu.control
 
 .PHONY: build test check-template release install uninstall clean
 
@@ -25,10 +28,10 @@ test: check-template
 
 release:
 	swift build -c release
-	# Ad-hoc signing keeps a stable code identity so the Accessibility grant
-	# survives rebuilds of the same source tree.
-	codesign --force --sign - .build/release/vindud
-	codesign --force --sign - .build/release/vinductl
+	codesign --force --identifier $(VINDUD_CODESIGN_IDENTIFIER) \
+		--sign "$(VINDU_CODESIGN_IDENTITY)" .build/release/vindud
+	codesign --force --identifier $(VINDUCTL_CODESIGN_IDENTIFIER) \
+		--sign "$(VINDU_CODESIGN_IDENTITY)" .build/release/vinductl
 
 install: release
 	install -d $(PREFIX)/bin
