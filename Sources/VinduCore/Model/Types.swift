@@ -1,8 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// CGWindowID of a managed window. The IPC "address" is this value hex-formatted,
-/// mirroring Hyprland's window addresses.
+/// CGWindowID of a managed window. Public IPC renders this value in hexadecimal.
 public typealias WindowID = UInt32
 
 /// Error for config/dispatcher parsing. String-expressible so parse code can
@@ -38,7 +37,15 @@ public enum LayoutKind: String, Equatable {
     case dwindle, master
 }
 
-/// Workspace selector, mirroring Hyprland's workspace argument syntax:
+public enum MasterOrientation: String, Equatable {
+    case left, right, top, bottom, center
+}
+
+public enum BarPosition: String, Equatable {
+    case top, bottom
+}
+
+/// Workspace selector used by typed actions and runtime dispatchers:
 /// `3`, `+1`, `-1`, `e+1`, `previous`, `empty`, `name:web`, `special`, `special:magic`.
 public enum WorkspaceTarget: Equatable {
     case id(Int)
@@ -69,7 +76,7 @@ public enum WorkspaceTarget: Equatable {
         return .name(s)
     }
 
-    /// The selector in config syntax; `parse(text)` round-trips.
+    /// Stable selector text; `parse(text)` round-trips.
     public var text: String {
         switch self {
         case .id(let n): return String(n)

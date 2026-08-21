@@ -26,10 +26,32 @@ func isValidWindowFrame(_ frame: CGRect) -> Bool {
     windowFrameValues(frame) != nil
 }
 
+func nextAvailableWorkspaceID(preferred: Int, activeIDs: Set<Int>) -> Int? {
+    if preferred > 0, preferred <= 1000, !activeIDs.contains(preferred) {
+        return preferred
+    }
+    return (1...1000).first { !activeIDs.contains($0) }
+}
+
+func workspaceIDsVisibleOnlyOnRemovedMonitors(
+    activeWorkspaces: [CGDirectDisplayID: Int],
+    specialWorkspaces: [CGDirectDisplayID: Int],
+    aliveMonitors: Set<CGDirectDisplayID>
+) -> Set<Int> {
+    let normal = activeWorkspaces.compactMap { monitor, workspace in
+        aliveMonitors.contains(monitor) ? nil : workspace
+    }
+    let special = specialWorkspaces.compactMap { monitor, workspace in
+        aliveMonitors.contains(monitor) ? nil : workspace
+    }
+    return Set(normal + special)
+}
+
 /// Per-window state the WM owns; geometry lives in top-left-origin coords.
 final class WindowState {
     let id: WindowID
     let pid: pid_t
+    let bundleID: String?
     let initialClass: String
     let initialTitle: String
     let borderEligible: Bool
@@ -49,10 +71,11 @@ final class WindowState {
     var hidden = false
     var floatFrame: CGRect?
 
-    init(id: WindowID, pid: pid_t, clazz: String, title: String, workspace: Int,
+    init(id: WindowID, pid: pid_t, bundleID: String?, clazz: String, title: String, workspace: Int,
          frame: CGRect, borderEligible: Bool) {
         self.id = id
         self.pid = pid
+        self.bundleID = bundleID
         self.clazz = clazz
         self.title = title
         self.initialClass = clazz
@@ -75,18 +98,15 @@ final class WindowManager {
     let desktopBarRefresh = DesktopBarRefreshCoordinator()
     let cheatSheet = CheatSheet()
     let registry = WorkspaceRegistry()
-    var ipc: IPCServer?
-    var events: EventBroadcaster?
-    var watcher: ConfigWatcher?
-
+    var configuration: ConfigurationSnapshot
     let configPath: String
-    var doc = ConfigDocument()
-    var settings: Settings { doc.settings }
+    let wroteCanonicalDefault: Bool
+    let broadcastEvent: (WMEvent) -> Void
+    let runtimeWarningsChanged: ([LocatedConfigDiagnostic]) -> Void
+    let quit: () -> Void
     /// Tiling suspended (`pause` dispatcher): no frame enforcement, non-pause
     /// chords pass through. Resume reasserts the grid.
     private(set) var paused = false
-    /// True when this launch wrote the default config — i.e. a first run.
-    var wroteDefaultConfig = false
     var shutdownRequested = false
 
     var windows: [WindowID: WindowState] = [:]
@@ -111,8 +131,18 @@ final class WindowManager {
     /// follow one are user intent and may switch workspaces.
     private var lastUserGesture = 0.0
 
-    init(configPath: String) {
+    init(configuration: ConfigurationSnapshot,
+         configPath: String,
+         wroteCanonicalDefault: Bool,
+         broadcastEvent: @escaping (WMEvent) -> Void,
+         runtimeWarningsChanged: @escaping ([LocatedConfigDiagnostic]) -> Void,
+         quit: @escaping () -> Void) {
+        self.configuration = configuration
         self.configPath = configPath
+        self.wroteCanonicalDefault = wroteCanonicalDefault
+        self.broadcastEvent = broadcastEvent
+        self.runtimeWarningsChanged = runtimeWarningsChanged
+        self.quit = quit
         registry.onCreate = { [weak self] ws in self?.broadcast(.createworkspace(ws.name)) }
         registry.onDestroy = { [weak self] ws in self?.broadcast(.destroyworkspace(ws.name)) }
     }
@@ -120,7 +150,6 @@ final class WindowManager {
     // MARK: - Bootstrap
 
     func bootstrap() {
-        guard loadInitialConfig() else { exit(1) }
         monitorMgr.start()
         monitorMgr.onChange = { [weak self] change in self?.monitorsChanged(change) }
         ensureWorkspacesForMonitors()
@@ -129,9 +158,9 @@ final class WindowManager {
         bridge.delegate = self
         bridge.start()
 
-        tap.onDispatcher = { [weak self] dispatcher in _ = self?.dispatch(dispatcher) }
-        tap.onMouseDrag = { [weak self] dispatcher, point, phase in
-            self?.handleDrag(dispatcher: dispatcher, point: point, phase: phase)
+        tap.onAction = { [weak self] action in _ = self?.dispatch(action) }
+        tap.onMouseDrag = { [weak self] drag, point, phase in
+            self?.handleDrag(drag: drag, point: point, phase: phase)
         }
         tap.onRawLeftMouse = { [weak self] point, phase in
             self?.handleRawLeftMouse(point, phase)
@@ -142,37 +171,20 @@ final class WindowManager {
             log("event tap unavailable — check Accessibility permission; binds disabled")
         }
 
-        do {
-            ipc = IPCServer(path: VinduPaths.commandSocketPath) { [weak self] req in
-                self?.handleIPC(req) ?? "err: shutting down"
-            }
-            try ipc?.start()
-            events = EventBroadcaster(path: VinduPaths.eventSocketPath)
-            try events?.start()
-        } catch {
-            log("\(error)")
-            if case IPCError.alreadyRunning = error {
-                exit(1)
-            }
-        }
-
-        watcher = ConfigWatcher(path: configPath) { [weak self] in self?.reloadConfig() }
-        watcher?.start()
-
         statusItem.onPauseToggle = { [weak self] in _ = self?.dispatch(.pause(.toggle)) }
         statusItem.onShowKeybindings = { [weak self] in self?.toggleCheatSheet() }
         statusItem.onOpenConfig = { [weak self] in
             guard let self else { return }
             Exec.run("/usr/bin/open", args: ["-t", self.configPath])
         }
-        statusItem.onQuit = { [weak self] in self?.shutdown() }
+        statusItem.onQuit = { [weak self] in self?.quit() }
         desktopBar.onWorkspaceSelected = { [weak self] workspaceID, monitorID in
             guard let self else { return }
             self.focusedMonitorID = monitorID
             _ = self.dispatch(.workspace(.id(workspaceID)))
         }
         desktopBarRefresh.onChange = { [weak self] in self?.refreshDesktopBar() }
-        applyDesktopUISettings()
+        applyConfiguration(configuration, broadcastReload: false)
 
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification,
@@ -184,9 +196,10 @@ final class WindowManager {
         arrangeAllVisible()
         refreshDesktopBar()
         bridge.reportSystemFocus()
-        // First run: nobody knows the chords yet — show the cheat sheet once
-        // the initial tiling has settled.
-        if wroteDefaultConfig {
+        for command in configuration.startup.commands {
+            Exec.run(command)
+        }
+        if wroteCanonicalDefault {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 self?.showCheatSheetIfHidden()
             }
@@ -194,21 +207,92 @@ final class WindowManager {
         log("ready — \(monitorMgr.monitors.count) monitor(s), socket \(VinduPaths.commandSocketPath)")
     }
 
-    func applyDesktopUISettings() {
-        statusItem.setVisible(settings.misc.menuBar)
-        desktopBarRefresh.sync(settings: settings.bar)
+    func applyDesktopUISettings() -> Set<String> {
+        statusItem.setVisible(configuration.ui.menuBar.enabled)
+        let restartedPlugins = desktopBarRefresh.sync(configuration: configuration.ui.bar)
         refreshDesktopBar()
+        return restartedPlugins
     }
 
     // MARK: - Workspace bookkeeping
 
-    /// Default workspace ids 1…N map onto monitors in order, unless a
-    /// `workspace = N, monitor:Name` rule pins them elsewhere.
+    /// Default workspace ids 1…N map onto monitors in order, unless a native
+    /// workspace assignment places them elsewhere.
     func ensureWorkspacesForMonitors() {
-        for (i, m) in monitorMgr.monitors.enumerated() where activeWS[m.id] == nil {
-            let ws = workspace(forID: i + 1, createOn: m.id)
-            ws.monitor = m.id
-            activeWS[m.id] = ws.id
+        var activeIDs: Set<Int> = []
+        for (index, monitor) in monitorMgr.monitors.enumerated() {
+            if let workspaceID = activeWS[monitor.id],
+               let workspace = registry.existing(workspaceID),
+               activeIDs.insert(workspaceID).inserted {
+                workspace.monitor = monitor.id
+                continue
+            }
+            guard let workspaceID = nextAvailableWorkspaceID(preferred: index + 1,
+                                                             activeIDs: activeIDs) else {
+                continue
+            }
+            let ws = workspace(forID: workspaceID, createOn: monitor.id)
+            ws.monitor = monitor.id
+            activeWS[monitor.id] = ws.id
+            activeIDs.insert(ws.id)
+        }
+    }
+
+    func reconcileWorkspaceAssignments() -> [LocatedConfigDiagnostic] {
+        var warnings: [LocatedConfigDiagnostic] = []
+        let names = monitorMgr.monitors.map(\.name)
+        for assignment in configuration.workspaces.assignments {
+            switch ConfiguredMonitorResolver.resolve(assignment.monitor, in: names) {
+            case .matched(let index):
+                if let workspace = registry.existing(assignment.id) {
+                    assign(workspace, to: monitorMgr.monitors[index])
+                }
+            case .missing:
+                warnings.append(assignmentWarning(
+                    assignment,
+                    message: "monitor \(assignment.monitor) is not connected"
+                ))
+            case .ambiguous:
+                warnings.append(assignmentWarning(
+                    assignment,
+                    message: "monitor \(assignment.monitor) matches more than one display"
+                ))
+            }
+        }
+        return warnings
+    }
+
+    private func assignmentWarning(_ assignment: WorkspaceAssignment,
+                                   message: String) -> LocatedConfigDiagnostic {
+        LocatedConfigDiagnostic(
+            file: configPath,
+            schemaPath: "workspaces.assignments[id=\(assignment.id)].monitor",
+            message: message
+        )
+    }
+
+    private func assign(_ workspace: WorkspaceState, to monitor: Monitor) {
+        guard workspace.monitor != monitor.id else { return }
+        let oldMonitor = workspace.monitor
+        if activeWS[oldMonitor] == workspace.id {
+            let replacement = replacementWorkspace(for: workspace, on: oldMonitor)
+            activeWS[oldMonitor] = replacement.id
+            arrange(replacement)
+            if let displacedID = activeWS[monitor.id],
+               let displaced = registry.existing(displacedID),
+               displacedID != workspace.id {
+                hideWorkspace(displaced)
+                prevWS[monitor.id] = displacedID
+            }
+            workspace.monitor = monitor.id
+            activeWS[monitor.id] = workspace.id
+            arrange(workspace)
+            return
+        }
+
+        workspace.monitor = monitor.id
+        for id in workspace.allWindows where windows[id]?.hidden == true {
+            bridge.setPosition(id, CGPoint(x: monitor.frame.maxX - 2, y: monitor.frame.maxY - 2))
         }
     }
 
@@ -218,14 +302,12 @@ final class WindowManager {
     }
 
     private func boundMonitor(forWorkspace id: Int) -> CGDirectDisplayID? {
-        for rule in doc.workspaceRules {
-            if case .id(let n) = rule.target, n == id, let name = rule.monitorName {
-                return monitorMgr.monitors.first {
-                    $0.name.localizedCaseInsensitiveContains(name)
-                }?.id
-            }
-        }
-        return nil
+        guard let assignment = configuration.workspaces.assignments.first(where: { $0.id == id }),
+              case .matched(let index) = ConfiguredMonitorResolver.resolve(
+                assignment.monitor,
+                in: monitorMgr.monitors.map(\.name)
+              ) else { return nil }
+        return monitorMgr.monitors[index].id
     }
 
     func resolveWorkspaceID(_ target: WorkspaceTarget, create: Bool) -> Int? {
@@ -253,10 +335,7 @@ final class WindowManager {
     }
 
     func garbageCollect(_ ws: WorkspaceState) {
-        let isBound = doc.workspaceRules.contains {
-            if case .id(let n) = $0.target { return n == ws.id }
-            return false
-        }
+        let isBound = configuration.workspaces.assignments.contains { $0.id == ws.id }
         registry.destroyIfEmpty(ws, isVisible: isVisible(ws), isBound: isBound)
     }
 
@@ -264,10 +343,9 @@ final class WindowManager {
 
     func containerRect(for ws: WorkspaceState) -> CGRect {
         guard let monitor = monitorMgr.byID(ws.monitor) ?? monitorMgr.primary else { return .zero }
-        let usable = DesktopBar.contentRect(for: monitor, settings: settings.bar)
+        let usable = DesktopBar.contentRect(for: monitor, configuration: configuration.ui.bar)
         if ws.isSpecial {
-            // Scratchpad overlay floats inside the monitor like Hyprland's
-            // special workspace.
+            // A special workspace uses an inset overlay inside its monitor.
             return usable.insetBy(dx: usable.width * 0.08,
                                   dy: usable.height * 0.08)
         }
@@ -279,22 +357,23 @@ final class WindowManager {
     func arrange(_ ws: WorkspaceState, excluding: WindowID? = nil) {
         guard isVisible(ws), !paused else { return }
         let container = containerRect(for: ws)
-        let g = settings.general
+        let g = configuration.layout
 
         let raw: [WindowID: CGRect]
-        switch g.layout {
+        switch g.kind {
         case .dwindle:
             raw = ws.dwindle.frames(in: container)
         case .master:
-            raw = ws.master.frames(in: container, settings: settings.master)
+            raw = ws.master.frames(in: container, configuration: g.master)
         }
 
         var frames: [(state: WindowState, frame: CGRect)] = []
         for (id, rect) in raw {
             guard id != excluding, let state = windows[id], !state.minimized else { continue }
             var frame = LayoutMath.applyGaps(to: rect, within: container,
-                                             gapsIn: g.gapsIn, gapsOut: g.gapsOut)
-            frame = frame.insetBy(dx: g.borderSize, dy: g.borderSize)
+                                             gapsIn: g.innerGap, gapsOut: g.outerGap)
+            frame = frame.insetBy(dx: configuration.ui.focusBorder.width,
+                                  dy: configuration.ui.focusBorder.width)
             if ws.fullscreen == id {
                 frame = fullscreenFrame(for: ws)
             }
@@ -348,8 +427,8 @@ final class WindowManager {
         if ws.fullscreenMode == 0 {
             return monitor.frame
         }
-        let g = settings.general
-        return monitor.usable.insetBy(dx: g.gapsOut, dy: g.gapsOut)
+        return monitor.usable.insetBy(dx: configuration.layout.outerGap,
+                                      dy: configuration.layout.outerGap)
     }
 
     func defaultFloatFrame(for ws: WorkspaceState) -> CGRect {
@@ -397,7 +476,7 @@ final class WindowManager {
         var resolved = target
         let mon = focusedMonitorID
         let currentID = activeWS[mon] ?? 1
-        if case .id(let n) = target, n == currentID, settings.binds.workspaceBackAndForth,
+        if case .id(let n) = target, n == currentID, configuration.workspaces.backAndForth,
            let prev = prevWS[mon] {
             resolved = .id(prev)
         }
@@ -475,7 +554,8 @@ final class WindowManager {
 
     func insertTiled(_ id: WindowID, into ws: WorkspaceState) {
         ws.insertTiled(id, near: ws.lastFocused, container: containerRect(for: ws),
-                       dwindleSettings: settings.dwindle, masterSettings: settings.master)
+                       dwindleConfiguration: configuration.layout.dwindle,
+                       masterConfiguration: configuration.layout.master)
     }
 
     /// Windows visible on a monitor right now: active workspace + overlaid
@@ -553,19 +633,23 @@ final class WindowManager {
             minimized: state.minimized,
             nativeFullscreen: state.nativeFullscreen,
             managedFullscreen: workspace(forID: state.workspace).fullscreen == id,
-            width: settings.general.borderSize
+            width: configuration.ui.focusBorder.width
         )
         guard let target = ActiveBorderPolicy.targetWindowID(for: borderState) else {
             border.hide()
             return
         }
-        let gradient = tap.activeSubmap.isEmpty
-            ? settings.general.activeBorder
-            : settings.general.submapBorder
+        let colors = tap.activeMode == "default"
+            ? configuration.ui.focusBorder.activeColors
+            : configuration.ui.focusBorder.modeColors
+        let gradient = MLGradient(
+            colors: colors.map { MLColor(r: $0.red, g: $0.green, b: $0.blue, a: $0.alpha) },
+            angleDeg: configuration.ui.focusBorder.activeAngle
+        )
         border.show(windowID: target,
                     gradient: gradient,
-                    width: settings.general.borderSize,
-                    fallbackRadius: settings.decoration.rounding)
+                    width: configuration.ui.focusBorder.width,
+                    fallbackRadius: configuration.ui.focusBorder.fallbackCornerRadius)
     }
 
     @discardableResult
@@ -587,7 +671,7 @@ final class WindowManager {
     }
 
     func followMouse(_ point: CGPoint) {
-        guard settings.input.followMouse == 1, !paused else { return }
+        guard configuration.focus.followsPointer, !paused else { return }
         if let m = monitorMgr.containing(point) {
             focusedMonitorID = m.id
         }
@@ -601,15 +685,33 @@ final class WindowManager {
     func monitorsChanged(_ change: MonitorChange) {
         let alive = Set(monitorMgr.monitors.map(\.id))
         let fallback = monitorMgr.primary?.id ?? 0
+        let orphanedVisible = workspaceIDsVisibleOnlyOnRemovedMonitors(
+            activeWorkspaces: activeWS,
+            specialWorkspaces: shownSpecial,
+            aliveMonitors: alive
+        )
         for ws in registry.byID.values where !alive.contains(ws.monitor) {
             ws.monitor = fallback
         }
         activeWS = activeWS.filter { alive.contains($0.key) }
         shownSpecial = shownSpecial.filter { alive.contains($0.key) }
+        prevWS = prevWS.filter {
+            alive.contains($0.key) && registry.existing($0.value)?.monitor == $0.key
+        }
         if !alive.contains(focusedMonitorID) {
             focusedMonitorID = fallback
         }
         ensureWorkspacesForMonitors()
+        let warnings = reconcileWorkspaceAssignments()
+        prevWS = prevWS.filter {
+            alive.contains($0.key) && registry.existing($0.value)?.monitor == $0.key
+        }
+        for workspaceID in orphanedVisible {
+            if let workspace = registry.existing(workspaceID), !isVisible(workspace) {
+                hideWorkspace(workspace)
+            }
+        }
+        runtimeWarningsChanged(warnings)
         arrangeAllVisible()
         refreshDesktopBar()
         for name in change.removed {
@@ -656,23 +758,39 @@ extension WindowManager: AXBridgeDelegate {
 
         let center = CGPoint(x: snap.frame.midX, y: snap.frame.midY)
         let monitor = monitorMgr.containing(center) ?? monitorMgr.primary
-        let match = MatchTarget(clazz: snap.clazz, title: snap.title,
-                                floating: snap.kind == .dialog, pid: Int(snap.pid))
-        let placement = InitialPlacement.evaluate(rules: doc.rules, target: match,
-                                                  defaultFloating: snap.kind == .dialog,
-                                                  windowFrame: snap.frame,
-                                                  usable: monitor?.usable ?? .zero)
+        let initialPlacement = NativeInitialPlacement.evaluate(
+            rules: configuration.windows.rules,
+            bundleID: snap.bundleID,
+            appName: snap.clazz,
+            title: snap.title,
+            defaultFloating: snap.kind == .dialog,
+            windowFrame: snap.frame,
+            usable: monitor?.usable ?? .zero
+        )
 
         var wsID = activeWS[monitor?.id ?? focusedMonitorID] ?? 1
-        if let target = placement.workspaceTarget,
+        if let target = initialPlacement.workspace,
            let resolved = resolveWorkspaceID(target, create: true) {
             wsID = resolved
-        } else if let name = placement.monitorName,
-                  let m = monitorMgr.resolve(.name(name), current: focusedMonitorID) {
+        } else if let target = initialPlacement.monitor,
+                  let m = monitorMgr.resolve(target, current: focusedMonitorID) {
             wsID = activeWS[m.id] ?? wsID
         }
 
-        let state = WindowState(id: snap.id, pid: snap.pid, clazz: snap.clazz,
+        let ws = workspace(forID: wsID)
+        let destinationUsable = monitorMgr.byID(ws.monitor)?.usable ?? monitor?.usable ?? .zero
+        let placement = NativeInitialPlacement.evaluate(
+            rules: configuration.windows.rules,
+            bundleID: snap.bundleID,
+            appName: snap.clazz,
+            title: snap.title,
+            defaultFloating: snap.kind == .dialog,
+            windowFrame: snap.frame,
+            usable: destinationUsable
+        )
+
+        let state = WindowState(id: snap.id, pid: snap.pid, bundleID: snap.bundleID,
+                                clazz: snap.clazz,
                                 title: snap.title, workspace: wsID, frame: snap.frame,
                                 borderEligible: snap.kind == .standard && snap.isResizable)
         state.floating = placement.floating
@@ -685,7 +803,6 @@ extension WindowManager: AXBridgeDelegate {
         }
         windows[snap.id] = state
 
-        let ws = workspace(forID: wsID)
         if state.minimized {
             // Tracked but not laid out until deminiaturized.
         } else if state.floating {
@@ -696,7 +813,7 @@ extension WindowManager: AXBridgeDelegate {
         } else {
             insertTiled(snap.id, into: ws)
         }
-        if placement.wantsFullscreen {
+        if placement.fullscreen {
             ws.fullscreen = snap.id
             ws.fullscreenMode = 0
         }
@@ -704,17 +821,12 @@ extension WindowManager: AXBridgeDelegate {
         broadcast(.openwindow(snap.id, workspace: ws.name, clazz: snap.clazz, title: snap.title))
         if isVisible(ws) {
             arrange(ws)
-            // Focus follows a new window only when the user is driving: its
-            // app is frontmost (they just opened it) or nothing holds focus.
-            // Explicit non-silent workspace rules also follow: use `silent`
-            // when a window should move there without changing what you see.
             let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier
             let userDriven = snap.pid == frontmost || focusedWindow == nil
-            if !placement.silent && !state.minimized && (userDriven || placement.followsWorkspace) {
+            if !state.minimized && (userDriven || placement.workspace != nil) {
                 focusWindow(snap.id)
             }
-        } else if placement.followsWorkspace, !state.minimized,
-                  let target = placement.workspaceTarget {
+        } else if !state.minimized, let target = placement.workspace {
             ws.lastFocused = snap.id
             _ = switchWorkspace(to: target)
         } else {
@@ -746,12 +858,11 @@ extension WindowManager: AXBridgeDelegate {
         // The OS can focus a window on a hidden workspace. Two causes:
         // a user switch gesture (⌘Tab, Dock) — always follow it to that
         // workspace, the OS already committed the activation — or an
-        // app-initiated focus steal, which follows Hyprland's
-        // focus_on_activate (default: stay put).
+        // app-initiated focus steal, controlled by allowAppActivation.
         let ws = workspace(forID: state.workspace)
         if !isVisible(ws), !paused {
             let isUserGesture = CFAbsoluteTimeGetCurrent() - lastUserGesture < 3.0
-            guard isUserGesture || settings.misc.focusOnActivate else { return }
+            guard isUserGesture || configuration.focus.allowAppActivation else { return }
             _ = switchWorkspace(to: ws.isSpecial
                 ? .special(registry.specialName(forID: ws.id) ?? "special")
                 : .id(ws.id))
@@ -838,7 +949,7 @@ extension WindowManager: AXBridgeDelegate {
         syncBorder()
     }
 
-    /// Move events for the window we're dragging: bindm echoes of our own
+    /// Move events for the window under a pointer drag: echoes of our own
     /// setFrame are swallowed; native drags engage the session and track the
     /// OS-driven frame.
     private func handleDragEcho(_ state: WindowState, _ frame: CGRect) -> Bool {
@@ -972,9 +1083,9 @@ extension WindowManager: AXBridgeDelegate {
 }
 
 extension WindowManager {
-    func broadcast(_ event: WMEvent) {
-        events?.broadcast(event)
-        desktopBarRefresh.handle(event: event)
+    func broadcast(_ event: WMEvent, excludingPlugins: Set<String> = []) {
+        broadcastEvent(event)
+        desktopBarRefresh.handle(event: event, excludingPlugins: excludingPlugins)
         refreshDesktopBar()
     }
 

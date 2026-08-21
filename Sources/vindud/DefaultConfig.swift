@@ -1,157 +1,114 @@
 import Foundation
 
-/// Written to ~/.config/vindu/vindu.conf on first launch. ALT is the
-/// default mod: SUPER (⌘) works too — bound chords are swallowed before apps
-/// see them — but ⌘ collides with too much muscle memory to be a good default.
 let defaultConfigTemplate = """
-###############################################################################
-# vindu — tiling window manager for macOS
-# Syntax: section { key = value }, $variables, bind/binde/bindm, windowrulev2.
-###############################################################################
+schema = 1
 
-$mainMod = ALT
+[layout]
+kind = "dwindle"
+inner_gap = 5
+outer_gap = 12
 
-general {
-    gaps_in = 5
-    gaps_out = 12
-    border_size = 2
-    col.active_border = rgba(33ccffee) rgba(00ff99ee) 45deg
-    col.inactive_border = rgba(595959aa)
-    # border while a submap (e.g. resize) is active
-    col.submap_border = rgba(ff5555ee)
-    layout = dwindle
-}
+[layout.dwindle]
+new_window_fraction = 0.5
+new_window_position = "after"
 
-decoration {
-    rounding = 10
-}
+[layout.master]
+primary_fraction = 0.55
+primary_position = "left"
+new_window_position = "stack-end"
 
-dwindle {
-    preserve_split = true
-    default_split_ratio = 1.0
-}
+[focus]
+follows_pointer = false
+allow_app_activation = false
 
-master {
-    new_status = slave
-    mfact = 0.55
-    orientation = left
-}
+[workspaces]
+back_and_forth = true
 
-input {
-    # 1 = focus follows mouse. Best effort on macOS: focusing another app
-    # activates it, which can also raise its window. Off by default.
-    follow_mouse = 0
-}
+[ui.menu_bar]
+enabled = true
 
-misc {
-    # menu bar icon: pause tiling, keybindings, quit
-    menu_bar = true
-}
+[ui.focus_border]
+width = 2
+fallback_corner_radius = 10
+active_colors = ["#33ccffee", "#00ff99ee"]
+active_angle = 45
+mode_colors = ["#ff5555ee"]
 
-binds {
-    workspace_back_and_forth = true
-}
+[ui.bar]
+enabled = false
+position = "top"
+height = "auto"
+left = ["workspaces", "application"]
+center = ["layout"]
+right = ["pause", "mode", "windows", "network", "battery", "volume", "date"]
 
-bar {
-    # same-process workspace/app/status bar; enable to reserve screen space
-    enabled = false
-    position = top
-    height = 0      # 0 = auto; top bars match the hidden menu-bar strip
-    show_workspaces = true
-    show_app = true
-    show_indicators = true
-    indicators = pause, submap, windows, date, battery, network, keyboard, volume
-    # Open-Meteo weather: add `weather` to indicators after setting lat,lon.
-    # Enabling it sends those configured coordinates to Open-Meteo.
-    weather_location =
-    weather_refresh_minutes = 15
-    # Custom script item:
-    # add `plugin:mail` to indicators, then configure:
-    # plugin {
-    #     mail {
-    #         command = ~/.config/vindu/bar/mail.sh
-    #         refresh_seconds = 300
-    #         events = none
-    #         timeout_ms = 1000
-    #     }
-    # }
-    col.background = rgba(111111cc)
-    col.foreground = rgba(eeeeeeff)
-    col.inactive = rgba(8a8a8aff)
-    col.active = rgba(33ccffee)
-}
+[ui.bar.colors]
+background = "#111111cc"
+foreground = "#eeeeeeff"
+inactive = "#8a8a8aff"
+active = "#33ccffee"
 
-# --- programs --------------------------------------------------------------
-bind = $mainMod, return, exec, open -a Terminal
-bind = $mainMod, E, exec, open -a Finder
-bind = $mainMod SHIFT, Q, killactive,
-bind = $mainMod SHIFT, M, exit,
+[keyboard]
+bindings = [
+  { chord = "option+return", run = ["/usr/bin/open", "-a", "Terminal"] },
+  { chord = "option+e", run = ["/usr/bin/open", "-a", "Finder"] },
+  { chord = "option+shift+q", close = true },
+  { chord = "option+shift+m", quit = true },
+  { chord = "option+h", focus = "left" },
+  { chord = "option+l", focus = "right" },
+  { chord = "option+k", focus = "up" },
+  { chord = "option+j", focus = "down" },
+  { chord = "option+shift+h", move = "left" },
+  { chord = "option+shift+l", move = "right" },
+  { chord = "option+shift+k", move = "up" },
+  { chord = "option+shift+j", move = "down" },
+  { chord = "option+v", toggle_floating = true },
+  { chord = "option+f", maximize = "toggle" },
+  { chord = "option+shift+f", fullscreen = "toggle" },
+  { chord = "option+t", split = "toggle" },
+  { chord = "option+p", pin = true },
+  { chord = "option+c", center = true },
+  { chord = "option+m", primary = "swap" },
+  { chord = "option+shift+p", pause = "toggle" },
+  { chord = "option+1", workspace = 1 },
+  { chord = "option+2", workspace = 2 },
+  { chord = "option+3", workspace = 3 },
+  { chord = "option+4", workspace = 4 },
+  { chord = "option+5", workspace = 5 },
+  { chord = "option+6", workspace = 6 },
+  { chord = "option+7", workspace = 7 },
+  { chord = "option+8", workspace = 8 },
+  { chord = "option+9", workspace = 9 },
+  { chord = "option+shift+1", move_to_workspace = 1 },
+  { chord = "option+shift+2", move_to_workspace = 2 },
+  { chord = "option+shift+3", move_to_workspace = 3 },
+  { chord = "option+shift+4", move_to_workspace = 4 },
+  { chord = "option+shift+5", move_to_workspace = 5 },
+  { chord = "option+shift+6", move_to_workspace = 6 },
+  { chord = "option+shift+7", move_to_workspace = 7 },
+  { chord = "option+shift+8", move_to_workspace = 8 },
+  { chord = "option+shift+9", move_to_workspace = 9 },
+  { chord = "option+bracketleft", workspace = "-1" },
+  { chord = "option+bracketright", workspace = "+1" },
+  { chord = "option+s", toggle_special_workspace = "magic" },
+  { chord = "option+shift+s", move_to_workspace_silent = "special:magic" },
+  { chord = "option+r", enter_mode = "resize" },
+  { mode = "resize", chord = "l", repeat = true, resize = [30, 0] },
+  { mode = "resize", chord = "h", repeat = true, resize = [-30, 0] },
+  { mode = "resize", chord = "k", repeat = true, resize = [0, -30] },
+  { mode = "resize", chord = "j", repeat = true, resize = [0, 30] },
+  { mode = "resize", chord = "escape", enter_mode = "default" },
+]
+pointer_bindings = [
+  { modifiers = ["option"], button = "left", drag = "move" },
+  { modifiers = ["option"], button = "right", drag = "resize" },
+]
 
-# --- focus / move / swap ----------------------------------------------------
-bind = $mainMod, H, movefocus, l
-bind = $mainMod, L, movefocus, r
-bind = $mainMod, K, movefocus, u
-bind = $mainMod, J, movefocus, d
-bind = $mainMod SHIFT, H, movewindow, l
-bind = $mainMod SHIFT, L, movewindow, r
-bind = $mainMod SHIFT, K, movewindow, u
-bind = $mainMod SHIFT, J, movewindow, d
-bind = $mainMod, tab, cyclenext,
-bind = $mainMod SHIFT, tab, cyclenext, prev
+[startup]
+commands = []
 
-# --- layout ------------------------------------------------------------------
-bind = $mainMod, V, togglefloating,
-bind = $mainMod, F, fullscreen, 1
-bind = $mainMod SHIFT, F, fullscreen, 0
-bind = $mainMod, T, togglesplit,
-bind = $mainMod, P, pin,
-bind = $mainMod, C, centerwindow,
-bind = $mainMod, M, layoutmsg, swapwithmaster auto
-# let go of the grid for a moment; press again and it reasserts
-bind = $mainMod SHIFT, P, pause,
-
-# --- workspaces ---------------------------------------------------------------
-bind = $mainMod, 1, workspace, 1
-bind = $mainMod, 2, workspace, 2
-bind = $mainMod, 3, workspace, 3
-bind = $mainMod, 4, workspace, 4
-bind = $mainMod, 5, workspace, 5
-bind = $mainMod, 6, workspace, 6
-bind = $mainMod, 7, workspace, 7
-bind = $mainMod, 8, workspace, 8
-bind = $mainMod, 9, workspace, 9
-bind = $mainMod SHIFT, 1, movetoworkspace, 1
-bind = $mainMod SHIFT, 2, movetoworkspace, 2
-bind = $mainMod SHIFT, 3, movetoworkspace, 3
-bind = $mainMod SHIFT, 4, movetoworkspace, 4
-bind = $mainMod SHIFT, 5, movetoworkspace, 5
-bind = $mainMod SHIFT, 6, movetoworkspace, 6
-bind = $mainMod SHIFT, 7, movetoworkspace, 7
-bind = $mainMod SHIFT, 8, movetoworkspace, 8
-bind = $mainMod SHIFT, 9, movetoworkspace, 9
-bind = $mainMod, bracketleft, workspace, -1
-bind = $mainMod, bracketright, workspace, +1
-
-# --- scratchpad ----------------------------------------------------------------
-bind = $mainMod, S, togglespecialworkspace, magic
-bind = $mainMod SHIFT, S, movetoworkspacesilent, special:magic
-
-# --- resize submap ---------------------------------------------------------------
-bind = $mainMod, R, submap, resize
-submap = resize
-binde = , L, resizeactive, 30 0
-binde = , H, resizeactive, -30 0
-binde = , K, resizeactive, 0 -30
-binde = , J, resizeactive, 0 30
-bind = , escape, submap, reset
-submap = reset
-
-# --- mouse ------------------------------------------------------------------------
-bindm = $mainMod, mouse:272, movewindow
-bindm = $mainMod, mouse:273, resizewindow
-
-# --- rules ---------------------------------------------------------------------------
-windowrulev2 = float, class:^(System Settings)$
-windowrulev2 = float, class:^(Calculator)$
-windowrulev2 = float, class:^(Finder)$, title:^(Copy|Move|Info)
+[windows]
+rules = [
+  { match = { bundle_id = "com.apple.systempreferences" }, floating = true, centered = true },
+]
 """

@@ -2,26 +2,28 @@ import CoreGraphics
 
 public enum BarGeometry {
     public static func resolvedHeight(displayFrame: CGRect, usable: CGRect,
-                                      settings: BarSettings) -> Double {
+                                      configuration: NativeBarConfiguration) -> Double {
         let raw: Double
-        if settings.height > 0 {
-            raw = settings.height
-        } else if settings.position == .top {
+        switch configuration.height {
+        case .points(let height):
+            raw = Double(height)
+        case .automatic where configuration.position == .top:
             raw = max(28, usable.minY - displayFrame.minY)
-        } else {
+        case .automatic:
             raw = 28
         }
         return min(max(raw, 0), max(0, displayFrame.height - 1))
     }
 
     public static func contentRect(displayFrame: CGRect, usable: CGRect,
-                                   settings: BarSettings) -> CGRect {
-        guard settings.enabled else { return usable }
+                                   configuration: NativeBarConfiguration) -> CGRect {
+        guard configuration.enabled else { return usable }
         var rect = usable
-        let bar = barRect(displayFrame: displayFrame, usable: usable, settings: settings)
+        let bar = barRect(displayFrame: displayFrame, usable: usable,
+                          configuration: configuration)
         let overlap = usable.intersection(bar)
         let reserved = overlap.isNull ? 0 : overlap.height
-        switch settings.position {
+        switch configuration.position {
         case .top:
             rect.origin.y += reserved
         case .bottom:
@@ -32,10 +34,10 @@ public enum BarGeometry {
     }
 
     public static func barRect(displayFrame: CGRect, usable: CGRect,
-                               settings: BarSettings) -> CGRect {
+                               configuration: NativeBarConfiguration) -> CGRect {
         let height = resolvedHeight(displayFrame: displayFrame, usable: usable,
-                                    settings: settings)
-        switch settings.position {
+                                    configuration: configuration)
+        switch configuration.position {
         case .top:
             return CGRect(x: displayFrame.minX, y: displayFrame.minY,
                           width: displayFrame.width, height: height)

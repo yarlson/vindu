@@ -4,8 +4,8 @@ import CoreGraphics
 /// All rects are top-left-origin global coordinates (CGWindow/AX space),
 /// so `up` means decreasing y.
 public enum LayoutMath {
-    /// Hyprland gap semantics: a tile side flush with the workspace edge gets
-    /// gapsOut; sides facing other tiles get gapsIn. Adjacent tiles both
+    /// A tile side flush with the workspace edge gets gapsOut; sides facing
+    /// other tiles get gapsIn. Adjacent tiles both
     /// contribute, so the visual gap between two tiles is 2 × gapsIn.
     public static func applyGaps(to rect: CGRect, within container: CGRect,
                                  gapsIn: Double, gapsOut: Double) -> CGRect {

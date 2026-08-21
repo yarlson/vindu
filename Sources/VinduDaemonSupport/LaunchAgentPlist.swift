@@ -18,11 +18,15 @@ public enum VinduLogPaths {
 
 public enum LaunchAgentPlist {
     static func propertyList(binaryPath: String,
-                             configPath: String,
+                             configPath: String?,
                              logPath: String) -> [String: Any] {
-        [
+        var arguments = [binaryPath]
+        if let configPath {
+            arguments += ["--config", configPath]
+        }
+        return [
             "Label": "com.vindu.daemon",
-            "ProgramArguments": [binaryPath, "--config", configPath],
+            "ProgramArguments": arguments,
             "RunAtLoad": true,
             "KeepAlive": ["SuccessfulExit": false],
             "StandardOutPath": logPath,
@@ -31,7 +35,7 @@ public enum LaunchAgentPlist {
     }
 
     public static func data(binaryPath: String,
-                            configPath: String,
+                            configPath: String?,
                             logPath: String) throws -> Data {
         try PropertyListSerialization.data(
             fromPropertyList: propertyList(binaryPath: binaryPath,
@@ -42,7 +46,7 @@ public enum LaunchAgentPlist {
     }
 
     public static func write(binaryPath: String,
-                             configPath: String,
+                             configPath: String?,
                              logPath: String,
                              to path: String,
                              fileManager: FileManager = .default) throws {

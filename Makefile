@@ -42,11 +42,15 @@ release:
 
 install: release
 	install -d $(PREFIX)/bin
+	install -d $(PREFIX)/share/doc/vindu
 	install .build/release/vindud $(PREFIX)/bin/vindud
 	install .build/release/vinductl $(PREFIX)/bin/vinductl
+	install -m 644 THIRD_PARTY_NOTICES.md $(PREFIX)/share/doc/vindu/THIRD_PARTY_NOTICES.md
 
 uninstall:
 	rm -f $(PREFIX)/bin/vindud $(PREFIX)/bin/vinductl
+	rm -f $(PREFIX)/share/doc/vindu/THIRD_PARTY_NOTICES.md
+	-rmdir $(PREFIX)/share/doc/vindu
 
 clean:
 	swift package clean
@@ -54,5 +58,5 @@ clean:
 # The default config template ships inside the binary; the example file must
 # stay byte-identical so docs and first-run behavior never drift apart.
 check-template:
-	@sed -n '/^let defaultConfigTemplate = """$$/,/^"""$$/p' Sources/vindud/DefaultConfig.swift | sed '1d;$$d' | diff -u - examples/vindu.conf \
-		|| { echo "examples/vindu.conf is out of sync with Sources/vindud/DefaultConfig.swift"; exit 1; }
+	@sed -n '/^let defaultConfigTemplate = """$$/,/^"""$$/p' Sources/vindud/DefaultConfig.swift | sed '1d;$$d' | diff -u - examples/vindu.toml \
+		|| { echo "examples/vindu.toml is out of sync with Sources/vindud/DefaultConfig.swift"; exit 1; }

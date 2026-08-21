@@ -1,6 +1,6 @@
 import Foundation
 
-/// Maps Hyprland-style key names to macOS virtual key codes (ANSI layout).
+/// Maps configured lowercase key names to macOS virtual key codes (ANSI layout).
 /// Key names in binds are matched case-insensitively. `code:NN` bypasses the table.
 public enum KeyCodes {
     public static func code(for name: String) -> UInt16? {

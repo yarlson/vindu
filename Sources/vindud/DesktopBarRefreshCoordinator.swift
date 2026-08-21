@@ -24,32 +24,32 @@ final class DesktopBarRefreshCoordinator {
         plugins.current
     }
 
-    func sync(settings: BarSettings) {
-        guard settings.enabled, settings.showIndicators else {
+    @discardableResult
+    func sync(configuration: NativeBarConfiguration) -> Set<String> {
+        guard configuration.enabled else {
             stop()
-            return
+            return []
         }
 
-        systemObserver.update(events: Self.systemEvents(for: settings))
+        systemObserver.update(events: Self.systemEvents(for: configuration))
 
-        if settings.contains(.date) {
+        if configuration.contains(.date) {
             startClockTimer()
         } else {
             stopClockTimer()
         }
 
-        weather.sync(location: settings.weatherLocation,
-                     refreshMinutes: settings.weatherRefreshMinutes,
-                     enabled: settings.contains(.weather))
-        plugins.sync(settings: settings, enabled: true)
+        weather.sync(configuration: configuration.weather,
+                     enabled: configuration.contains(.weather))
+        return plugins.sync(configuration: configuration, enabled: true)
     }
 
     func refreshPlugin(id: String) -> Bool {
         plugins.refresh(id: id)
     }
 
-    func handle(event: WMEvent) {
-        plugins.handle(event: event)
+    func handle(event: WMEvent, excludingPlugins: Set<String> = []) {
+        plugins.handle(event: event, excluding: excludingPlugins)
     }
 
     func stop() {
@@ -85,12 +85,13 @@ final class DesktopBarRefreshCoordinator {
         clockTimer = nil
     }
 
-    private static func systemEvents(for settings: BarSettings) -> DesktopBarSystemEvents {
+    private static func systemEvents(for configuration: NativeBarConfiguration)
+        -> DesktopBarSystemEvents {
         var events: DesktopBarSystemEvents = []
-        if settings.contains(.keyboard) { events.insert(.keyboard) }
-        if settings.contains(.battery) { events.insert(.power) }
-        if settings.contains(.network) { events.insert(.network) }
-        if settings.contains(.volume) { events.insert(.audio) }
+        if configuration.contains(.keyboard) { events.insert(.keyboard) }
+        if configuration.contains(.battery) { events.insert(.power) }
+        if configuration.contains(.network) { events.insert(.network) }
+        if configuration.contains(.volume) { events.insert(.audio) }
         return events
     }
 }

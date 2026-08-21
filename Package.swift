@@ -13,8 +13,15 @@ let package = Package(
         .executable(name: "vindud", targets: ["vindud"]),
         .executable(name: "vinductl", targets: ["vinductl"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/dduan/TOMLDecoder.git", exact: "0.4.5"),
+    ],
     targets: [
-        .target(name: "VinduCore", swiftSettings: lang),
+        .target(
+            name: "VinduCore",
+            dependencies: [.product(name: "TOMLDecoder", package: "TOMLDecoder")],
+            swiftSettings: lang
+        ),
         .target(name: "VinduDaemonSupport", dependencies: ["VinduCore"], swiftSettings: lang),
         .target(
             name: "VinduBorderEngine",

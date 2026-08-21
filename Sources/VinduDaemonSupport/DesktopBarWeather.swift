@@ -50,8 +50,7 @@ public final class DesktopBarWeatherService {
     public private(set) var current: DesktopBarWeatherInfo?
 
     private struct Configuration: Equatable {
-        var location: WeatherLocation
-        var refreshMinutes: Int
+        var weather: NativeBarWeather
     }
 
     private enum FetchResult {
@@ -85,13 +84,13 @@ public final class DesktopBarWeatherService {
         self.log = log
     }
 
-    public func sync(location: WeatherLocation?, refreshMinutes: Int, enabled: Bool) {
-        guard enabled, let location else {
+    public func sync(configuration weather: NativeBarWeather?, enabled: Bool) {
+        guard enabled, let weather else {
             stop()
             return
         }
 
-        let next = Configuration(location: location, refreshMinutes: refreshMinutes)
+        let next = Configuration(weather: weather)
         guard next != configuration else { return }
         stop()
         configuration = next
@@ -117,7 +116,7 @@ public final class DesktopBarWeatherService {
     private func scheduleNextRefresh() {
         refreshTimer?.invalidate()
         guard let configuration else { return }
-        let interval = TimeInterval(configuration.refreshMinutes * 60)
+        let interval = TimeInterval(configuration.weather.refreshMinutes * 60)
         refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             self?.fetchNow()
             self?.scheduleNextRefresh()
@@ -127,7 +126,7 @@ public final class DesktopBarWeatherService {
     private func fetchNow() {
         guard !fetching,
               let configuration,
-              let url = Self.url(for: configuration.location) else {
+              let url = Self.url(for: configuration.weather) else {
             return
         }
 
@@ -182,11 +181,11 @@ public final class DesktopBarWeatherService {
         return URLSession(configuration: configuration)
     }
 
-    private static func url(for location: WeatherLocation) -> URL? {
+    private static func url(for weather: NativeBarWeather) -> URL? {
         var components = URLComponents(string: "https://api.open-meteo.com/v1/forecast")
         components?.queryItems = [
-            URLQueryItem(name: "latitude", value: String(location.latitude)),
-            URLQueryItem(name: "longitude", value: String(location.longitude)),
+            URLQueryItem(name: "latitude", value: String(weather.latitude)),
+            URLQueryItem(name: "longitude", value: String(weather.longitude)),
             URLQueryItem(name: "current", value: "temperature_2m,weather_code"),
             URLQueryItem(name: "timezone", value: "auto"),
         ]

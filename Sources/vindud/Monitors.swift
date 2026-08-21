@@ -10,6 +10,7 @@ struct Monitor {
     let frame: CGRect
     let usable: CGRect
     let scale: Double
+    let topObstruction: Range<Double>?
 }
 
 struct MonitorChange: Equatable {
@@ -69,7 +70,8 @@ final class MonitorManager {
             )
             out.append(Monitor(id: did, index: i, name: screen.localizedName,
                                frame: bounds, usable: usable,
-                               scale: Double(screen.backingScaleFactor)))
+                               scale: Double(screen.backingScaleFactor),
+                               topObstruction: Self.topObstruction(for: screen)))
         }
         monitors = out
         return Self.change(from: previous, to: monitors)
@@ -125,5 +127,22 @@ final class MonitorManager {
             .sorted()
             .compactMap { previous[$0] }
         return MonitorChange(added: added, removed: removed)
+    }
+
+    private static func topObstruction(for screen: NSScreen) -> Range<Double>? {
+        guard let left = screen.auxiliaryTopLeftArea,
+              let right = screen.auxiliaryTopRightArea else {
+            return nil
+        }
+        let lowerBound = Double(left.maxX - screen.frame.minX)
+        let upperBound = Double(right.minX - screen.frame.minX)
+        guard lowerBound.isFinite,
+              upperBound.isFinite,
+              lowerBound >= 0,
+              upperBound <= Double(screen.frame.width),
+              lowerBound < upperBound else {
+            return nil
+        }
+        return lowerBound..<upperBound
     }
 }

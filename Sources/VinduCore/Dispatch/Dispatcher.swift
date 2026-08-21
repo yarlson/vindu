@@ -15,7 +15,7 @@ public enum SplitRatioArg: Equatable {
         return nil
     }
 
-    /// The argument in config syntax; `parse(text)` round-trips.
+    /// Stable public command text; `parse(text)` round-trips.
     public var text: String {
         switch self {
         case .delta(let d): return plainNumber(d)
@@ -24,8 +24,8 @@ public enum SplitRatioArg: Equatable {
     }
 }
 
-/// Argument of the `pause` dispatcher (a vindu extension; Hyprland has no
-/// equivalent). Pausing suspends all tiling enforcement until resumed.
+/// Argument of the public `pause` dispatcher. Pausing suspends all tiling
+/// enforcement until resumed.
 public enum PauseAction: String, Equatable {
     case toggle, on, off
 
@@ -42,12 +42,12 @@ public enum PauseAction: String, Equatable {
 public enum MoveWindowArg: Equatable {
     case direction(Direction)
     case monitor(MonitorTarget)
-    /// Arg-less `movewindow` from a `bindm` — mouse drag.
+    /// Argument-free `movewindow` for a pointer drag.
     case mouse
 }
 
-/// One Hyprland dispatcher invocation, e.g. `movefocus l` or `exec kitty`.
-/// Parsed from binds and from the IPC `dispatch` command.
+/// One public runtime dispatcher invocation, such as `movefocus l`.
+/// Parsed only at the IPC boundary.
 public enum Dispatcher: Equatable {
     case exec(String)
     case killactive
@@ -85,9 +85,9 @@ public enum Dispatcher: Equatable {
     case submap(String)
     case focuscurrentorlast
     case forcerendererreload
-    /// Mouse-drag resize; meaningful only as a `bindm` dispatcher.
+    /// Pointer-drag resize.
     case resizewindow
-    /// Suspend/resume tiling (vindu extension): while paused, frames are not
+    /// Suspend or resume tiling. While paused, frames are not
     /// enforced and non-pause chords pass through to apps.
     case pause(PauseAction)
 
@@ -235,7 +235,7 @@ public enum Dispatcher: Equatable {
         }
     }
 
-    /// Hyprland dispatcher name, used in `binds` listings.
+    /// Published dispatcher name, used in `binds` listings.
     public var name: String {
         switch self {
         case .exec: return "exec"

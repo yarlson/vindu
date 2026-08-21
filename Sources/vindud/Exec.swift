@@ -1,10 +1,36 @@
 import Foundation
+import VinduCore
 
 enum Exec {
-    /// Runs a shell command detached, like Hyprland's `exec` dispatcher.
-    /// Login shell so PATH additions from the user's profile apply. Children
-    /// inherit the daemon environment, including config `env =` entries
-    /// applied via setenv.
+    static func run(_ command: CommandSpec) {
+        let process = Process()
+        let label: String
+        switch command.execution {
+        case .run(let arguments):
+            guard let executable = arguments.first else { return }
+            let expanded = (executable as NSString).expandingTildeInPath
+            process.executableURL = URL(fileURLWithPath: expanded)
+            process.arguments = Array(arguments.dropFirst())
+            label = expanded
+        case .shell(let script):
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            process.arguments = ["-lc", script]
+            label = "/bin/sh"
+        }
+        process.environment = ProcessInfo.processInfo.environment.merging(command.environment) {
+            _, configured in configured
+        }
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            log("exec failed: \(label): \(error.localizedDescription)")
+        }
+    }
+
+    /// Runs a retained public dispatcher command through the user's login shell.
+    /// Children inherit the daemon environment.
     static func run(_ command: String) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/sh")

@@ -1,71 +1,66 @@
+import Foundation
 import Testing
 @testable import VinduCore
 
 struct BindDisplayTests {
-    private func bind(_ mods: Modifiers, _ key: String, _ dispatcher: Dispatcher,
-                      flags: BindFlags = [], submap: String = "",
-                      description: String? = nil) -> Bind {
-        Bind(mods: mods, key: key, flags: flags, submap: submap,
-             dispatcher: dispatcher, description: description)
-    }
-
-    @Test func chordUsesMacModifierSymbols() {
-        #expect(BindDisplay.chord(bind([.alt], "h", .movefocus(.left))) == "⌥ H")
-        #expect(BindDisplay.chord(bind([.alt, .shift], "q", .killactive)) == "⌥⇧ Q")
-        #expect(BindDisplay.chord(bind([.cmd, .ctrl], "return", .exec("x"))) == "⌃⌘ ↩")
-        #expect(BindDisplay.chord(bind([], "escape", .submap(""))) == "⎋")
-        #expect(BindDisplay.chord(bind([.alt], "mouse:272", .movewindow(.mouse),
-                                       flags: .mouse)) == "⌥ Left drag")
-    }
-
-    @Test func actionPrefersDescriptionThenPlainEnglish() {
-        #expect(BindDisplay.action(bind([.alt], "t", .exec("kitty"),
-                                        description: "Open terminal")) == "Open terminal")
-        #expect(BindDisplay.action(bind([.alt], "return", .exec("open -a Terminal"))) == "Open Terminal")
-        #expect(BindDisplay.action(bind([.alt], "h", .movefocus(.left))) == "Focus left")
-        #expect(BindDisplay.action(bind([.alt, .shift], "q", .killactive)) == "Close window")
-        #expect(BindDisplay.action(bind([.alt], "s", .togglespecialworkspace("magic"))) == "Scratchpad")
-        // Send binds must read as sends, not as workspace switches.
-        #expect(BindDisplay.action(bind([.alt, .shift], "]", .movetoworkspace(.relative(1))))
-                == "Send to next workspace")
-        #expect(BindDisplay.action(bind([.alt, .shift], "s",
-                                        .movetoworkspacesilent(.special("magic"))))
-                == "Send to scratchpad (stay)")
-        #expect(BindDisplay.action(bind([.alt], "f", .fullscreen(1))) == "Maximize")
-        #expect(BindDisplay.action(bind([.alt, .shift], "p", .pause(.toggle))) == "Pause / resume tiling")
-        #expect(BindDisplay.action(bind([.alt], "r", .submap("resize"))) == "Resize mode")
-        // Uncommon dispatchers fall back to name + config-syntax args.
-        #expect(BindDisplay.action(bind([.alt], "z", .alterzorder("top"))) == "alterzorder top")
-    }
-
-    @Test func rowsCollapseDigitRunsAndSkipSubmaps() {
-        var binds: [Bind] = []
-        binds.append(bind([.alt], "v", .togglefloating))
-        for d in 1...9 {
-            binds.append(bind([.alt], String(d), .workspace(.id(d))))
-        }
-        for d in 1...9 {
-            binds.append(bind([.alt, .shift], String(d), .movetoworkspace(.id(d))))
-        }
-        binds.append(bind([], "l", .resizeactive(.relative(Delta(value: 30), Delta(value: 0))),
-                          submap: "resize"))
-
-        let rows = BindDisplay.rows(binds)
-        #expect(rows.count == 3)
-        #expect(rows[0].chord == "⌥ V")
-        #expect(rows[1].chord == "⌥ 1…9")
-        #expect(rows[1].action == "Workspace 1–9")
-        #expect(rows[2].chord == "⌥⇧ 1…9")
-        #expect(rows[2].action == "Send to workspace 1–9")
-    }
-
-    @Test func shortDigitRunsStayExpanded() {
-        let binds = [
-            bind([.alt], "1", .workspace(.id(1))),
-            bind([.alt], "2", .workspace(.id(2))),
+    @Test func rowsRenderCommandsModesAndPointerBindings() {
+        let bindings = [
+            binding(chord: chord([.option], "return"),
+                    action: .command(CommandSpec(
+                        execution: .run(["/usr/bin/open", "-a", "Terminal"]),
+                        environment: [:]
+                    ))),
+            binding(chord: chord([.option], "h"), action: .window(.focus(.left))),
+            binding(mode: "resize", chord: chord([], "l"),
+                    action: .window(.resize(x: 30, y: 0))),
         ]
-        let rows = BindDisplay.rows(binds)
-        #expect(rows.count == 2)
-        #expect(rows[0].action == "Workspace 1")
+        let pointer = PointerBinding(modifiers: [.option], button: .left, drag: .move)
+
+        let rows = BindDisplay.rows(bindings, pointerBindings: [pointer])
+
+        #expect(rows.map(\.chord) == ["⌥ ↩", "⌥ H", "⌥ Left drag"])
+        #expect(rows.map(\.action) == ["Open Terminal", "Focus left", "Move window"])
+    }
+
+    @Test func rowsCollapseWorkspaceDigitRuns() {
+        let bindings = (1...4).map { id in
+            binding(chord: chord([.option], String(id)),
+                    action: .window(.workspace(.id(id))))
+        }
+
+        let rows = BindDisplay.rows(bindings)
+
+        #expect(rows.count == 1)
+        #expect(rows[0].chord == "⌥ 1…4")
+        #expect(rows[0].action == "Workspace 1–4")
+    }
+
+    @Test func bindInfoProjectionKeepsArgvAndBindingFlags() throws {
+        let command = CommandSpec(execution: .run(["/bin/echo", "two words"]), environment: [:])
+        let keyboard = binding(chord: chord([.control, .option], "e"),
+                               edge: .release,
+                               action: .command(command))
+        let pointer = PointerBinding(modifiers: [.option], button: .right, drag: .resize)
+
+        let projection = BindDisplay.bindInfoProjection([keyboard], pointerBindings: [pointer])
+        let argv = try JSONDecoder().decode([String].self, from: Data(projection[0].arg.utf8))
+
+        #expect(argv == ["/bin/echo", "two words"])
+        #expect(projection[0].release)
+        #expect(projection[0].dispatcher == "run")
+        #expect(projection[1].mouse)
+        #expect(projection[1].dispatcher == "resize")
+    }
+
+    private func chord(_ modifiers: [KeyboardModifier], _ key: String) -> KeyChord {
+        KeyChord(modifiers: modifiers, key: key)
+    }
+
+    private func binding(mode: String = "default",
+                         chord: KeyChord,
+                         edge: BindingEdge = .press,
+                         repeats: Bool = false,
+                         action: ConfiguredAction) -> KeyboardBinding {
+        KeyboardBinding(mode: mode, chord: chord, edge: edge, repeats: repeats, action: action)
     }
 }

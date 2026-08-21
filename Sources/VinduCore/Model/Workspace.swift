@@ -1,12 +1,12 @@
 import CoreGraphics
 
 /// One workspace: a master-order list (canonical window order) plus a dwindle
-/// tree kept in sync, so `general:layout` can switch at runtime.
+/// tree kept in sync, so `layout.kind` can switch at runtime.
 ///
 /// Tiled membership MUST go through `insertTiled`/`removeTiled`/`removeWindow`/
 /// `swapTiled` — they are the single place that keeps both layout structures in
 /// lockstep. `dwindle`/`master` stay exposed for layout-specific operations
-/// (ratios, mfact, orientation, frames), not membership.
+/// (ratios, primary fraction, orientation, frames), not membership.
 public final class WorkspaceState {
     public let id: Int
     /// Named workspaces share the negative id space; never derive this from the id.
@@ -31,10 +31,12 @@ public final class WorkspaceState {
     }
 
     public func insertTiled(_ id: WindowID, near: WindowID?, container: CGRect,
-                            dwindleSettings: DwindleSettings, masterSettings: MasterSettings) {
-        master.insert(id, settings: masterSettings)
+                            dwindleConfiguration: DwindleConfiguration,
+                            masterConfiguration: MasterConfiguration) {
+        master.insert(id, configuration: masterConfiguration)
         let anchor = near.flatMap { dwindle.contains($0) ? $0 : nil }
-        dwindle.insert(id, near: anchor, container: container, settings: dwindleSettings)
+        dwindle.insert(id, near: anchor, container: container,
+                       configuration: dwindleConfiguration)
     }
 
     /// Removes from the tiled structures only (window stays on the workspace,
@@ -58,7 +60,7 @@ public final class WorkspaceState {
     }
 }
 
-/// Owns the workspace collection and Hyprland's id scheme: positive ids for
+/// Owns the workspace collection: positive ids for
 /// regular workspaces, names allocated downward from -1337, specials from -99.
 public final class WorkspaceRegistry {
     public private(set) var byID: [Int: WorkspaceState] = [:]
@@ -146,7 +148,7 @@ public final class WorkspaceRegistry {
         }
     }
 
-    /// Hyprland's dynamic workspace lifecycle: an empty, invisible, unbound,
+    /// An empty, invisible, unbound,
     /// non-special workspace disappears. Returns true if destroyed.
     @discardableResult
     public func destroyIfEmpty(_ ws: WorkspaceState, isVisible: Bool, isBound: Bool) -> Bool {

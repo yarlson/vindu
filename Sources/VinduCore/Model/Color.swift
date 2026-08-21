@@ -1,6 +1,6 @@
 import Foundation
 
-/// Color in Hyprland config notation: `rgba(33ccffee)`, `rgb(11ee11)`, `0xee33ccff` (AARRGGBB).
+/// Runtime scripting color notation: `rgba(33ccffee)`, `rgb(11ee11)`, or `0xee33ccff` (AARRGGBB).
 public struct MLColor: Equatable {
     public var r: Double
     public var g: Double
@@ -44,7 +44,7 @@ public struct MLColor: Equatable {
     }
 }
 
-/// Gradient in Hyprland notation: one or more colors followed by an optional
+/// Runtime gradient notation: one or more colors followed by an optional
 /// `Ndeg` angle, e.g. `rgba(33ccffee) rgba(00ff99ee) 45deg`.
 public struct MLGradient: Equatable {
     public var colors: [MLColor]

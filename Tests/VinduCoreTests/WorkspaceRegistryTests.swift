@@ -2,6 +2,16 @@ import Testing
 import CoreGraphics
 @testable import VinduCore
 
+private let workspaceDwindleConfiguration = DwindleConfiguration(
+    newWindowFraction: 0.5,
+    newWindowPosition: .after
+)
+private let workspaceMasterConfiguration = MasterConfiguration(
+    primaryFraction: 0.55,
+    primaryPosition: .left,
+    newWindowPosition: .stackEnd
+)
+
 struct WorkspaceRegistryTests {
     let container = CGRect(x: 0, y: 0, width: 1000, height: 600)
 
@@ -68,7 +78,8 @@ struct WorkspaceRegistryTests {
         let reg = makeRegistry()
         let ws1 = reg.workspace(forID: 1, monitor: 0)
         ws1.insertTiled(42, near: nil, container: container,
-                        dwindleSettings: DwindleSettings(), masterSettings: MasterSettings())
+                        dwindleConfiguration: workspaceDwindleConfiguration,
+                        masterConfiguration: workspaceMasterConfiguration)
         #expect(reg.resolveID(.empty, currentID: 1, previousID: nil, monitor: 0, create: true) == 2)
     }
 
@@ -110,7 +121,8 @@ struct WorkspaceStateMembershipTests {
         let ws = WorkspaceState(id: 1, name: "1", monitor: 0)
         for id in tiled {
             ws.insertTiled(id, near: nil, container: container,
-                           dwindleSettings: DwindleSettings(), masterSettings: MasterSettings())
+                           dwindleConfiguration: workspaceDwindleConfiguration,
+                           masterConfiguration: workspaceMasterConfiguration)
             _ = ws.dwindle.frames(in: container)
         }
         return ws
@@ -151,5 +163,24 @@ struct WorkspaceStateMembershipTests {
         ws.floating.append(1)
         #expect(ws.tiled.isEmpty)
         #expect(ws.allWindows == [1])
+    }
+
+    @Test func nativeConfigurationsFeedBothLayoutStructures() {
+        let workspace = WorkspaceState(id: 1, name: "1", monitor: 0)
+        let dwindle = DwindleConfiguration(newWindowFraction: 0.25,
+                                           newWindowPosition: .after)
+        let master = MasterConfiguration(primaryFraction: 0.6,
+                                         primaryPosition: .right,
+                                         newWindowPosition: .stackEnd)
+        workspace.insertTiled(1, near: nil, container: container,
+                              dwindleConfiguration: dwindle,
+                              masterConfiguration: master)
+        _ = workspace.dwindle.frames(in: container)
+        workspace.insertTiled(2, near: 1, container: container,
+                              dwindleConfiguration: dwindle,
+                              masterConfiguration: master)
+
+        #expect(workspace.tiled == [1, 2])
+        #expect(workspace.dwindle.frames(in: container)[1]?.width == 750)
     }
 }

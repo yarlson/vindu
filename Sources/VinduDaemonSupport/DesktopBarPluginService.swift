@@ -8,13 +8,13 @@ public final class DesktopBarPluginService {
     public var onChange: (() -> Void)?
 
     private final class State {
-        var config: BarPluginConfig
+        var config: NativeBarPlugin
         var current: BarPluginValue?
         var timer: Timer?
         var run: DesktopBarPluginRunning?
         var pending: Refresh?
 
-        init(config: BarPluginConfig) {
+        init(config: NativeBarPlugin) {
             self.config = config
         }
     }
@@ -44,21 +44,22 @@ public final class DesktopBarPluginService {
         self.makeProcess = makeProcess
     }
 
-    public func sync(settings: BarSettings, enabled: Bool) {
+    @discardableResult
+    public func sync(configuration: NativeBarConfiguration, enabled: Bool) -> Set<String> {
         guard enabled else {
             stop()
-            return
+            return []
         }
 
-        let active = Set(settings.pluginIDs)
+        let active = Set(configuration.pluginIDs)
+        var restarted: Set<String> = []
         var changed = false
         for id in Array(states.keys) where !active.contains(id) {
             changed = stop(id: id) || changed
         }
 
         for id in active.sorted() {
-            guard let config = settings.plugins[id],
-                  !config.command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            guard let config = configuration.plugins[id] else {
                 changed = stop(id: id) || changed
                 log("bar plugin \(id): missing command")
                 continue
@@ -69,6 +70,7 @@ public final class DesktopBarPluginService {
             changed = stop(id: id) || changed
             let state = State(config: config)
             states[id] = state
+            restarted.insert(id)
             scheduleTimer(id: id, state: state)
             refresh(id: id, Refresh(reason: "startup", eventName: "", eventPayload: ""))
         }
@@ -76,6 +78,7 @@ public final class DesktopBarPluginService {
         if changed {
             onChange?()
         }
+        return restarted
     }
 
     public func stop() {
@@ -113,8 +116,9 @@ public final class DesktopBarPluginService {
         return true
     }
 
-    public func handle(event: WMEvent) {
-        for (id, state) in states where state.config.events.contains(event.name) {
+    public func handle(event: WMEvent, excluding excludedIDs: Set<String> = []) {
+        for (id, state) in states
+        where !excludedIDs.contains(id) && state.config.events.contains(event.name) {
             refresh(id: id, Refresh(reason: "event",
                                     eventName: event.name,
                                     eventPayload: event.payload))

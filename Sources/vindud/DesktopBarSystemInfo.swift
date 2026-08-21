@@ -124,13 +124,13 @@ struct DesktopBarSystemInfoRequests: Equatable {
     var volume = false
     var weather = false
 
-    init(settings: BarSettings) {
-        guard settings.enabled, settings.showIndicators else { return }
-        date = settings.contains(.date)
-        battery = settings.contains(.battery)
-        network = settings.contains(.network)
-        keyboard = settings.contains(.keyboard)
-        volume = settings.contains(.volume)
-        weather = settings.contains(.weather)
+    init(configuration: NativeBarConfiguration) {
+        guard configuration.enabled else { return }
+        date = configuration.contains(.date)
+        battery = configuration.contains(.battery)
+        network = configuration.contains(.network)
+        keyboard = configuration.contains(.keyboard)
+        volume = configuration.contains(.volume)
+        weather = configuration.contains(.weather)
     }
 }

@@ -108,7 +108,7 @@ jobs:
       - name: Package ZIP
         run: |
           set -euo pipefail
-          cp README.md examples/vindu.conf dist/vindu/
+          cp README.md THIRD_PARTY_NOTICES.md examples/vindu.toml dist/vindu/
           ARTIFACT="vindu-${GITHUB_REF_NAME}-macos-universal.zip"
           ditto -c -k --keepParent dist/vindu "$ARTIFACT"
           shasum -a 256 "$ARTIFACT" > checksums.txt

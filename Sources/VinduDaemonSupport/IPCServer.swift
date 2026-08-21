@@ -5,7 +5,7 @@ import VinduCore
 
 public typealias IPCError = SecureSocketError
 
-/// Request/response socket, wire-compatible with Hyprland's socket1: one
+/// Public request/response socket: one
 /// plain-text command per connection, one reply, close. The handler runs on the
 /// queue passed at initialization, the main queue in the daemon.
 public final class IPCServer {
@@ -283,7 +283,7 @@ public final class IPCServer {
     }
 }
 
-/// Event stream socket, wire-compatible with Hyprland's socket2:
+/// Public event stream socket:
 /// `EVENT>>DATA\n` pushed to every connected same-UID client.
 public final class EventBroadcaster {
     private let path: String
