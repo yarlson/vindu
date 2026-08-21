@@ -13,6 +13,9 @@ jobs:
   release:
     runs-on: macos-26
     timeout-minutes: 25
+    env:
+      VINDUD_CODESIGN_IDENTIFIER: com.vindu.daemon
+      VINDUCTL_CODESIGN_IDENTIFIER: com.vindu.control
     steps:
       # actions/checkout v6
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
@@ -77,17 +80,19 @@ jobs:
           IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" \
             | awk -F '"' '/Developer ID Application/ { print $2; exit }')"
           test -n "$IDENTITY"
-          for bin in vindud vinductl; do
-            codesign --force --sign "$IDENTITY" --options runtime --timestamp "dist/vindu/$bin"
-          done
+          codesign --force --identifier "$VINDUD_CODESIGN_IDENTIFIER" \
+            --sign "$IDENTITY" --options runtime --timestamp dist/vindu/vindud
+          codesign --force --identifier "$VINDUCTL_CODESIGN_IDENTIFIER" \
+            --sign "$IDENTITY" --options runtime --timestamp dist/vindu/vinductl
 
       - name: Ad-hoc sign fallback binaries
         if: steps.signing.outputs.enabled != 'true'
         run: |
           set -euo pipefail
-          for bin in vindud vinductl; do
-            codesign --force --sign - "dist/vindu/$bin"
-          done
+          codesign --force --identifier "$VINDUD_CODESIGN_IDENTIFIER" \
+            --sign - dist/vindu/vindud
+          codesign --force --identifier "$VINDUCTL_CODESIGN_IDENTIFIER" \
+            --sign - dist/vindu/vinductl
 
       - name: Smoke test
         run: |
@@ -95,6 +100,10 @@ jobs:
           lipo -archs dist/vindu/vindud | grep -q "x86_64 arm64"
           codesign --verify --strict --verbose=2 dist/vindu/vindud
           codesign --verify --strict --verbose=2 dist/vindu/vinductl
+          codesign -dv --verbose=4 dist/vindu/vindud 2>&1 \
+            | grep -q "^Identifier=$VINDUD_CODESIGN_IDENTIFIER$"
+          codesign -dv --verbose=4 dist/vindu/vinductl 2>&1 \
+            | grep -q "^Identifier=$VINDUCTL_CODESIGN_IDENTIFIER$"
           dist/vindu/vindud --version
           dist/vindu/vinductl --version
 
@@ -168,6 +177,10 @@ jobs:
           unzip -q release.zip
           codesign --verify --strict --verbose=2 vindu/vindud
           codesign --verify --strict --verbose=2 vindu/vinductl
+          codesign -dv --verbose=4 vindu/vindud 2>&1 \
+            | grep -q "^Identifier=$VINDUD_CODESIGN_IDENTIFIER$"
+          codesign -dv --verbose=4 vindu/vinductl 2>&1 \
+            | grep -q "^Identifier=$VINDUCTL_CODESIGN_IDENTIFIER$"
           if [[ "${{ steps.signing.outputs.enabled }}" == "true" ]]; then
             codesign -dv --verbose=4 vindu/vindud 2>&1 | grep -q "Authority=Developer ID Application"
             codesign -dv --verbose=4 vindu/vindud 2>&1 | grep -q "Runtime Version"

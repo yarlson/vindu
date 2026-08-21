@@ -66,9 +66,10 @@ vindu` turns the service off entirely. Service logs land in
   owns tiled windows. Drag onto another tile to swap places, or `alt + v`
   to float it first.
 - **Binds stopped working after I rebuilt.** macOS ties the Accessibility
-  grant to the binary identity. Re-toggle `vindud` in System Settings after
-  upgrades. `make install` signs ad-hoc so rebuilds of the same tree keep
-  the grant.
+  grant to the binary identity. Ad-hoc signatures change on every build, so
+  re-toggle `vindud` in System Settings after an ad-hoc install. To preserve
+  the grant across source rebuilds, pass the same certificate each time:
+  `make install VINDU_CODESIGN_IDENTITY="certificate name"`.
 - **An app's windows vanished.** They're on another workspace. `cmd-tab` to
   the app takes you to its workspace, like it should.
 - **I want my config back to defaults.** Delete
@@ -307,10 +308,11 @@ vindud --config ./vindu.conf --install-service
 vindud --uninstall-service    # undo
 ```
 
-Two dev-loop gotchas: a rebuilt binary is a new code identity, so re-toggle
-`vindud` in Accessibility after `make install` or binds go silently dead.
-And don't run the brew service and a dev-build service at the same time —
-two window managers fight over the same windows.
+`make install` uses an ad-hoc signature by default. To keep the Accessibility
+grant across rebuilds, set `VINDU_CODESIGN_IDENTITY` to the same code-signing
+certificate each time; `security find-identity -v -p codesigning` lists the
+available identities. Also, don't run the brew service and a dev-build service
+at the same time — two window managers fight over the same windows.
 
 Releasing: push a `v*` tag. CI builds the universal (arm64 + x86_64) ZIP,
 publishes the GitHub release with checksums and provenance, and bumps the

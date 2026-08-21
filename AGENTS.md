@@ -21,7 +21,7 @@ These docs describe current state only. When a change affects something they cov
 - `make build` — debug build
 - `make test` — run all tests (swift-testing). Always use this instead of bare `swift test`: on machines with Command Line Tools but no Xcode it injects the framework search paths Testing.framework needs. Without them, `swift test` exits 0 having run zero tests — a silent false green.
 - Single suite: `swift test --filter LayoutTests`, adding the same `-Xswiftc`/`-Xlinker` flags from the Makefile on a CLT-only machine.
-- `make release` — release build + ad-hoc codesign (stable code identity keeps the user's Accessibility grant across rebuilds)
+- `make release` — release build + codesign; set `VINDU_CODESIGN_IDENTITY` to a persistent certificate to keep the user's Accessibility grant across rebuilds (the default `-` is ad-hoc)
 - `make check-template` — verifies `examples/vindu.conf` is byte-identical to the template in `Sources/vindud/DefaultConfig.swift` (also runs as part of `make test`)
 
 ## Rules

@@ -2,13 +2,13 @@
 
 ## Local build
 
-- SwiftPM only: `make build` (debug), `make release` (release plus ad-hoc codesign), `make install` (to PREFIX, default `/usr/local`).
+- SwiftPM only: `make build` (debug), `make release` (release plus codesign), `make install` (to PREFIX, default `/usr/local`). `VINDU_CODESIGN_IDENTITY` selects a persistent certificate; its default `-` produces an ad-hoc signature.
 - `make test` runs `swift test`, injecting Command Line Tools framework and rpath flags when `Testing.framework` only exists in the CLT location — tests work without full Xcode.
 - `make test` also enforces the template invariant: the config template embedded in `DefaultConfig.swift` must be byte-identical to `examples/vindu.conf`.
 
 ## Code identity
 
-macOS ties the Accessibility grant to the binary's code identity. Release and install builds are ad-hoc signed so rebuilds of the same source tree keep the grant; a genuinely new binary requires re-toggling vindud in System Settings. Two daemons must never run at once (brew service plus a dev build fight over the same windows); the command-socket probe enforces single instance.
+macOS ties the Accessibility grant to the binary's designated requirement. Vindu signs `vindud` as `com.vindu.daemon` and `vinductl` as `com.vindu.control`. A persistent certificate plus these stable identifiers lets a rebuilt binary satisfy the prior requirement. An ad-hoc signature identifies only one build, so its replacement requires re-toggling `vindud` in System Settings. Local release and install builds use `VINDU_CODESIGN_IDENTITY`, which defaults to ad-hoc signing for compatibility. Two daemons must never run at once (brew service plus a dev build fight over the same windows); the command-socket probe enforces single instance.
 
 ## Service management
 
@@ -23,7 +23,7 @@ Build-and-test matrix on the oldest and newest macOS runner images (both Apple S
 Pushing a `v*` tag drives the entire release:
 
 1. Per-triple release builds are lipo'd into universal (arm64 + x86_64) binaries. Per-triple because `swift build` with multiple `--arch` flags requires Xcode's xcbuild.
-2. When Developer ID and notary secrets are present, the binaries are Developer ID signed with hardened runtime and timestamp, packaged as a ZIP, submitted to Apple notarization, and verified with `codesign`, `spctl`, checksum, and binary smoke checks. If secrets are absent, CI publishes an explicitly labeled ad-hoc fallback ZIP and does not update Homebrew.
+2. When Developer ID and notary secrets are present, the binaries are Developer ID signed with stable identifiers, hardened runtime, and timestamp, packaged as a ZIP, submitted to Apple notarization, and verified with `codesign`, `spctl`, checksum, identifier, and binary smoke checks. If secrets are absent, CI publishes an explicitly labeled per-build ad-hoc fallback ZIP and does not update Homebrew.
 3. The ZIP ships the binaries, README, and the example config; sha256 checksums and a build-provenance attestation accompany it (verifiable with `gh attestation verify`).
 4. A GitHub release is created with notes that state whether the artifact is notarized.
 5. The published asset is round-tripped — downloaded from the release URL, checksum-verified, executed, architecture-checked, and Developer ID/hardened-runtime checked when applicable — before anything points at it.
