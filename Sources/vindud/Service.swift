@@ -11,7 +11,7 @@ enum Service {
         NSHomeDirectory() + "/Library/LaunchAgents/\(label).plist"
     }
 
-    static func install(configPath: String) -> Int32 {
+    static func install(configPath: String?) -> Int32 {
         guard let binary = Bundle.main.executableURL?.resolvingSymlinksInPath().path else {
             log("cannot resolve own binary path")
             return 1

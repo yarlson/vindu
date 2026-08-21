@@ -30,8 +30,9 @@ final class DesktopBar {
     private var panels: [CGDirectDisplayID: NSPanel] = [:]
     private var views: [CGDirectDisplayID: DesktopBarView] = [:]
 
-    func update(settings: BarSettings, snapshot: DesktopBarSnapshot, primaryHeight: Double) {
-        guard settings.enabled else {
+    func update(configuration: NativeBarConfiguration, snapshot: DesktopBarSnapshot,
+                primaryHeight: Double) {
+        guard configuration.enabled else {
             hide()
             return
         }
@@ -47,9 +48,9 @@ final class DesktopBar {
             view.onWorkspaceSelected = { [weak self] workspaceID in
                 self?.onWorkspaceSelected?(workspaceID, monitor.id)
             }
-            view.render(settings: settings, snapshot: snapshot, monitor: monitor)
-            panel.setFrame(Self.panelFrame(for: monitor, settings: settings, primaryHeight: primaryHeight),
-                           display: true)
+            panel.setFrame(Self.panelFrame(for: monitor, configuration: configuration,
+                                           primaryHeight: primaryHeight), display: true)
+            view.render(configuration: configuration, snapshot: snapshot, monitor: monitor)
             panel.orderFrontRegardless()
         }
     }
@@ -60,9 +61,10 @@ final class DesktopBar {
         }
     }
 
-    static func contentRect(for monitor: Monitor, settings: BarSettings) -> CGRect {
+    static func contentRect(for monitor: Monitor,
+                            configuration: NativeBarConfiguration) -> CGRect {
         BarGeometry.contentRect(displayFrame: monitor.frame, usable: monitor.usable,
-                                settings: settings)
+                                configuration: configuration)
     }
 
     private func panel(for id: CGDirectDisplayID) -> NSPanel {
@@ -94,10 +96,11 @@ final class DesktopBar {
         views.removeValue(forKey: id)
     }
 
-    private static func panelFrame(for monitor: Monitor, settings: BarSettings,
+    private static func panelFrame(for monitor: Monitor,
+                                   configuration: NativeBarConfiguration,
                                    primaryHeight: Double) -> CGRect {
         let topLeft = BarGeometry.barRect(displayFrame: monitor.frame, usable: monitor.usable,
-                                          settings: settings)
+                                          configuration: configuration)
         return CGRect(x: topLeft.minX,
                       y: primaryHeight - topLeft.maxY,
                       width: topLeft.width,
@@ -115,6 +118,7 @@ private final class DesktopBarView: NSView {
     var onWorkspaceSelected: ((Int) -> Void)?
 
     private let left = NSStackView()
+    private let center = NSStackView()
     private let appView = DesktopBarAppView()
     private let right = NSStackView()
 
@@ -128,54 +132,46 @@ private final class DesktopBarView: NSView {
         configure()
     }
 
-    func render(settings: BarSettings, snapshot: DesktopBarSnapshot, monitor: Monitor) {
+    func render(configuration: NativeBarConfiguration, snapshot: DesktopBarSnapshot,
+                monitor: Monitor) {
         let metrics = DesktopBarMetrics(
             height: BarGeometry.resolvedHeight(displayFrame: monitor.frame,
                                                usable: monitor.usable,
-                                               settings: settings)
+                                               configuration: configuration)
         )
         wantsLayer = true
-        layer?.backgroundColor = NSColor(vinduColor: settings.background).cgColor
-        left.spacing = metrics.spacing
-        right.spacing = metrics.indicatorSpacing
+        layer?.backgroundColor = NSColor(vinduColor: configuration.colors.background.displayColor)
+            .cgColor
+        for stack in [left, center, right] {
+            stack.spacing = metrics.spacing
+        }
         leftLeading?.constant = metrics.horizontalPadding
         rightTrailing?.constant = -metrics.horizontalPadding
         leftToRightGap?.constant = -metrics.horizontalPadding
 
         reset(left)
+        reset(center)
         reset(right)
+        center.isHidden = false
 
-        if settings.showWorkspaces {
-            for workspace in snapshot.workspaces {
-                let active = snapshot.activeWorkspaces[monitor.id] == workspace.id
-                let item = WorkspaceButton(workspace: workspace,
-                                           active: active,
-                                           settings: settings,
-                                           metrics: metrics)
-                item.onClick = { [weak self] id in self?.onWorkspaceSelected?(id) }
-                left.addArrangedSubview(item)
-            }
-        }
+        render(configuration.left, into: left, configuration: configuration,
+               snapshot: snapshot, monitor: monitor, metrics: metrics)
+        render(configuration.center, into: center, configuration: configuration,
+               snapshot: snapshot, monitor: monitor, metrics: metrics)
+        render(configuration.right, into: right, configuration: configuration,
+               snapshot: snapshot, monitor: monitor, metrics: metrics)
 
-        if settings.showApp {
-            appView.render(title: appTitle(snapshot, settings: settings, metrics: metrics),
-                           processIdentifier: snapshot.appProcessIdentifier,
-                           metrics: metrics)
-            left.addArrangedSubview(appView)
-        }
-
-        if settings.showIndicators {
-            for item in settings.items {
-                guard let presentation = indicatorPresentation(item, snapshot: snapshot,
-                                                               monitor: monitor,
-                                                               settings: settings) else {
-                    continue
-                }
-                right.addArrangedSubview(
-                    DesktopBarIndicatorView(presentation: presentation, metrics: metrics)
-                )
-            }
-        }
+        layoutSubtreeIfNeeded()
+        center.isHidden = !BarZoneGeometry.centerIsVisible(
+            barWidth: Double(bounds.width),
+            horizontalPadding: Double(metrics.horizontalPadding),
+            minimumGap: Double(metrics.horizontalPadding),
+            leftWidth: Double(left.fittingSize.width),
+            centerWidth: Double(center.fittingSize.width),
+            rightWidth: Double(right.fittingSize.width),
+            position: configuration.position,
+            topObstruction: monitor.topObstruction
+        )
     }
 
     private var leftLeading: NSLayoutConstraint?
@@ -185,7 +181,7 @@ private final class DesktopBarView: NSView {
     private func configure() {
         wantsLayer = true
 
-        for stack in [left, right] {
+        for stack in [left, center, right] {
             stack.orientation = .horizontal
             stack.alignment = .centerY
             stack.spacing = 6
@@ -206,6 +202,9 @@ private final class DesktopBarView: NSView {
             left.centerYAnchor.constraint(equalTo: centerYAnchor),
             leftToRightGap,
 
+            center.centerXAnchor.constraint(equalTo: centerXAnchor),
+            center.centerYAnchor.constraint(equalTo: centerYAnchor),
+
             rightTrailing,
             right.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
@@ -218,41 +217,84 @@ private final class DesktopBarView: NSView {
         }
     }
 
-    private func appTitle(_ snapshot: DesktopBarSnapshot, settings: BarSettings,
+    private func render(_ items: [NativeBarItem], into stack: NSStackView,
+                        configuration: NativeBarConfiguration,
+                        snapshot: DesktopBarSnapshot, monitor: Monitor,
+                        metrics: DesktopBarMetrics) {
+        for item in items {
+            switch item {
+            case .workspaces:
+                for workspace in snapshot.workspaces {
+                    let active = snapshot.activeWorkspaces[monitor.id] == workspace.id
+                    let button = WorkspaceButton(workspace: workspace,
+                                                 active: active,
+                                                 colors: configuration.colors,
+                                                 metrics: metrics)
+                    button.onClick = { [weak self] id in self?.onWorkspaceSelected?(id) }
+                    stack.addArrangedSubview(button)
+                }
+            case .application:
+                appView.render(title: appTitle(snapshot, configuration: configuration,
+                                               metrics: metrics),
+                               processIdentifier: snapshot.appProcessIdentifier,
+                               metrics: metrics)
+                stack.addArrangedSubview(appView)
+            default:
+                guard let presentation = indicatorPresentation(
+                    item, snapshot: snapshot, monitor: monitor,
+                    configuration: configuration
+                ) else { continue }
+                stack.addArrangedSubview(
+                    DesktopBarIndicatorView(presentation: presentation, metrics: metrics)
+                )
+            }
+        }
+    }
+
+    private func appTitle(_ snapshot: DesktopBarSnapshot,
+                          configuration: NativeBarConfiguration,
                           metrics: DesktopBarMetrics) -> NSAttributedString {
         let app = snapshot.appName.isEmpty ? "No active window" : snapshot.appName
         let title = snapshot.windowTitle.isEmpty ? "" : " - \(snapshot.windowTitle)"
         let out = NSMutableAttributedString(string: app, attributes: [
             .font: NSFont.systemFont(ofSize: metrics.primaryFontSize, weight: .semibold),
-            .foregroundColor: NSColor(vinduColor: settings.foreground),
+            .foregroundColor: NSColor(vinduColor: configuration.colors.foreground.displayColor),
         ])
         out.append(NSAttributedString(string: title, attributes: [
             .font: NSFont.systemFont(ofSize: metrics.primaryFontSize, weight: .regular),
-            .foregroundColor: NSColor(vinduColor: settings.inactive),
+            .foregroundColor: NSColor(vinduColor: configuration.colors.inactive.displayColor),
         ]))
         return out
     }
 
-    private func indicatorPresentation(_ item: BarItem, snapshot: DesktopBarSnapshot,
+    private func indicatorPresentation(_ item: NativeBarItem, snapshot: DesktopBarSnapshot,
                                        monitor: Monitor,
-                                       settings: BarSettings) -> DesktopBarIndicatorPresentation? {
+                                       configuration: NativeBarConfiguration)
+        -> DesktopBarIndicatorPresentation? {
         switch item {
-        case .builtin(let indicator):
-            return builtinIndicatorPresentation(indicator, snapshot: snapshot,
-                                                monitor: monitor,
-                                                settings: settings)
         case .plugin(let id):
             guard let value = snapshot.plugins[id] else { return nil }
             return DesktopBarIndicatorPresentation(text: value.text,
-                                                   color: pluginColor(value.color, settings: settings),
+                                                   color: pluginColor(value.color,
+                                                                      colors: configuration.colors),
                                                    symbolNames: value.symbolNames)
+        case .workspaces, .application:
+            return nil
+        default:
+            return builtinIndicatorPresentation(item, snapshot: snapshot,
+                                                monitor: monitor,
+                                                configuration: configuration)
         }
     }
 
-    private func builtinIndicatorPresentation(_ item: BarIndicator, snapshot: DesktopBarSnapshot,
+    private func builtinIndicatorPresentation(_ item: NativeBarItem,
+                                              snapshot: DesktopBarSnapshot,
                                               monitor: Monitor,
-                                              settings: BarSettings) -> DesktopBarIndicatorPresentation? {
-        let color = (item == .pause || item == .submap) ? settings.active : settings.foreground
+                                              configuration: NativeBarConfiguration)
+        -> DesktopBarIndicatorPresentation? {
+        let color = (item == .pause || item == .mode)
+            ? configuration.colors.active.displayColor
+            : configuration.colors.foreground.displayColor
         if item == .weather {
             guard let weather = snapshot.system.weather else { return nil }
             return DesktopBarIndicatorPresentation(item: item,
@@ -274,21 +316,21 @@ private final class DesktopBarView: NSView {
         return DesktopBarIndicatorPresentation(item: item, text: value, color: color)
     }
 
-    private func pluginColor(_ color: BarPluginColor, settings: BarSettings) -> MLColor {
+    private func pluginColor(_ color: BarPluginColor, colors: NativeBarColors) -> MLColor {
         switch color {
-        case .foreground: return settings.foreground
-        case .inactive: return settings.inactive
-        case .active: return settings.active
+        case .foreground: return colors.foreground.displayColor
+        case .inactive: return colors.inactive.displayColor
+        case .active: return colors.active.displayColor
         case .custom(let custom): return custom
         }
     }
 
-    private func indicatorValue(_ item: BarIndicator, snapshot: DesktopBarSnapshot,
+    private func indicatorValue(_ item: NativeBarItem, snapshot: DesktopBarSnapshot,
                                 monitor: Monitor) -> String? {
         switch item {
         case .pause:
             return snapshot.paused ? "paused" : nil
-        case .submap:
+        case .mode:
             return snapshot.submap.isEmpty ? nil : snapshot.submap
         case .layout:
             return snapshot.layout.rawValue
@@ -310,6 +352,8 @@ private final class DesktopBarView: NSView {
             return snapshot.system.volume?.text
         case .weather:
             return snapshot.system.weather?.text
+        case .workspaces, .application, .plugin:
+            return nil
         }
     }
 }
@@ -434,14 +478,15 @@ private final class WorkspaceButton: NSButton {
     let workspaceID: Int
     var onClick: ((Int) -> Void)?
 
-    init(workspace: DesktopBarWorkspace, active: Bool, settings: BarSettings,
+    init(workspace: DesktopBarWorkspace, active: Bool, colors: NativeBarColors,
          metrics: DesktopBarMetrics) {
         self.workspaceID = workspace.id
         super.init(frame: .zero)
 
         let foreground = active
-            ? NSColor.contrastingText(for: settings.active)
-            : NSColor(vinduColor: workspace.windows > 0 ? settings.foreground : settings.inactive)
+            ? NSColor.contrastingText(for: colors.active.displayColor)
+            : NSColor(vinduColor: workspace.windows > 0
+                ? colors.foreground.displayColor : colors.inactive.displayColor)
         attributedTitle = NSAttributedString(string: workspace.name, attributes: [
             .font: NSFont.monospacedSystemFont(ofSize: metrics.secondaryFontSize,
                                                weight: active ? .bold : .medium),
@@ -456,7 +501,7 @@ private final class WorkspaceButton: NSButton {
         wantsLayer = true
         layer?.cornerRadius = metrics.cornerRadius
         layer?.backgroundColor = active
-            ? NSColor(vinduColor: settings.active).cgColor
+            ? NSColor(vinduColor: colors.active.displayColor).cgColor
             : NSColor.clear.cgColor
         contentTintColor = foreground
         setAccessibilityLabel("Workspace \(workspace.name)")
@@ -474,6 +519,12 @@ private final class WorkspaceButton: NSButton {
 
     @objc private func activateWorkspace() {
         onClick?(workspaceID)
+    }
+}
+
+private extension ConfigurationColor {
+    var displayColor: MLColor {
+        MLColor(r: red, g: green, b: blue, a: alpha)
     }
 }
 

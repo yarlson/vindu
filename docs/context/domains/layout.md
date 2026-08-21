@@ -1,25 +1,24 @@
 # Layout engines
 
-Every workspace maintains both engines at all times; `general:layout` picks which one produces frames. Window order survives switching: master order is canonical, and the dwindle tree is rebuilt from it, replaying insertion with frame recomputation so aspect-based splits behave as if windows arrived one by one.
+Every workspace maintains both engines at all times; `layout.kind` picks which one produces frames. Window order survives switching: master order is canonical, and the dwindle tree is rebuilt from it, replaying insertion with frame recomputation so aspect-based splits behave as if windows arrived one by one.
 
 ## Dwindle
 
-Binary split tree (`DwindleTree`), Hyprland semantics:
+Binary split tree (`DwindleTree`):
 
 - A new window splits the focused leaf (fallback: the last leaf); split orientation follows the target leaf's aspect ratio (wider than tall → horizontal).
-- `dwindle:force_split` overrides which side the new window takes; `dwindle:default_split_ratio` seeds the ratio.
-- Ratios use Hyprland's 0.1–1.9 scale (1.0 = even split) at the surface, stored halved internally and clamped to 0.1–0.9.
+- `layout.dwindle.new_window_position` selects whether a new window enters before or after the target leaf. `new_window_fraction` sets its direct share from 0.1 through 0.9.
 - `togglesplit` transposes the split above a window; `swapsplit` swaps its children; `splitratio` adjusts it (delta or exact).
 - Pixel resize walks ancestors to the nearest split on the matching axis and converts the delta into a ratio change against that split's cached rect.
 - Every node caches its last computed rect; removal promotes the sibling into the parent's slot.
 
 ## Master
 
-`MasterLayout`: an ordered window list where the first `masterCount` windows are masters and the rest are the stack. Controlled via `layoutmsg` (swapwithmaster, focusmaster, addmaster/removemaster, mfact, orientation commands, cycle/swap next/prev).
+`MasterLayout` is an ordered window list where the first `masterCount` windows are primary and the rest form the stack. Typed configuration actions and the retained runtime dispatchers can focus or swap the primary window, change the primary count and fraction, rotate position, and cycle or swap order.
 
-- mfact and orientation have runtime overrides that fall back to the `master:*` settings.
+- Primary-fraction and position runtime overrides fall back to `layout.master.primary_fraction` and `primary_position`. Those overrides survive config reloads.
 - Five orientations: left/right/top/bottom/center; center alternates the stack onto both sides of a centered master area.
-- `master:new_status` accepts `master`, `slave`, or `inherit`; `master` inserts at the front, otherwise `master:new_on_top` controls whether new windows enter above the stack or append.
+- `layout.master.new_window_position` accepts `primary`, `stack-start`, or `stack-end`.
 
 ## Geometry
 
@@ -31,4 +30,4 @@ Binary split tree (`DwindleTree`), Hyprland semantics:
 
 ## Arrange pipeline
 
-`WindowManager.arrange` runs per visible workspace: engine frames → gap application → inset by border width → fullscreen-frame override → `AXBridge.setFrame`. Floating windows use their remembered `floatFrame` (default: centered, 60% × 70% of the container). When `bar:enabled` is true, any part of the desktop bar that overlaps the monitor's usable area is reserved before layout frames are computed. A top bar is drawn at the physical display top, so with the macOS menu bar hidden it occupies that normally excluded strip instead of adding a second gap. Special workspaces use a container inset 8% from that same usable area and raise their windows above the workspace beneath. Minimized and native-fullscreen windows are skipped; a window being dragged can be excluded so the rest re-flows around it.
+`WindowManager.arrange` runs per visible workspace: engine frames → gap application → inset by focus-border width → fullscreen-frame override → `AXBridge.setFrame`. Floating windows use their remembered `floatFrame` (default: centered, 60% × 70% of the container). When `ui.bar.enabled` is true, any part of the desktop bar that overlaps the monitor's usable area is reserved before layout frames are computed. A top bar is drawn at the physical display top, so with the macOS menu bar hidden it occupies that normally excluded strip instead of adding a second gap. Special workspaces use a container inset 8% from that same usable area and raise their windows above the workspace beneath. Minimized and native-fullscreen windows are skipped; a window being dragged can be excluded so the rest re-flows around it.

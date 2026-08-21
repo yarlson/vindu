@@ -6,7 +6,7 @@ import Testing
 struct DesktopBarPluginServiceTests {
     @Test func timeoutCompletionClearsRunAndStartsPendingRefresh() throws {
         let harness = PluginServiceHarness()
-        harness.service.sync(settings: settings(), enabled: true)
+        harness.service.sync(configuration: configuration(), enabled: true)
         #expect(harness.runs.count == 1)
 
         #expect(harness.service.refresh(id: "mail"))
@@ -18,7 +18,7 @@ struct DesktopBarPluginServiceTests {
 
     @Test func nonzeroExitDoesNotLogStderr() throws {
         let harness = PluginServiceHarness()
-        harness.service.sync(settings: settings(), enabled: true)
+        harness.service.sync(configuration: configuration(), enabled: true)
         harness.runs[0].complete(stderr: "TOKEN=secret-value", exitCode: 2)
 
         #expect(harness.logs == ["bar plugin mail: exited 2"])
@@ -27,13 +27,14 @@ struct DesktopBarPluginServiceTests {
 
     @Test func shutdownUsesCompletionGuaranteedTerminationForEveryActiveRun() {
         let harness = PluginServiceHarness()
-        var configured = settings()
-        configured.items.append(.plugin("clock"))
-        configured.plugins["clock"] = BarPluginConfig(command: "clock",
-                                                       refreshSeconds: 0,
-                                                       events: [],
-                                                       timeoutMs: 500)
-        harness.service.sync(settings: configured, enabled: true)
+        let configured = configuration(
+            items: [.plugin("mail"), .plugin("clock")],
+            plugins: [
+                "mail": plugin(command: .run(["/usr/bin/true"])),
+                "clock": plugin(command: .run(["/usr/bin/true"])),
+            ]
+        )
+        harness.service.sync(configuration: configured, enabled: true)
 
         harness.service.shutdown()
 
@@ -44,7 +45,7 @@ struct DesktopBarPluginServiceTests {
 
     @Test func ordinaryStopKeepsGracefulTerminationPath() {
         let harness = PluginServiceHarness()
-        harness.service.sync(settings: settings(), enabled: true)
+        harness.service.sync(configuration: configuration(), enabled: true)
 
         harness.service.stop()
 
@@ -54,7 +55,7 @@ struct DesktopBarPluginServiceTests {
 
     @Test func shutdownForceTerminatesRunStillExitingAfterOrdinaryStop() {
         let harness = PluginServiceHarness()
-        harness.service.sync(settings: settings(), enabled: true)
+        harness.service.sync(configuration: configuration(), enabled: true)
 
         harness.service.stop()
         harness.service.shutdown()
@@ -65,7 +66,7 @@ struct DesktopBarPluginServiceTests {
 
     @Test func shutdownDoesNotForceTerminateStoppedRunAfterItCompletes() {
         let harness = PluginServiceHarness()
-        harness.service.sync(settings: settings(), enabled: true)
+        harness.service.sync(configuration: configuration(), enabled: true)
 
         harness.service.stop()
         harness.runs[0].complete()
@@ -75,14 +76,79 @@ struct DesktopBarPluginServiceTests {
         #expect(!harness.runs[0].terminatedForShutdown)
     }
 
-    private func settings() -> BarSettings {
-        var settings = BarSettings()
-        settings.items = [.plugin("mail")]
-        settings.plugins["mail"] = BarPluginConfig(command: "mail-count",
-                                                   refreshSeconds: 0,
-                                                   events: [],
-                                                   timeoutMs: 500)
-        return settings
+    @Test func changedPluginIsNotRefreshedTwiceByItsConfigurationEvent() {
+        let harness = PluginServiceHarness()
+        harness.service.sync(configuration: configuration(events: ["configreloaded"]),
+                             enabled: true)
+        harness.runs[0].complete()
+
+        let restarted = harness.service.sync(
+            configuration: configuration(events: ["configreloaded"], timeoutMs: 600),
+            enabled: true
+        )
+
+        harness.service.handle(event: .configreloaded, excluding: restarted)
+        harness.runs[1].complete()
+
+        #expect(restarted == Set(["mail"]))
+        #expect(harness.runs.count == 2)
+    }
+
+    @Test func unchangedPluginReceivesOneConfigurationEventRefresh() {
+        let harness = PluginServiceHarness()
+        let configured = configuration(events: ["configreloaded"])
+        harness.service.sync(configuration: configured, enabled: true)
+        harness.runs[0].complete()
+
+        let restarted = harness.service.sync(configuration: configured, enabled: true)
+        harness.service.handle(event: .configreloaded, excluding: restarted)
+
+        #expect(restarted.isEmpty)
+        #expect(harness.runs.count == 2)
+        #expect(harness.runs[1].request.reason == "event")
+    }
+
+    private func configuration(events: [String] = [],
+                               timeoutMs: Int = 500) -> NativeBarConfiguration {
+        configuration(items: [.plugin("mail")],
+                      plugins: ["mail": plugin(command: .run(["/usr/bin/true"]),
+                                                events: events,
+                                                timeoutMs: timeoutMs)])
+    }
+
+    private func configuration(items: [NativeBarItem],
+                               plugins: [String: NativeBarPlugin]) -> NativeBarConfiguration {
+        NativeBarConfiguration(
+            enabled: true,
+            position: .top,
+            height: .automatic,
+            left: [],
+            center: [],
+            right: items,
+            colors: NativeBarColors(
+                background: color,
+                foreground: color,
+                inactive: color,
+                active: color
+            ),
+            weather: nil,
+            plugins: plugins
+        )
+    }
+
+    private func plugin(command: CommandSpec.Execution,
+                        events: [String] = [],
+                        timeoutMs: Int = 500) -> NativeBarPlugin {
+        NativeBarPlugin(
+            command: CommandSpec(execution: command, environment: [:]),
+            refreshSeconds: 0,
+            events: events,
+            timeoutMs: timeoutMs
+        )
+    }
+
+    private var color: ConfigurationColor {
+        ConfigurationColor(red: 0, green: 0, blue: 0, alpha: 1)
     }
 }
 

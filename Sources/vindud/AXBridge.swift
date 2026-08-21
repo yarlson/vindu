@@ -8,7 +8,7 @@ import VinduCore
 @discardableResult
 func _AXUIElementGetWindow(_ element: AXUIElement, _ wid: inout CGWindowID) -> AXError
 
-/// What kind of surface an AXWindow is. Mirrors how Hyprland treats clients:
+/// What kind of surface an AXWindow is:
 /// standard windows tile, dialogs float, and chromeless auxiliary surfaces
 /// (autocomplete dropdowns, tooltips) are never managed, so window-manager
 /// focus stays with their parent window.
@@ -21,6 +21,7 @@ enum WindowKind {
 struct WindowSnapshot {
     let id: WindowID
     let pid: pid_t
+    let bundleID: String?
     let clazz: String
     let title: String
     let frame: CGRect
@@ -55,14 +56,16 @@ final class AXBridge {
         let pid: pid_t
         let element: AXUIElement
         let name: String
+        let bundleID: String?
         var observer: AXObserver?
         var windows: [(element: AXUIElement, id: WindowID)] = []
         var pendingRegistrationIDs: Set<WindowID> = []
         weak var bridge: AXBridge?
 
-        init(pid: pid_t, name: String, bridge: AXBridge) {
+        init(pid: pid_t, name: String, bundleID: String?, bridge: AXBridge) {
             self.pid = pid
             self.name = name
+            self.bundleID = bundleID
             self.element = AXUIElementCreateApplication(pid)
             self.bridge = bridge
         }
@@ -125,7 +128,10 @@ final class AXBridge {
     private func attach(_ app: NSRunningApplication) {
         let pid = app.processIdentifier
         guard pid != ownPID, apps[pid] == nil else { return }
-        let handle = AppHandle(pid: pid, name: app.localizedName ?? "unknown", bridge: self)
+        let handle = AppHandle(pid: pid,
+                               name: app.localizedName ?? "unknown",
+                               bundleID: app.bundleIdentifier,
+                               bridge: self)
 
         var observer: AXObserver?
         guard AXObserverCreate(pid, axObserverCallback, &observer) == .success, let observer else {
@@ -322,6 +328,7 @@ final class AXBridge {
         return WindowSnapshot(
             id: id,
             pid: app.pid,
+            bundleID: app.bundleID,
             clazz: app.name,
             title: axValue(element, kAXTitleAttribute) ?? "",
             frame: frame,

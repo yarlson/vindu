@@ -8,7 +8,7 @@ struct DesktopBarIndicatorPresentation {
     let color: MLColor
     let accessibilityLabel: String
 
-    init(item: BarIndicator, text: String, color: MLColor,
+    init(item: NativeBarItem, text: String, color: MLColor,
          symbolNames: [String]? = nil) {
         self.text = text
         self.symbolNames = symbolNames ?? Self.symbolNames(for: item, text: text)
@@ -38,11 +38,11 @@ struct DesktopBarIndicatorPresentation {
         return symbolNames(for: .volume, text: volume.text)
     }
 
-    private static func symbolNames(for item: BarIndicator, text: String) -> [String] {
+    private static func symbolNames(for item: NativeBarItem, text: String) -> [String] {
         switch item {
         case .pause:
             return ["pause.fill", "pause"]
-        case .submap:
+        case .mode:
             return ["keyboard"]
         case .layout:
             return ["rectangle.split.2x1", "rectangle.split.2x1.fill"]
@@ -62,6 +62,8 @@ struct DesktopBarIndicatorPresentation {
                 : ["speaker.wave.2.fill", "speaker.wave.2"]
         case .weather:
             return ["cloud.sun.fill", "cloud.sun"]
+        case .workspaces, .application, .plugin:
+            return []
         }
     }
 
@@ -84,11 +86,11 @@ struct DesktopBarIndicatorPresentation {
         }
     }
 
-    private static func accessibilityLabel(for item: BarIndicator, text: String) -> String {
+    private static func accessibilityLabel(for item: NativeBarItem, text: String) -> String {
         let name: String
         switch item {
         case .pause: name = "Pause"
-        case .submap: name = "Submap"
+        case .mode: name = "Mode"
         case .layout: name = "Layout"
         case .windows: name = "Windows"
         case .date: name = "Date"
@@ -97,6 +99,9 @@ struct DesktopBarIndicatorPresentation {
         case .keyboard: name = "Keyboard"
         case .volume: name = "Volume"
         case .weather: name = "Weather"
+        case .workspaces: name = "Workspaces"
+        case .application: name = "Application"
+        case .plugin(let id): name = id
         }
         return text.isEmpty ? name : "\(name): \(text)"
     }

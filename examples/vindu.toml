@@ -1,0 +1,110 @@
+schema = 1
+
+[layout]
+kind = "dwindle"
+inner_gap = 5
+outer_gap = 12
+
+[layout.dwindle]
+new_window_fraction = 0.5
+new_window_position = "after"
+
+[layout.master]
+primary_fraction = 0.55
+primary_position = "left"
+new_window_position = "stack-end"
+
+[focus]
+follows_pointer = false
+allow_app_activation = false
+
+[workspaces]
+back_and_forth = true
+
+[ui.menu_bar]
+enabled = true
+
+[ui.focus_border]
+width = 2
+fallback_corner_radius = 10
+active_colors = ["#33ccffee", "#00ff99ee"]
+active_angle = 45
+mode_colors = ["#ff5555ee"]
+
+[ui.bar]
+enabled = false
+position = "top"
+height = "auto"
+left = ["workspaces", "application"]
+center = ["layout"]
+right = ["pause", "mode", "windows", "network", "battery", "volume", "date"]
+
+[ui.bar.colors]
+background = "#111111cc"
+foreground = "#eeeeeeff"
+inactive = "#8a8a8aff"
+active = "#33ccffee"
+
+[keyboard]
+bindings = [
+  { chord = "option+return", run = ["/usr/bin/open", "-a", "Terminal"] },
+  { chord = "option+e", run = ["/usr/bin/open", "-a", "Finder"] },
+  { chord = "option+shift+q", close = true },
+  { chord = "option+shift+m", quit = true },
+  { chord = "option+h", focus = "left" },
+  { chord = "option+l", focus = "right" },
+  { chord = "option+k", focus = "up" },
+  { chord = "option+j", focus = "down" },
+  { chord = "option+shift+h", move = "left" },
+  { chord = "option+shift+l", move = "right" },
+  { chord = "option+shift+k", move = "up" },
+  { chord = "option+shift+j", move = "down" },
+  { chord = "option+v", toggle_floating = true },
+  { chord = "option+f", maximize = "toggle" },
+  { chord = "option+shift+f", fullscreen = "toggle" },
+  { chord = "option+t", split = "toggle" },
+  { chord = "option+p", pin = true },
+  { chord = "option+c", center = true },
+  { chord = "option+m", primary = "swap" },
+  { chord = "option+shift+p", pause = "toggle" },
+  { chord = "option+1", workspace = 1 },
+  { chord = "option+2", workspace = 2 },
+  { chord = "option+3", workspace = 3 },
+  { chord = "option+4", workspace = 4 },
+  { chord = "option+5", workspace = 5 },
+  { chord = "option+6", workspace = 6 },
+  { chord = "option+7", workspace = 7 },
+  { chord = "option+8", workspace = 8 },
+  { chord = "option+9", workspace = 9 },
+  { chord = "option+shift+1", move_to_workspace = 1 },
+  { chord = "option+shift+2", move_to_workspace = 2 },
+  { chord = "option+shift+3", move_to_workspace = 3 },
+  { chord = "option+shift+4", move_to_workspace = 4 },
+  { chord = "option+shift+5", move_to_workspace = 5 },
+  { chord = "option+shift+6", move_to_workspace = 6 },
+  { chord = "option+shift+7", move_to_workspace = 7 },
+  { chord = "option+shift+8", move_to_workspace = 8 },
+  { chord = "option+shift+9", move_to_workspace = 9 },
+  { chord = "option+bracketleft", workspace = "-1" },
+  { chord = "option+bracketright", workspace = "+1" },
+  { chord = "option+s", toggle_special_workspace = "magic" },
+  { chord = "option+shift+s", move_to_workspace_silent = "special:magic" },
+  { chord = "option+r", enter_mode = "resize" },
+  { mode = "resize", chord = "l", repeat = true, resize = [30, 0] },
+  { mode = "resize", chord = "h", repeat = true, resize = [-30, 0] },
+  { mode = "resize", chord = "k", repeat = true, resize = [0, -30] },
+  { mode = "resize", chord = "j", repeat = true, resize = [0, 30] },
+  { mode = "resize", chord = "escape", enter_mode = "default" },
+]
+pointer_bindings = [
+  { modifiers = ["option"], button = "left", drag = "move" },
+  { modifiers = ["option"], button = "right", drag = "resize" },
+]
+
+[startup]
+commands = []
+
+[windows]
+rules = [
+  { match = { bundle_id = "com.apple.systempreferences" }, floating = true, centered = true },
+]

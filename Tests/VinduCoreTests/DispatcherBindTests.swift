@@ -94,64 +94,6 @@ struct DispatcherTests {
     }
 }
 
-struct BindTests {
-    @Test func modifierParsing() {
-        #expect(Modifiers.parse("SUPER SHIFT") == [.cmd, .shift])
-        #expect(Modifiers.parse("ALT+CTRL") == [.alt, .ctrl])
-        #expect(Modifiers.parse("") == [])
-        #expect(Modifiers.parse("BANANA") == nil)
-        #expect(Modifiers([.cmd, .shift]).described == "SUPER SHIFT")
-    }
-
-    @Test func flagParsing() {
-        #expect(BindFlags.parse("e") == .repeats)
-        #expect(BindFlags.parse("eld") == [.repeats, .locked, .hasDescription])
-        #expect(BindFlags.parse("z") == nil)
-    }
-
-    @Test func bindWithDescription() throws {
-        let bind = try BindParser.parse(flagsSuffix: "d",
-                                        value: "SUPER, T, Open terminal, exec, kitty",
-                                        submap: "").get()
-        #expect(bind.description == "Open terminal")
-        #expect(bind.dispatcher == .exec("kitty"))
-    }
-
-    @Test func invalidKeyRejected() {
-        let result = BindParser.parse(flagsSuffix: "", value: "SUPER, notakey, exec, x", submap: "")
-        guard case .failure(let err) = result else {
-            Issue.record("expected failure, got \(result)")
-            return
-        }
-        #expect(err.message.contains("unknown key"))
-    }
-
-    @Test func codeKeyAccepted() throws {
-        let bind = try BindParser.parse(flagsSuffix: "", value: "SUPER, code:34, exec, x", submap: "").get()
-        #expect(bind.key == "code:34")
-        #expect(KeyCodes.code(for: bind.key) == 34)
-    }
-
-    @Test func mouseBindNeedsMouseKey() throws {
-        let bad = BindParser.parse(flagsSuffix: "m", value: "SUPER, q, movewindow", submap: "")
-        guard case .failure = bad else {
-            Issue.record("expected failure")
-            return
-        }
-        let bind = try BindParser.parse(flagsSuffix: "m", value: "SUPER, mouse:273, resizewindow", submap: "").get()
-        #expect(MouseButton.parse(bindKey: bind.key) == .right)
-        #expect(bind.dispatcher == .resizewindow)
-    }
-
-    @Test func keyCodeTable() {
-        #expect(KeyCodes.code(for: "Q") == 12)
-        #expect(KeyCodes.code(for: "return") == 36)
-        #expect(KeyCodes.code(for: "left") == 123)
-        #expect(KeyCodes.code(for: "f5") == 96)
-        #expect(KeyCodes.code(for: "fakekey") == nil)
-    }
-}
-
 struct ColorTests {
     @Test func colorFormats() throws {
         let c = try #require(MLColor.parse("rgba(33ccffee)"))

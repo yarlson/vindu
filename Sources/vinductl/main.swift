@@ -9,12 +9,11 @@ USAGE: vinductl [-j] <command> [args…]
 
 COMMANDS:
     dispatch <dispatcher> [args]   run a dispatcher (movefocus l, workspace 3, exec kitty…)
-    keyword <name> <value>         set a config keyword live (general:gaps_in 10)
-    reload                         reload the config file
+    config check [PATH]            validate TOML without contacting the daemon
+    config status                  show active config state and diagnostics
+    config reload                  reload the config file
     clients | workspaces | monitors | activewindow | activeworkspace | binds
-    getoption <keyword>            read a config value
     barplugin refresh <id>         queue a desktop bar plugin refresh
-    configerrors                   show config parse errors
     cursorpos | version | splash
     notify <text>                  post a notification
     events                         stream the event socket (workspace>>2, …)
@@ -45,6 +44,30 @@ func connectSocket(path: String) throws -> Int32 {
 func die(_ message: String) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))
     exit(1)
+}
+
+func printReplyAndExit(_ line: String) -> Never {
+    let reply = request(line).trimmingCharacters(in: .whitespacesAndNewlines)
+    print(reply)
+    exit(reply.hasPrefix("err") || reply.hasPrefix("unknown") ? 1 : 0)
+}
+
+func offlineConfigCheck(path: String) -> Never {
+    do {
+        _ = try NativeConfigurationFileLoader().check(path: path)
+        print("ok: \(path)")
+        exit(0)
+    } catch NativeConfigurationLoadError.invalid(let file, let failure) {
+        for diagnostic in failure.diagnostics {
+            var location = file
+            if let line = diagnostic.line { location += ":\(line)" }
+            if let keyPath = diagnostic.keyPath { location += " [\(keyPath)]" }
+            FileHandle.standardError.write(Data("\(location): \(diagnostic.message)\n".utf8))
+        }
+        exit(1)
+    } catch {
+        die(String(describing: error))
+    }
 }
 
 func request(_ line: String) -> String {
@@ -112,7 +135,18 @@ default:
     break
 }
 
+if let route = ConfigurationCommandRouter.route(arguments: args,
+                                                json: json,
+                                                defaultPath: VinduPaths.defaultConfigPath) {
+    switch route {
+    case .offlineCheck(let path):
+        offlineConfigCheck(path: path)
+    case .socketRequest(let line):
+        printReplyAndExit(line)
+    case .invalid(let message):
+        die(message)
+    }
+}
+
 let line = (json ? "j/" : "") + args.joined(separator: " ")
-let reply = request(line).trimmingCharacters(in: .whitespacesAndNewlines)
-print(reply)
-exit(reply.hasPrefix("err") || reply.hasPrefix("unknown") ? 1 : 0)
+printReplyAndExit(line)

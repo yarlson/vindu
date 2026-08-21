@@ -5,14 +5,14 @@ import VinduCore
 
 struct DesktopBarPluginRunRequest {
     let id: String
-    let command: String
+    let command: CommandSpec
     let timeoutMs: Int
     let reason: String
     let eventName: String
     let eventPayload: String
 
     init(id: String,
-         command: String,
+         command: CommandSpec,
          timeoutMs: Int,
          reason: String,
          eventName: String,
@@ -156,6 +156,9 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
         env["SHELL"] = env["SHELL"] ?? "/bin/sh"
         env["TMPDIR"] = env["TMPDIR"] ?? NSTemporaryDirectory()
         env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        for (key, value) in request.command.environment {
+            env[key] = value
+        }
         env["VINDU_BAR_PLUGIN_ID"] = request.id
         env["VINDU_BAR_PLUGIN_REASON"] = request.reason
         env["VINDU_BAR_PLUGIN_EVENT"] = request.eventName
@@ -187,20 +190,34 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
         let flags = Int16(POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT)
         try checkSpawnSetup(posix_spawnattr_setflags(&attrs, flags))
 
-        let argv = ["/bin/sh", "-lc", request.command]
+        let invocation = Self.invocation(for: request.command)
         let env = Self.pluginEnvironment(for: request)
             .sorted { $0.key < $1.key }
             .map { "\($0.key)=\($0.value)" }
         var childPid: pid_t = -1
-        let status = withCStringArray(argv) { argvPtr in
+        let status = withCStringArray(invocation.arguments) { argvPtr in
             withCStringArray(env) { envPtr in
-                posix_spawn(&childPid, "/bin/sh", &actions, &attrs, argvPtr, envPtr)
+                posix_spawn(&childPid, invocation.executable, &actions, &attrs, argvPtr, envPtr)
             }
         }
         guard status == 0 else {
             throw DesktopBarPluginProcessError.spawnFailed(status)
         }
         return childPid
+    }
+
+    private static func invocation(for command: CommandSpec)
+        -> (executable: String, arguments: [String]) {
+        switch command.execution {
+        case .run(let arguments):
+            var arguments = arguments
+            if arguments[0].hasPrefix("~/") {
+                arguments[0] = NSString(string: arguments[0]).expandingTildeInPath
+            }
+            return (arguments[0], arguments)
+        case .shell(let script):
+            return ("/bin/sh", ["/bin/sh", "-lc", script])
+        }
     }
 
     private func checkSpawnSetup(_ status: Int32) throws {

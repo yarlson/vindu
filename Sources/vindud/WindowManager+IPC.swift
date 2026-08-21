@@ -1,7 +1,7 @@
 import AppKit
 import VinduCore
 
-// MARK: - IPC (hyprctl-compatible verbs)
+// MARK: - Public IPC
 
 extension WindowManager {
     func handleIPC(_ raw: String) -> String {
@@ -25,19 +25,6 @@ extension WindowManager {
             case .success(let d): return dispatch(d)
             case .failure(let e): return "err: \(e.message)"
             }
-        case "keyword":
-            let kparts = arg.split(separator: " ", maxSplits: 1).map(String.init)
-            guard kparts.count == 2 else { return "err: keyword needs: <name> <value>" }
-            if let err = ConfigParser.applyKeyword(kparts[0], kparts[1], to: &doc) {
-                return "err: \(err)"
-            }
-            tap.rebuild(binds: doc.binds)
-            applyDesktopUISettings()
-            arrangeAllVisible()
-            refreshDesktopBar()
-            return "ok"
-        case "reload":
-            return reloadConfig() ? "ok" : "err: config reload failed"
         case "barplugin":
             return handleBarPluginIPC(arg)
         case "clients":
@@ -59,15 +46,15 @@ extension WindowManager {
             }
             return json ? encodeJSON(info) : clientText(info)
         case "binds":
-            let infos = doc.binds.map { BindInfo($0, arg: $0.dispatcher.argText) }
+            let infos = BindDisplay.bindInfoProjection(
+                configuration.keyboard.bindings,
+                pointerBindings: configuration.keyboard.pointerBindings
+            )
             return json ? encodeJSON(infos) : infos.map(bindText).joined(separator: "\n")
         case "version":
             let info = VersionInfo(version: VinduVersion.string,
                                    system: "macOS " + ProcessInfo.processInfo.operatingSystemVersionString)
             return json ? encodeJSON(info) : "vindu \(info.version) (\(info.system))"
-        case "getoption":
-            guard !arg.isEmpty else { return "err: getoption needs a keyword" }
-            return settings.get(arg) ?? "err: unknown option \(arg)"
         case "cursorpos":
             let p = NSEvent.mouseLocation
             let y = monitorMgr.primaryHeight - p.y
@@ -75,9 +62,6 @@ extension WindowManager {
                 return "err: invalid cursor position"
             }
             return json ? "{\"x\": \(x), \"y\": \(y)}" : "\(x), \(y)"
-        case "configerrors":
-            if doc.errors.isEmpty { return json ? "[]" : "no errors" }
-            return doc.errors.map { "line \($0.line): \($0.message)" }.joined(separator: "\n")
         case "splash":
             return "vindu — from Old Norse vindauga: the wind-eye"
         case "notify":
@@ -224,6 +208,11 @@ extension WindowManager {
         let flags = [b.repeats ? "e" : "", b.mouse ? "m" : "", b.release ? "r" : "",
                      b.locked ? "l" : ""].joined()
         let submap = b.submap.isEmpty ? "" : " [submap: \(b.submap)]"
-        return "bind\(flags): \(Modifiers(rawValue: UInt8(b.modmask)).described) + \(b.key) -> \(b.dispatcher) \(b.arg)\(submap)"
+        var modifiers: [String] = []
+        if b.modmask & (1 << 3) != 0 { modifiers.append("SUPER") }
+        if b.modmask & (1 << 2) != 0 { modifiers.append("ALT") }
+        if b.modmask & (1 << 1) != 0 { modifiers.append("CTRL") }
+        if b.modmask & (1 << 0) != 0 { modifiers.append("SHIFT") }
+        return "bind\(flags): \(modifiers.joined(separator: " ")) + \(b.key) -> \(b.dispatcher) \(b.arg)\(submap)"
     }
 }

@@ -1,15 +1,9 @@
 import AppKit
 import VinduCore
 
-/// Mouse drag engine. Two entry points share one session model:
-/// - bindm drags (we own the window's frame),
-/// - native title-bar drags of tiled windows (the OS moves the window, we
-///   re-tile around it).
-/// Tiled windows snap back to the grid on release; tiles swap live while the
-/// cursor crosses them, mirroring Hyprland's drag behavior.
 extension WindowManager {
     enum DragKind { case move, resize }
-    enum DragSource { case bindm, native }
+    enum DragSource { case binding, native }
 
     struct DragSession {
         let id: WindowID
@@ -25,23 +19,16 @@ extension WindowManager {
         var lastPoint: CGPoint
     }
 
-    /// bindm drags. Hyprland semantics: `movewindow` on a tiled window drags it
-    /// across the grid, swapping tiles as the cursor crosses them; on a floating
-    /// window it free-moves. `resizewindow` drags split ratios (tiled) or the
-    /// frame (floating).
-    func handleDrag(dispatcher: Dispatcher, point: CGPoint, phase: HotkeyTap.DragPhase) {
+    func handleDrag(drag kind: PointerDrag, point: CGPoint, phase: HotkeyTap.DragPhase) {
         switch phase {
         case .began:
             guard let id = bridge.windowID(at: point), let state = windows[id] else { return }
-            let kind: DragKind = {
-                if case .resizewindow = dispatcher { return .resize }
-                return .move
-            }()
-            drag = DragSession(id: id, kind: kind, source: .bindm, startPoint: point,
+            let dragKind: DragKind = kind == .resize ? .resize : .move
+            drag = DragSession(id: id, kind: dragKind, source: .binding, startPoint: point,
                                startFrame: state.frame, engaged: true, lastPoint: point)
             focusWindow(id)
         case .moved:
-            guard var session = drag, session.source == .bindm,
+            guard var session = drag, session.source == .binding,
                   let state = windows[session.id] else { return }
             let now = CFAbsoluteTimeGetCurrent()
             guard now - lastDragApply > 0.02 else { return }
@@ -81,7 +68,7 @@ extension WindowManager {
     }
 
     /// Native (unbound) left drags: a tiled window dragged by its title bar
-    /// re-tiles like a bindm drag instead of fighting the layout.
+    /// re-tiles like a configured pointer drag instead of fighting the layout.
     func handleRawLeftMouse(_ point: CGPoint, _ phase: HotkeyTap.DragPhase) {
         switch phase {
         case .began:

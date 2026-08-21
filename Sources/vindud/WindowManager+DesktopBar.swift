@@ -6,14 +6,20 @@ extension WindowManager {
 
     func toggleCheatSheet() {
         guard let monitor = monitorMgr.byID(focusedMonitorID) ?? monitorMgr.primary else { return }
-        cheatSheet.toggle(rows: BindDisplay.rows(doc.binds),
+        cheatSheet.toggle(rows: BindDisplay.rows(
+            configuration.keyboard.bindings,
+            pointerBindings: configuration.keyboard.pointerBindings
+        ),
                           monitorFrame: monitor.usable,
                           primaryHeight: monitorMgr.primaryHeight)
     }
 
     func showCheatSheetIfHidden() {
         guard let monitor = monitorMgr.byID(focusedMonitorID) ?? monitorMgr.primary else { return }
-        cheatSheet.showIfHidden(rows: BindDisplay.rows(doc.binds),
+        cheatSheet.showIfHidden(rows: BindDisplay.rows(
+            configuration.keyboard.bindings,
+            pointerBindings: configuration.keyboard.pointerBindings
+        ),
                                 monitorFrame: monitor.usable,
                                 primaryHeight: monitorMgr.primaryHeight)
     }
@@ -21,7 +27,7 @@ extension WindowManager {
     // MARK: - Desktop bar
 
     func refreshDesktopBar() {
-        guard !shutdownRequested, settings.bar.enabled else {
+        guard !shutdownRequested, configuration.ui.bar.enabled else {
             desktopBarRefreshQueued = false
             desktopBar.hide()
             return
@@ -36,11 +42,11 @@ extension WindowManager {
     }
 
     private func renderDesktopBar() {
-        guard !shutdownRequested, settings.bar.enabled else {
+        guard !shutdownRequested, configuration.ui.bar.enabled else {
             desktopBar.hide()
             return
         }
-        desktopBar.update(settings: settings.bar,
+        desktopBar.update(configuration: configuration.ui.bar,
                           snapshot: desktopBarSnapshot(),
                           primaryHeight: monitorMgr.primaryHeight)
     }
@@ -58,7 +64,7 @@ extension WindowManager {
 
         let active = focusedWindow.flatMap { windows[$0] }
         let frontmost = NSWorkspace.shared.frontmostApplication
-        let requests = DesktopBarSystemInfoRequests(settings: settings.bar)
+        let requests = DesktopBarSystemInfoRequests(configuration: configuration.ui.bar)
         return DesktopBarSnapshot(
             monitors: monitorMgr.monitors,
             workspaces: workspaces,
@@ -66,8 +72,8 @@ extension WindowManager {
             appProcessIdentifier: active?.pid ?? frontmost?.processIdentifier,
             appName: active?.clazz ?? frontmost?.localizedName ?? "",
             windowTitle: active?.title ?? "",
-            layout: settings.general.layout,
-            submap: tap.activeSubmap,
+            layout: configuration.layout.kind,
+            submap: tap.activeMode == "default" ? "" : tap.activeMode,
             paused: paused,
             system: DesktopBarSystemInfo.current(requests: requests,
                                                  weather: desktopBarRefresh.currentWeather),

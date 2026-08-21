@@ -1,7 +1,7 @@
 import Foundation
 
 public enum VinduVersion {
-    public static let string = "0.5.3"
+    public static let string = "0.6.0"
 }
 
 public enum VinduPaths {
@@ -25,10 +25,68 @@ public enum VinduPaths {
         return NSHomeDirectory() + "/.config/vindu"
     }
 
-    public static var defaultConfigPath: String { configDir + "/vindu.conf" }
+    public static var defaultConfigPath: String { configDir + "/vindu.toml" }
+    public static var legacyConfigPath: String { configDir + "/vindu.conf" }
 }
 
-/// Hyprland formats window addresses as hex; we use the CGWindowID.
+public enum ConfigDaemonState: String, Codable, Equatable {
+    case configurationOnly = "configuration_only"
+    case waitingForAccessibility = "waiting_for_accessibility"
+    case running
+}
+
+public struct LocatedConfigDiagnostic: Codable, Equatable {
+    public let file: String
+    public let line: Int?
+    public let schemaPath: String?
+    public let message: String
+
+    public init(file: String, line: Int? = nil, schemaPath: String? = nil, message: String) {
+        self.file = file
+        self.line = line
+        self.schemaPath = schemaPath
+        self.message = message
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case file, line, message
+        case schemaPath = "schema_path"
+    }
+}
+
+public struct ConfigStatus: Codable, Equatable {
+    public let path: String
+    public let daemonState: ConfigDaemonState
+    public let activeSchema: Int?
+    public let latestAttemptSucceeded: Bool
+    public let rejectedDiagnostics: [LocatedConfigDiagnostic]
+    public let runtimeWarnings: [LocatedConfigDiagnostic]
+
+    public init(path: String,
+                daemonState: ConfigDaemonState,
+                activeSchema: Int?,
+                latestAttemptSucceeded: Bool,
+                rejectedDiagnostics: [LocatedConfigDiagnostic],
+                runtimeWarnings: [LocatedConfigDiagnostic]) {
+        self.path = path
+        self.daemonState = daemonState
+        self.activeSchema = activeSchema
+        self.latestAttemptSucceeded = latestAttemptSucceeded
+        self.rejectedDiagnostics = rejectedDiagnostics
+        self.runtimeWarnings = runtimeWarnings
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case path
+        case daemonState = "daemon_state"
+        case activeSchema = "active_schema"
+        case latestAttemptSucceeded = "latest_attempt_succeeded"
+        case rejectedDiagnostics = "rejected_diagnostics"
+        case runtimeWarnings = "runtime_warnings"
+    }
+}
+
+/// Public IPC renders the CGWindowID as a hexadecimal address.
 public func windowAddress(_ id: WindowID) -> String {
     String(format: "0x%x", id)
 }
@@ -43,7 +101,7 @@ public struct WorkspaceRef: Codable, Equatable {
     }
 }
 
-/// Shape mirrors `hyprctl clients -j` where macOS has an equivalent field.
+/// Published JSON shape for one managed window.
 public struct ClientInfo: Codable {
     public var address: String
     public var mapped: Bool
@@ -157,17 +215,19 @@ public struct BindInfo: Codable {
     public var arg: String
     public var description: String
 
-    public init(_ b: Bind, arg: String) {
-        self.locked = b.flags.contains(.locked)
-        self.mouse = b.flags.contains(.mouse)
-        self.release = b.flags.contains(.release)
-        self.repeats = b.flags.contains(.repeats)
-        self.modmask = Int(b.mods.rawValue)
-        self.submap = b.submap
-        self.key = b.key
-        self.dispatcher = b.dispatcher.name
+    public init(locked: Bool, mouse: Bool, release: Bool, repeats: Bool,
+                modmask: Int, submap: String, key: String, dispatcher: String,
+                arg: String, description: String) {
+        self.locked = locked
+        self.mouse = mouse
+        self.release = release
+        self.repeats = repeats
+        self.modmask = modmask
+        self.submap = submap
+        self.key = key
+        self.dispatcher = dispatcher
         self.arg = arg
-        self.description = b.description ?? ""
+        self.description = description
     }
 }
 
@@ -190,8 +250,7 @@ public func encodeJSON<T: Encodable>(_ value: T) -> String {
     return String(data: data, encoding: .utf8) ?? "{}"
 }
 
-/// Events broadcast on the event socket, wire-compatible with Hyprland's
-/// socket2 format: `EVENT>>DATA\n`.
+/// Events broadcast on the public event socket as `EVENT>>DATA\n`.
 public enum WMEvent {
     case workspace(String)
     case workspacev2(Int, String)
@@ -210,7 +269,7 @@ public enum WMEvent {
     case configreloaded
     case monitoradded(String)
     case monitorremoved(String)
-    /// vindu extension: tiling suspended/resumed (no Hyprland counterpart).
+    /// Tiling suspended or resumed.
     case pause(Bool)
 
     public var name: String {

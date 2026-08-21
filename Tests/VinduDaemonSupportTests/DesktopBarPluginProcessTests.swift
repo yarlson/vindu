@@ -1,12 +1,17 @@
 import Darwin
 import Foundation
 import Testing
+@testable import VinduCore
 @testable import VinduDaemonSupport
 
 struct DesktopBarPluginProcessTests {
     @Test func pluginEnvironmentUsesMinimalAllowlist() {
         let request = DesktopBarPluginRunRequest(id: "mail",
-                                                 command: "env",
+                                                 command: command(.run(["/usr/bin/env"]),
+                                                                  environment: [
+                                                                      "CUSTOM_VALUE": "from-config",
+                                                                      "VINDU_BAR_PLUGIN_ID": "not-mail",
+                                                                  ]),
                                                  timeoutMs: 500,
                                                  reason: "event",
                                                  eventName: "workspace",
@@ -26,10 +31,20 @@ struct DesktopBarPluginProcessTests {
         #expect(env["AWS_SECRET_ACCESS_KEY"] == nil)
         #expect(env["PRIVATE_TOKEN"] == nil)
         #expect(env["LC_TIME"] == "en_US.UTF-8")
+        #expect(env["CUSTOM_VALUE"] == "from-config")
         #expect(env["VINDU_BAR_PLUGIN_ID"] == "mail")
         #expect(env["VINDU_BAR_PLUGIN_REASON"] == "event")
         #expect(env["VINDU_BAR_PLUGIN_EVENT"] == "workspace")
         #expect(env["VINDU_BAR_PLUGIN_EVENT_DATA"] == "1")
+    }
+
+    @Test func directCommandPreservesLiteralArguments() async throws {
+        let result = try await runPlugin(command(.run([
+            "/usr/bin/printf", "%s", "hello world; not shell",
+        ])))
+
+        #expect(result.exitCode == 0)
+        #expect(String(decoding: result.stdout, as: UTF8.self) == "hello world; not shell")
     }
 
     @Test func spawnSetupFailureHasSpecificDiagnostic() {
@@ -55,9 +70,8 @@ struct DesktopBarPluginProcessTests {
         }
 
         let result = try await runPlugin(
-            command: "if [ -e /dev/fd/\(inheritedFD) ]; then printf inherited; else printf closed; fi",
-            timeoutMs: 500
-        )
+            command(.shell("if [ -e /dev/fd/\(inheritedFD) ]; then printf inherited; else printf closed; fi")),
+            timeoutMs: 500)
 
         #expect(result.exitCode == 0)
         #expect(String(decoding: result.stdout, as: UTF8.self) == "closed")
@@ -65,17 +79,17 @@ struct DesktopBarPluginProcessTests {
 
     @Test func timeoutEscalatesPastTermIgnoringPlugin() async throws {
         let result = try await runPlugin(
-            command: "trap '' TERM; while :; do sleep 1; done",
-            timeoutMs: 250
-        )
+            command(.shell("trap '' TERM; while :; do sleep 1; done")),
+            timeoutMs: 250)
 
         #expect(result.timedOut)
         #expect(result.exitCode == -SIGKILL)
     }
 
     @Test func backgroundChildIsKilledWhenShellExits() async throws {
-        let result = try await runPlugin(command: "sleep 30 & printf '%s\\n' \"$!\"",
-                                         timeoutMs: 1000)
+        let result = try await runPlugin(
+            command(.shell("sleep 30 & printf '%s\\n' \"$!\"")),
+            timeoutMs: 1000)
         let childPID = pid_t(String(decoding: result.stdout, as: UTF8.self)
             .trimmingCharacters(in: .whitespacesAndNewlines))
 
@@ -89,11 +103,11 @@ struct DesktopBarPluginProcessTests {
 
     @Test func fastStdoutAndStderrAreDrainedBeforeCompletion() async throws {
         for _ in 0..<25 {
-            let result = try await runPlugin(command: """
+            let result = try await runPlugin(command(.shell("""
             i=0
             while [ "$i" -lt 200 ]; do printf x; i=$((i + 1)); done
             printf 'secret-on-stderr\\n' 1>&2
-            """, timeoutMs: 1000)
+            """)), timeoutMs: 1000)
             #expect(result.exitCode == 0)
             #expect(result.stdout.count == 200)
             #expect(result.stderr.contains("secret-on-stderr"))
@@ -107,7 +121,7 @@ struct DesktopBarPluginProcessTests {
 
         let request = DesktopBarPluginRunRequest(
             id: "released",
-            command: "trap '' TERM; printf '%s' $$ > '\(pidFile.path)'; while :; do sleep 1; done",
+            command: command(.shell("trap '' TERM; printf '%s' $$ > '\(pidFile.path)'; while :; do sleep 1; done")),
             timeoutMs: 5_000,
             reason: "manual",
             eventName: "",
@@ -147,7 +161,7 @@ struct DesktopBarPluginProcessTests {
 
         let request = DesktopBarPluginRunRequest(
             id: "shutdown",
-            command: "printf ready; printf '%s' $$ > '\(pidFile.path)'; trap '' TERM; while :; do sleep 1; done",
+            command: command(.shell("printf ready; printf '%s' $$ > '\(pidFile.path)'; trap '' TERM; while :; do sleep 1; done")),
             timeoutMs: 5_000,
             reason: "manual",
             eventName: "",
@@ -170,8 +184,13 @@ struct DesktopBarPluginProcessTests {
         #expect(String(decoding: completed.stdout, as: UTF8.self) == "ready")
     }
 
-    private func runPlugin(command: String,
-                           timeoutMs: Int) async throws -> DesktopBarPluginRunResult {
+    private func command(_ execution: CommandSpec.Execution,
+                         environment: [String: String] = [:]) -> CommandSpec {
+        CommandSpec(execution: execution, environment: environment)
+    }
+
+    private func runPlugin(_ command: CommandSpec,
+                           timeoutMs: Int = 1_000) async throws -> DesktopBarPluginRunResult {
         let request = DesktopBarPluginRunRequest(id: "test",
                                                  command: command,
                                                  timeoutMs: timeoutMs,

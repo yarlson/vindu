@@ -11,8 +11,8 @@ class Vindu < Formula
 
   def install
     bin.install "vindud", "vinductl"
-    pkgshare.install "vindu.conf"
-    doc.install "README.md"
+    pkgshare.install "vindu.toml"
+    doc.install "README.md", "THIRD_PARTY_NOTICES.md"
   end
 
   def post_install
@@ -36,7 +36,7 @@ class Vindu < Formula
       Start now and at login:
         brew services start vindu
 
-      First start writes a default config to ~/.config/vindu/vindu.conf
+      First start writes a default config to ~/.config/vindu/vindu.toml
     EOS
   end
 

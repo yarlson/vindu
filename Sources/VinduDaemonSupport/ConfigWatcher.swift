@@ -8,6 +8,7 @@ public final class ConfigWatcher {
     private var debounce: DispatchWorkItem?
     private var retry: DispatchWorkItem?
     private var running = false
+    private var reloadWhenArmed = false
 
     public init(path: String, onChange: @escaping () -> Void) {
         self.path = path
@@ -34,6 +35,7 @@ public final class ConfigWatcher {
         guard running, source == nil else { return }
         let fd = open(path, O_EVTONLY)
         guard fd >= 0 else {
+            reloadWhenArmed = true
             scheduleArm(after: 2.0)
             return
         }
@@ -57,6 +59,10 @@ public final class ConfigWatcher {
         }
         source = src
         src.resume()
+        if reloadWhenArmed {
+            reloadWhenArmed = false
+            scheduleReload()
+        }
     }
 
     private func scheduleArm(after delay: TimeInterval) {

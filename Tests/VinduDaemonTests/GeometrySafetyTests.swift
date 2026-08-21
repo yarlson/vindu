@@ -64,4 +64,29 @@ struct GeometrySafetyTests {
         #expect(relativeMonitorIndex(currentIndex: -1, offset: 1, count: 3) == nil)
         #expect(relativeMonitorIndex(currentIndex: 3, offset: 1, count: 3) == nil)
     }
+
+    @Test func monitorWorkspaceSelectionNeverDuplicatesVisibleWorkspace() {
+        #expect(nextAvailableWorkspaceID(preferred: 2, activeIDs: [2]) == 1)
+        #expect(nextAvailableWorkspaceID(preferred: 2, activeIDs: [1]) == 2)
+        #expect(nextAvailableWorkspaceID(preferred: 0, activeIDs: [1, 2]) == 3)
+    }
+
+    @Test func removedMonitorsIdentifyWorkspacesThatNeedStashing() {
+        let removed = workspaceIDsVisibleOnlyOnRemovedMonitors(
+            activeWorkspaces: [10: 1, 20: 2],
+            specialWorkspaces: [20: -100],
+            aliveMonitors: [10]
+        )
+
+        #expect(removed == [2, -100])
+    }
+
+    @Test func explicitStateActionsAreIdempotent() {
+        #expect(requestedStateChange(.on, current: false) == true)
+        #expect(requestedStateChange(.on, current: true) == nil)
+        #expect(requestedStateChange(.off, current: true) == false)
+        #expect(requestedStateChange(.off, current: false) == nil)
+        #expect(requestedStateChange(.toggle, current: true) == false)
+        #expect(requestedStateChange(.toggle, current: false) == true)
+    }
 }

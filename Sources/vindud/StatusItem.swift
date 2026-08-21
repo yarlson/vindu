@@ -3,7 +3,7 @@ import VinduCore
 
 /// Menu bar presence: lets someone who knows no chords see that vindu is
 /// running, pause/resume tiling, open the keybinding cheat sheet or config
-/// file, and quit. Hidden via `misc:menu_bar = false`.
+/// file, and quit. Hidden via `ui.menu_bar.enabled = false`.
 final class StatusItem: NSObject {
     var onPauseToggle: (() -> Void)?
     var onShowKeybindings: (() -> Void)?

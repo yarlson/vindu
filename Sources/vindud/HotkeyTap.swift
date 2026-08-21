@@ -7,16 +7,11 @@ private let tapCallback: CGEventTapCallBack = { _, type, event, refcon in
     return tap.handle(type: type, event: event)
 }
 
-/// Session event tap implementing `bind`/`binde`/`bindr` keys, `bindm` mouse
-/// drags, submaps, and focus-follows-mouse. Bound chords are swallowed before
-/// the frontmost app sees them — this is what lets SUPER (⌘) binds shadow
-/// system shortcuts, like Hyprland owning the SUPER key.
 final class HotkeyTap {
     enum DragPhase { case began, moved, ended }
 
-    /// All callbacks fire on the main queue.
-    var onDispatcher: ((Dispatcher) -> Void)?
-    var onMouseDrag: ((Dispatcher, CGPoint, DragPhase) -> Void)?
+    var onAction: ((ConfiguredAction) -> Void)?
+    var onMouseDrag: ((PointerDrag, CGPoint, DragPhase) -> Void)?
     var onMouseMoved: ((CGPoint) -> Void)?
     /// Unbound left-button press/drag/release, observed (never consumed) so the
     /// WM can track native title-bar drags of tiled windows.
@@ -27,7 +22,7 @@ final class HotkeyTap {
     /// focus steal.
     var onUserGesture: (() -> Void)?
 
-    private(set) var activeSubmap = ""
+    private(set) var activeMode = "default"
 
     /// While paused, only `pause` binds match — everything else passes through
     /// to apps untouched, including mouse binds and raw drag tracking.
@@ -38,40 +33,46 @@ final class HotkeyTap {
     private struct KeyChord: Hashable {
         let mods: UInt8
         let keycode: UInt16
-        let submap: String
+        let mode: String
     }
 
     private struct MouseChord: Hashable {
         let mods: UInt8
-        let button: MouseButton
-        let submap: String
+        let button: PointerButton
     }
 
-    private var keyBinds: [KeyChord: [Bind]] = [:]
-    private var mouseBinds: [MouseChord: Bind] = [:]
+    private var keyBinds: [KeyChord: [KeyboardBinding]] = [:]
+    private var pressedKeyBindings: [UInt16: [KeyboardBinding]] = [:]
+    private var mouseBinds: [MouseChord: PointerBinding] = [:]
     private var tap: CFMachPort?
-    private var activeDrag: (button: MouseButton, dispatcher: Dispatcher)?
+    private var activeDrag: (button: PointerButton, drag: PointerDrag)?
     private var lastMouseMoved = 0.0
     private var lastRawDrag = 0.0
     /// True while the system app switcher is likely up (⌘Tab seen, ⌘ still held).
     private var switcherActive = false
 
-    func rebuild(binds: [Bind]) {
+    func rebuild(configuration: KeyboardConfiguration) {
         keyBinds.removeAll()
         mouseBinds.removeAll()
-        for bind in binds {
-            if bind.flags.contains(.mouse) {
-                guard let button = MouseButton.parse(bindKey: bind.key) else { continue }
-                mouseBinds[MouseChord(mods: bind.mods.rawValue, button: button, submap: bind.submap)] = bind
-            } else if let code = KeyCodes.code(for: bind.key) {
-                let chord = KeyChord(mods: bind.mods.rawValue, keycode: code, submap: bind.submap)
-                keyBinds[chord, default: []].append(bind)
-            }
+        let modes = Set(configuration.bindings.map(\.mode))
+        if activeMode != "default", !modes.contains(activeMode) {
+            activeMode = "default"
+        }
+        for binding in configuration.bindings {
+            guard let code = KeyCodes.code(for: binding.chord.key) else { continue }
+            let chord = KeyChord(mods: modifierMask(binding.chord.modifiers),
+                                 keycode: code,
+                                 mode: binding.mode)
+            keyBinds[chord, default: []].append(binding)
+        }
+        for binding in configuration.pointerBindings {
+            let chord = MouseChord(mods: modifierMask(binding.modifiers), button: binding.button)
+            mouseBinds[chord] = binding
         }
     }
 
-    func setSubmap(_ name: String) {
-        activeSubmap = name
+    func setMode(_ name: String) {
+        activeMode = name
     }
 
     func start() -> Bool {
@@ -103,7 +104,7 @@ final class HotkeyTap {
         return true
     }
 
-    fileprivate func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             if let tap {
@@ -152,48 +153,75 @@ final class HotkeyTap {
     }
 
     private func mods(of event: CGEvent) -> UInt8 {
-        var m: Modifiers = []
+        var value: UInt8 = 0
         let flags = event.flags
-        if flags.contains(.maskCommand) { m.insert(.cmd) }
-        if flags.contains(.maskAlternate) { m.insert(.alt) }
-        if flags.contains(.maskControl) { m.insert(.ctrl) }
-        if flags.contains(.maskShift) { m.insert(.shift) }
-        return m.rawValue
+        if flags.contains(.maskCommand) { value |= 1 << 0 }
+        if flags.contains(.maskAlternate) { value |= 1 << 1 }
+        if flags.contains(.maskControl) { value |= 1 << 2 }
+        if flags.contains(.maskShift) { value |= 1 << 3 }
+        return value
+    }
+
+    private func modifierMask(_ modifiers: [KeyboardModifier]) -> UInt8 {
+        modifiers.reduce(into: 0) { value, modifier in
+            switch modifier {
+            case .command: value |= 1 << 0
+            case .option: value |= 1 << 1
+            case .control: value |= 1 << 2
+            case .shift: value |= 1 << 3
+            }
+        }
     }
 
     private func handleKey(event: CGEvent, isDown: Bool) -> Unmanaged<CGEvent>? {
         let keycode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
-        let chord = KeyChord(mods: mods(of: event), keycode: keycode, submap: activeSubmap)
-        guard var binds = keyBinds[chord], !binds.isEmpty else {
-            return Unmanaged.passUnretained(event)
+        let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+        var matchedPressedKey = false
+        var binds: [KeyboardBinding]
+        if isDown, isRepeat, let pressed = pressedKeyBindings[keycode] {
+            binds = pressed
+            matchedPressedKey = true
+        } else if !isDown, let pressed = pressedKeyBindings.removeValue(forKey: keycode) {
+            binds = pressed
+            matchedPressedKey = true
+        } else {
+            let chord = KeyChord(mods: mods(of: event), keycode: keycode, mode: activeMode)
+            guard let configured = keyBinds[chord], !configured.isEmpty else {
+                return Unmanaged.passUnretained(event)
+            }
+            binds = configured
+            if isDown, !isRepeat {
+                pressedKeyBindings[keycode] = binds
+            }
         }
         if paused {
             binds = binds.filter {
-                if case .pause = $0.dispatcher { return true }
+                if case .window(.pause) = $0.action { return true }
                 return false
             }
-            guard !binds.isEmpty else { return Unmanaged.passUnretained(event) }
+            guard !binds.isEmpty else {
+                return matchedPressedKey ? nil : Unmanaged.passUnretained(event)
+            }
         }
-        let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
         for bind in binds {
-            let wantsDown = !bind.flags.contains(.release)
+            let wantsDown = bind.edge == .press
             guard wantsDown == isDown else { continue }
-            if isRepeat && !bind.flags.contains(.repeats) { continue }
-            let dispatcher = bind.dispatcher
-            DispatchQueue.main.async { [weak self] in self?.onDispatcher?(dispatcher) }
+            if isRepeat && !bind.repeats { continue }
+            let action = bind.action
+            DispatchQueue.main.async { [weak self] in self?.onAction?(action) }
         }
         // Swallow both edges of a bound chord so apps never see half a shortcut.
         return nil
     }
 
-    private func handleMouseDown(event: CGEvent, button: MouseButton) -> Unmanaged<CGEvent>? {
+    private func handleMouseDown(event: CGEvent, button: PointerButton) -> Unmanaged<CGEvent>? {
         guard !paused else { return Unmanaged.passUnretained(event) }
-        let chord = MouseChord(mods: mods(of: event), button: button, submap: activeSubmap)
+        let chord = MouseChord(mods: mods(of: event), button: button)
         if chord.mods != 0, let bind = mouseBinds[chord] {
-            activeDrag = (button, bind.dispatcher)
+            activeDrag = (button, bind.drag)
             let point = event.location
-            let dispatcher = bind.dispatcher
-            DispatchQueue.main.async { [weak self] in self?.onMouseDrag?(dispatcher, point, .began) }
+            let drag = bind.drag
+            DispatchQueue.main.async { [weak self] in self?.onMouseDrag?(drag, point, .began) }
             return nil
         }
         fireUserGesture()
@@ -212,7 +240,7 @@ final class HotkeyTap {
         guard !paused else { return Unmanaged.passUnretained(event) }
         if let drag = activeDrag, button(for: type) == drag.button {
             let point = event.location
-            DispatchQueue.main.async { [weak self] in self?.onMouseDrag?(drag.dispatcher, point, .moved) }
+            DispatchQueue.main.async { [weak self] in self?.onMouseDrag?(drag.drag, point, .moved) }
             return nil
         }
         if type == .leftMouseDragged {
@@ -231,7 +259,7 @@ final class HotkeyTap {
         if let drag = activeDrag, button(for: type) == drag.button {
             activeDrag = nil
             let point = event.location
-            DispatchQueue.main.async { [weak self] in self?.onMouseDrag?(drag.dispatcher, point, .ended) }
+            DispatchQueue.main.async { [weak self] in self?.onMouseDrag?(drag.drag, point, .ended) }
             return nil
         }
         if type == .leftMouseUp {
@@ -241,7 +269,7 @@ final class HotkeyTap {
         return Unmanaged.passUnretained(event)
     }
 
-    private func button(for type: CGEventType) -> MouseButton {
+    private func button(for type: CGEventType) -> PointerButton {
         switch type {
         case .leftMouseDragged, .leftMouseUp: return .left
         case .rightMouseDragged, .rightMouseUp: return .right

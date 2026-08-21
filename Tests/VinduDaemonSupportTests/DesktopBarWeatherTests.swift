@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import VinduCore
+@testable import VinduCore
 @testable import VinduDaemonSupport
 
 @Suite(.serialized)
@@ -14,8 +14,7 @@ struct DesktopBarWeatherTests {
         defer { service.stop() }
         service.onChange = { completion.signal() }
 
-        service.sync(location: WeatherLocation(latitude: 56.9496, longitude: 24.1052),
-                     refreshMinutes: 5,
+        service.sync(configuration: weather(),
                      enabled: true)
 
         try #require(completion.wait(timeout: .now() + .seconds(5)) == .success)
@@ -32,8 +31,7 @@ struct DesktopBarWeatherTests {
         }
         defer { service.stop() }
 
-        service.sync(location: WeatherLocation(latitude: 56.9496, longitude: 24.1052),
-                     refreshMinutes: 5,
+        service.sync(configuration: weather(),
                      enabled: true)
 
         try #require(completion.wait(timeout: .now() + .seconds(5)) == .success)
@@ -55,8 +53,7 @@ struct DesktopBarWeatherTests {
         }
         defer { service.stop() }
 
-        service.sync(location: WeatherLocation(latitude: 56.9496, longitude: 24.1052),
-                     refreshMinutes: 5,
+        service.sync(configuration: weather(),
                      enabled: true)
 
         try #require(completion.wait(timeout: .now() + .seconds(5)) == .success)
@@ -74,8 +71,7 @@ struct DesktopBarWeatherTests {
         defer { service.stop() }
         service.onChange = { completion.signal() }
 
-        service.sync(location: WeatherLocation(latitude: 56.9496, longitude: 24.1052),
-                     refreshMinutes: 5,
+        service.sync(configuration: weather(),
                      enabled: true)
 
         try #require(completion.wait(timeout: .now() + .seconds(5)) == .success)
@@ -100,8 +96,7 @@ struct DesktopBarWeatherTests {
         }
         defer { service.stop() }
 
-        service.sync(location: WeatherLocation(latitude: 56.9496, longitude: 24.1052),
-                     refreshMinutes: 5,
+        service.sync(configuration: weather(),
                      enabled: true)
 
         try #require(completion.wait(timeout: .now() + .seconds(5)) == .success)
@@ -124,8 +119,7 @@ struct DesktopBarWeatherTests {
         }
         defer { service.stop() }
 
-        service.sync(location: WeatherLocation(latitude: 56.9496, longitude: 24.1052),
-                     refreshMinutes: 5,
+        service.sync(configuration: weather(),
                      enabled: true)
 
         try #require(completion.wait(timeout: .now() + .seconds(5)) == .success)
@@ -144,8 +138,7 @@ struct DesktopBarWeatherTests {
         defer { service.stop() }
         service.onChange = { completion.signal() }
 
-        service.sync(location: WeatherLocation(latitude: 56.9496, longitude: 24.1052),
-                     refreshMinutes: 5,
+        service.sync(configuration: weather(),
                      enabled: true)
         service.stop()
 
@@ -165,8 +158,7 @@ struct DesktopBarWeatherTests {
         }
         defer { service.stop() }
 
-        service.sync(location: WeatherLocation(latitude: 56.9496, longitude: 24.1052),
-                     refreshMinutes: 5,
+        service.sync(configuration: weather(),
                      enabled: true)
 
         try #require(completion.wait(timeout: .now() + .seconds(5)) == .success)
@@ -182,6 +174,10 @@ struct DesktopBarWeatherTests {
             callbackQueue: DispatchQueue(label: "vindu.weather-test.callback"),
             log: log
         )
+    }
+
+    private func weather() -> NativeBarWeather {
+        NativeBarWeather(latitude: 56.9496, longitude: 24.1052, refreshMinutes: 5)
     }
 
     private func makeSession() -> URLSession {

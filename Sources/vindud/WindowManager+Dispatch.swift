@@ -1,9 +1,106 @@
 import AppKit
 import VinduCore
 
+func requestedStateChange(_ action: ActionState, current: Bool) -> Bool? {
+    let requested: Bool
+    switch action {
+    case .toggle: requested = !current
+    case .on: requested = true
+    case .off: requested = false
+    }
+    return requested == current ? nil : requested
+}
+
 // MARK: - Dispatchers
 
 extension WindowManager {
+    @discardableResult
+    func dispatch(_ action: ConfiguredAction) -> String {
+        if paused {
+            switch action {
+            case .command:
+                break
+            case .window(.pause), .window(.quit):
+                break
+            default:
+                return "err: tiling is paused — resume from the menu bar or `vinductl dispatch pause off`"
+            }
+        }
+        switch action {
+        case .command(let command):
+            Exec.run(command)
+            return "ok"
+        case .window(let action):
+            return dispatch(action)
+        }
+    }
+
+    private func dispatch(_ action: WindowAction) -> String {
+        switch action {
+        case .close:
+            if let id = focusedWindow { bridge.close(id) }
+        case .quit:
+            quit()
+        case .focus(let direction):
+            moveFocus(direction)
+        case .move(let direction):
+            return moveWindow(.direction(direction))
+        case .swap(let direction):
+            swapWindow(direction)
+        case .workspace(let target):
+            return switchWorkspace(to: target)
+        case .moveToWorkspace(let target):
+            return moveActiveToWorkspace(target, silent: false)
+        case .moveToWorkspaceSilent(let target):
+            return moveActiveToWorkspace(target, silent: true)
+        case .toggleSpecialWorkspace(let name):
+            return toggleSpecial(name: name)
+        case .toggleFloating:
+            if let id = focusedWindow, let state = windows[id] { setFloating(id, !state.floating) }
+        case .setFloating:
+            if let id = focusedWindow { setFloating(id, true) }
+        case .setTiled:
+            if let id = focusedWindow { setFloating(id, false) }
+        case .fullscreen(let state):
+            setFullscreen(mode: 0, state: state)
+        case .maximize(let state):
+            setFullscreen(mode: 1, state: state)
+        case .center:
+            if let id = focusedWindow { setFloating(id, true) }
+            centerActive()
+        case .pin:
+            if let id = focusedWindow, windows[id]?.floating == true {
+                windows[id]?.pinned.toggle()
+            }
+        case .resize(let x, let y):
+            return resizeActiveBy(x: x, y: y)
+        case .moveFloating(let x, let y):
+            return moveFloatingBy(x: x, y: y)
+        case .split(let action):
+            applySplit(action)
+        case .primary(let action):
+            applyPrimary(action)
+        case .monitor(let target):
+            return focusMonitor(target)
+        case .enterMode(let mode):
+            tap.setMode(mode)
+            broadcast(.submap(mode == "default" ? "" : mode))
+            syncBorder()
+        case .raise:
+            if let id = focusedWindow { bridge.raise(id) }
+        case .refresh:
+            arrangeAllVisible()
+            refreshDesktopBar()
+        case .pause(let action):
+            switch action {
+            case .toggle: setPaused(!paused)
+            case .on: setPaused(true)
+            case .off: setPaused(false)
+            }
+        }
+        return "ok"
+    }
+
     /// Executes one dispatcher; returns "ok" or an error string (IPC reply).
     @discardableResult
     func dispatch(_ dispatcher: Dispatcher) -> String {
@@ -25,7 +122,7 @@ extension WindowManager {
             guard let id = findWindow(matching: matcher) else { return "err: no match" }
             bridge.close(id)
         case .exit:
-            shutdown()
+            quit()
         case .workspace(let target):
             return switchWorkspace(to: target)
         case .movetoworkspace(let target):
@@ -123,7 +220,7 @@ extension WindowManager {
             ws.name = name
             broadcast(.renameworkspace(id, name))
         case .submap(let name):
-            tap.setSubmap(name)
+            tap.setMode(name.isEmpty ? "default" : name)
             broadcast(.submap(name))
             syncBorder()
         case .focuscurrentorlast:
@@ -133,7 +230,7 @@ extension WindowManager {
         case .forcerendererreload:
             arrangeAllVisible()
         case .resizewindow:
-            break // only meaningful inside a bindm drag
+            break // only meaningful inside a pointer drag
         case .pause(let action):
             switch action {
             case .toggle: setPaused(!paused)
@@ -187,6 +284,21 @@ extension WindowManager {
         }
         broadcast(.fullscreen(ws.fullscreen != nil))
         arrange(ws)
+    }
+
+    private func setFullscreen(mode: Int, state: ActionState) {
+        guard let id = focusedWindow, let window = windows[id] else { return }
+        let workspace = workspace(forID: window.workspace)
+        let isActive = workspace.fullscreen == id && workspace.fullscreenMode == mode
+        guard let shouldEnable = requestedStateChange(state, current: isActive) else { return }
+        if shouldEnable {
+            workspace.fullscreen = id
+            workspace.fullscreenMode = mode
+        } else {
+            workspace.fullscreen = nil
+        }
+        broadcast(.fullscreen(workspace.fullscreen != nil))
+        arrange(workspace)
     }
 
     func centerActive() {
@@ -243,7 +355,7 @@ extension WindowManager {
     func moveWindow(_ arg: MoveWindowArg) -> String {
         switch arg {
         case .mouse:
-            return "ok" // only meaningful inside a bindm drag
+            return "ok" // only meaningful inside a pointer drag
         case .monitor(let target):
             guard let id = focusedWindow,
                   let m = monitorMgr.resolve(target, current: focusedMonitorID) else {
@@ -287,7 +399,7 @@ extension WindowManager {
     private func snapFloating(_ id: WindowID, _ dir: Direction) {
         guard let state = windows[id] else { return }
         let usable = containerRect(for: workspace(forID: state.workspace))
-        let g = settings.general.gapsOut
+        let g = configuration.layout.outerGap
         var f = state.frame
         switch dir {
         case .left: f.origin.x = usable.minX + g
@@ -317,18 +429,89 @@ extension WindowManager {
     // MARK: Resize / move active
 
     /// Pixel deltas → layout-appropriate resize for a tiled window: dwindle
-    /// drags the nearest split edges, master adjusts mfact.
+    /// drags the nearest split edges, while master adjusts the primary fraction.
     func resizeTiledBy(_ id: WindowID, dx: Double, dy: Double) {
         guard let state = windows[id], !state.floating else { return }
         let ws = workspace(forID: state.workspace)
-        switch settings.general.layout {
+        switch configuration.layout.kind {
         case .dwindle:
             ws.dwindle.resize(id, dx: dx, dy: dy)
         case .master:
             let usable = containerRect(for: ws)
             guard usable.width > 1 else { return }
-            ws.master.setMfact(.delta(dx / usable.width), settings: settings.master)
+            ws.master.setPrimaryFraction(.delta(dx / usable.width),
+                                         configuration: configuration.layout.master)
         }
+    }
+
+    private func resizeActiveBy(x: Double, y: Double) -> String {
+        guard let id = focusedWindow, let state = windows[id] else { return "ok" }
+        let workspace = workspace(forID: state.workspace)
+        if state.floating {
+            var frame = state.frame
+            frame.size.width = max(120, frame.width + x)
+            frame.size.height = max(90, frame.height + y)
+            return applyFloatingFrame(state, frame) ? "ok" : "err: invalid geometry"
+        }
+        resizeTiledBy(id, dx: x, dy: y)
+        arrange(workspace)
+        return "ok"
+    }
+
+    private func moveFloatingBy(x: Double, y: Double) -> String {
+        guard let id = focusedWindow, let state = windows[id], state.floating else {
+            return "err: move_floating applies to floating windows"
+        }
+        var frame = state.frame
+        frame.origin.x += x
+        frame.origin.y += y
+        return applyFloatingFrame(state, frame) ? "ok" : "err: invalid geometry"
+    }
+
+    private func applySplit(_ action: SplitAction) {
+        guard let id = focusedWindow, let workspace = currentWorkspaceOf(id) else { return }
+        switch action {
+        case .toggle: workspace.dwindle.toggleSplit(at: id)
+        case .horizontal: workspace.dwindle.setSplitOrientation(.horizontal, at: id)
+        case .vertical: workspace.dwindle.setSplitOrientation(.vertical, at: id)
+        case .swap: workspace.dwindle.swapSplit(at: id)
+        }
+        arrange(workspace)
+    }
+
+    private func applyPrimary(_ action: PrimaryAction) {
+        guard let id = focusedWindow, let workspace = currentWorkspaceOf(id) else { return }
+        switch action {
+        case .focus:
+            if let primary = workspace.master.windows.first { focusWindow(primary) }
+            return
+        case .swap:
+            workspace.master.swapWithMaster(id, mode: "auto")
+        case .add:
+            workspace.master.addMaster()
+        case .remove:
+            workspace.master.removeMaster()
+        }
+        workspace.dwindle.rebuild(from: workspace.master.windows,
+                                  container: containerRect(for: workspace),
+                                  configuration: configuration.layout.dwindle)
+        arrange(workspace)
+    }
+
+    private func focusMonitor(_ target: MonitorTarget) -> String {
+        guard let monitor = monitorMgr.resolve(target, current: focusedMonitorID) else {
+            return "err: no such monitor"
+        }
+        focusedMonitorID = monitor.id
+        if let workspaceID = activeWS[monitor.id], let workspace = registry.existing(workspaceID) {
+            if let last = workspace.lastFocused ?? workspace.allWindows.first {
+                focusWindow(last)
+            } else {
+                syncBorder()
+            }
+        }
+        broadcastFocusedMon()
+        return "ok"
     }
 
     func resizeActive(_ param: ResizeParam) -> String {
@@ -447,8 +630,8 @@ extension WindowManager {
     /// The old monitor needs something to show when its visible workspace
     /// leaves: the previous workspace if it still lives there, else the first
     /// id that is free or already homed on that monitor.
-    private func replacementWorkspace(for leaving: WorkspaceState,
-                                      on monitor: CGDirectDisplayID) -> WorkspaceState {
+    func replacementWorkspace(for leaving: WorkspaceState,
+                              on monitor: CGDirectDisplayID) -> WorkspaceState {
         if let prevID = prevWS[monitor], prevID != leaving.id,
            let prev = registry.existing(prevID), prev.monitor == monitor {
             return prev
@@ -474,7 +657,8 @@ extension WindowManager {
         case "swapwithmaster":
             ws.master.swapWithMaster(id, mode: arg.isEmpty ? "auto" : arg)
             ws.dwindle.rebuild(from: ws.master.windows,
-                               container: containerRect(for: ws), settings: settings.dwindle)
+                               container: containerRect(for: ws),
+                               configuration: configuration.layout.dwindle)
         case "focusmaster":
             if let master = ws.master.windows.first {
                 focusWindow(master)
@@ -496,14 +680,16 @@ extension WindowManager {
             guard let ratio = SplitRatioArg.parse(arg.isEmpty ? msg : String(msg.dropFirst(cmd.count + 1))) else {
                 return "err: mfact needs a value"
             }
-            ws.master.setMfact(ratio, settings: settings.master)
+            ws.master.setPrimaryFraction(ratio, configuration: configuration.layout.master)
         case "orientationleft": ws.master.setOrientation(.left)
         case "orientationright": ws.master.setOrientation(.right)
         case "orientationtop": ws.master.setOrientation(.top)
         case "orientationbottom": ws.master.setOrientation(.bottom)
         case "orientationcenter": ws.master.setOrientation(.center)
-        case "orientationnext": ws.master.cycleOrientation(prev: false)
-        case "orientationprev": ws.master.cycleOrientation(prev: true)
+        case "orientationnext":
+            ws.master.cycleOrientation(prev: false, configuration: configuration.layout.master)
+        case "orientationprev":
+            ws.master.cycleOrientation(prev: true, configuration: configuration.layout.master)
         case "togglesplit": ws.dwindle.toggleSplit(at: id)
         case "swapsplit": ws.dwindle.swapSplit(at: id)
         default:
@@ -537,7 +723,7 @@ extension WindowManager {
 
     // MARK: Shutdown
 
-    func shutdown() {
+    func shutdownRuntime() {
         guard !shutdownRequested else { return }
         shutdownRequested = true
         // Bring every stashed window back where a human can reach it.
@@ -549,12 +735,5 @@ extension WindowManager {
         border.shutdown()
         desktopBar.hide()
         desktopBarRefresh.shutdown()
-        ipc?.stop()
-        events?.stop()
-        watcher?.stop()
-        log("exiting")
-        DispatchQueue.main.async {
-            NSApplication.shared.terminate(nil)
-        }
     }
 }

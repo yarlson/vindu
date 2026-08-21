@@ -26,7 +26,7 @@ public final class DwindleNode {
     public var isLeaf: Bool { window != nil }
 }
 
-/// Hyprland's dwindle layout: each new window splits the focused leaf, with the
+/// Dwindle layout: each new window splits the focused leaf, with the
 /// split orientation following the leaf's aspect ratio.
 public final class DwindleTree {
     public private(set) var root: DwindleNode?
@@ -57,7 +57,18 @@ public final class DwindleTree {
         return out
     }
 
-    public func insert(_ w: WindowID, near focused: WindowID?, container: CGRect, settings: DwindleSettings) {
+    public func insert(_ w: WindowID, near focused: WindowID?, container: CGRect,
+                       configuration: DwindleConfiguration) {
+        let newWindowFirst = configuration.newWindowPosition == .before
+        let firstFraction = newWindowFirst
+            ? configuration.newWindowFraction
+            : 1.0 - configuration.newWindowFraction
+        insert(w, near: focused, container: container,
+               firstFraction: firstFraction, newWindowFirst: newWindowFirst)
+    }
+
+    private func insert(_ w: WindowID, near focused: WindowID?, container: CGRect,
+                        firstFraction: Double, newWindowFirst: Bool) {
         guard leaves[w] == nil else { return }
         let leaf = DwindleNode(window: w)
         leaves[w] = leaf
@@ -68,9 +79,9 @@ public final class DwindleTree {
         let target = focused.flatMap { leaves[$0] } ?? lastLeaf(of: root)
         let rect = target.lastRect.isEmpty ? container : target.lastRect
         let orientation: Orientation = rect.width >= rect.height ? .horizontal : .vertical
-        let ratio = clampRatio(settings.defaultSplitRatio / 2.0)
-        let firstChild = settings.forceSplit == 1 ? leaf : target
-        let secondChild = settings.forceSplit == 1 ? target : leaf
+        let ratio = clampRatio(firstFraction)
+        let firstChild = newWindowFirst ? leaf : target
+        let secondChild = newWindowFirst ? target : leaf
 
         let oldParent = target.parent
         let split = DwindleNode(orientation: orientation, ratio: ratio, first: firstChild, second: secondChild)
@@ -105,6 +116,10 @@ public final class DwindleTree {
         parent.orientation = parent.orientation == .horizontal ? .vertical : .horizontal
     }
 
+    public func setSplitOrientation(_ orientation: Orientation, at w: WindowID) {
+        leaves[w]?.parent?.orientation = orientation
+    }
+
     /// Swaps the two children of the split above the window (dispatcher `swapsplit`).
     public func swapSplit(at w: WindowID) {
         guard let parent = leaves[w]?.parent else { return }
@@ -113,8 +128,8 @@ public final class DwindleTree {
         parent.second = f
     }
 
-    /// `splitratio` uses Hyprland's 0.1–1.9 scale where 1.0 is an even split;
-    /// internal ratios are that value halved.
+    /// The public `splitratio` command uses a 0.1...1.9 scale where 1.0 is an
+    /// even split; internal ratios are that value halved.
     public func setRatio(_ arg: SplitRatioArg, at w: WindowID) {
         guard let parent = leaves[w]?.parent else { return }
         switch arg {
@@ -194,10 +209,11 @@ public final class DwindleTree {
     /// Rebuilds the tree from an ordered window list (used when switching the
     /// active layout back to dwindle). Recomputes frames between inserts so
     /// aspect-based split orientation behaves as if windows arrived one by one.
-    public func rebuild(from order: [WindowID], container: CGRect, settings: DwindleSettings) {
+    public func rebuild(from order: [WindowID], container: CGRect,
+                        configuration: DwindleConfiguration) {
         clear()
         for w in order {
-            insert(w, near: nil, container: container, settings: settings)
+            insert(w, near: nil, container: container, configuration: configuration)
             _ = frames(in: container)
         }
     }

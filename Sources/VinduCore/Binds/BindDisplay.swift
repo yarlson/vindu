@@ -1,47 +1,81 @@
-/// Human-readable rendering of binds for the keybinding cheat sheet.
-/// Chords use macOS modifier symbols; actions prefer the `bindd` description,
-/// then a plain-English name for common dispatchers, then `name args`.
+import Foundation
+
 public enum BindDisplay {
-    /// Cheat-sheet rows for the root keymap, in config order. Mouse binds are
-    /// included; submap binds are not (submaps explain themselves while
-    /// active). Consecutive digit binds like `1…9 → workspace 1…9` collapse
-    /// into one row.
-    public static func rows(_ binds: [Bind]) -> [(chord: String, action: String)] {
-        let root = binds.filter { $0.submap.isEmpty }
-        var out: [(String, String)] = []
-        var i = 0
-        while i < root.count {
-            if let run = digitRun(root, from: i) {
-                out.append(run.row)
-                i = run.next
+    public static func rows(_ bindings: [KeyboardBinding],
+                            pointerBindings: [PointerBinding] = [])
+        -> [(chord: String, action: String)] {
+        let root = bindings.filter { $0.mode == "default" }
+        var rows: [(String, String)] = []
+        var index = 0
+        while index < root.count {
+            if let run = digitRun(root, from: index) {
+                rows.append(run.row)
+                index = run.next
                 continue
             }
-            out.append((chord(root[i]), action(root[i])))
-            i += 1
+            rows.append((chord(root[index].chord), action(root[index].action)))
+            index += 1
         }
-        return out
+        rows.append(contentsOf: pointerBindings.map { (chord($0), action($0.drag)) })
+        return rows
     }
 
-    /// "⌥⇧ H", "⌥ Left drag", "⎋" — modifiers as macOS symbols plus the key.
-    public static func chord(_ bind: Bind) -> String {
-        let symbols = modifierSymbols(bind.mods)
-        let key = keyLabel(bind.key)
+    public static func chord(_ chord: KeyChord) -> String {
+        let symbols = modifierSymbols(chord.modifiers)
+        let key = keyLabel(chord.key)
         return symbols.isEmpty ? key : "\(symbols) \(key)"
     }
 
-    /// One short action label; the `bindd` description wins when present.
-    public static func action(_ bind: Bind) -> String {
-        if let d = bind.description, !d.isEmpty { return d }
-        return describe(bind.dispatcher)
+    public static func chord(_ binding: PointerBinding) -> String {
+        let symbols = modifierSymbols(binding.modifiers)
+        let key = keyLabel(pointerKey(binding.button))
+        return symbols.isEmpty ? key : "\(symbols) \(key)"
     }
 
-    public static func modifierSymbols(_ mods: Modifiers) -> String {
-        var out = ""
-        if mods.contains(.ctrl) { out += "⌃" }
-        if mods.contains(.alt) { out += "⌥" }
-        if mods.contains(.shift) { out += "⇧" }
-        if mods.contains(.cmd) { out += "⌘" }
-        return out
+    public static func action(_ action: ConfiguredAction) -> String {
+        switch action {
+        case .command(let command): return describe(command)
+        case .window(let action): return describe(action)
+        }
+    }
+
+    public static func modifierSymbols(_ modifiers: [KeyboardModifier]) -> String {
+        var output = ""
+        if modifiers.contains(.control) { output += "⌃" }
+        if modifiers.contains(.option) { output += "⌥" }
+        if modifiers.contains(.shift) { output += "⇧" }
+        if modifiers.contains(.command) { output += "⌘" }
+        return output
+    }
+
+    public static func bindInfoProjection(_ bindings: [KeyboardBinding],
+                                          pointerBindings: [PointerBinding] = []) -> [BindInfo] {
+        let keyboard = bindings.map { binding in
+            let identity = actionIdentity(binding.action)
+            return BindInfo(locked: false,
+                            mouse: false,
+                            release: binding.edge == .release,
+                            repeats: binding.repeats,
+                            modmask: modifierMask(binding.chord.modifiers),
+                            submap: binding.mode == "default" ? "" : binding.mode,
+                            key: binding.chord.key,
+                            dispatcher: identity.name,
+                            arg: identity.argument,
+                            description: action(binding.action))
+        }
+        let pointer = pointerBindings.map { binding in
+            BindInfo(locked: false,
+                     mouse: true,
+                     release: false,
+                     repeats: false,
+                     modmask: modifierMask(binding.modifiers),
+                     submap: "",
+                     key: pointerKey(binding.button),
+                     dispatcher: binding.drag.rawValue,
+                     arg: "",
+                     description: action(binding.drag))
+        }
+        return keyboard + pointer
     }
 
     public static func keyLabel(_ key: String) -> String {
@@ -62,62 +96,132 @@ public enum BindDisplay {
         "mouse:272": "Left drag", "mouse:273": "Right drag", "mouse:274": "Middle drag",
     ]
 
-    private static func describe(_ d: Dispatcher) -> String {
-        switch d {
-        case .exec(let cmd):
-            if let app = cmd.removingPrefix("open -a ") {
-                return "Open \(app.trimmingCharacters(in: .init(charactersIn: "\"'")))"
+    private static func describe(_ command: CommandSpec) -> String {
+        switch command.execution {
+        case .run(let arguments):
+            if arguments.count >= 3,
+               ["open", "/usr/bin/open"].contains(arguments[0]),
+               arguments[1] == "-a" {
+                return "Open \(arguments[2])"
             }
-            return "Run: \(cmd)"
-        case .killactive: return "Close window"
-        case .exit: return "Quit vindu"
-        case .workspace(let t): return switchLabel(t)
-        case .movetoworkspace(let t): return sendLabel(t)
-        case .movetoworkspacesilent(let t): return sendLabel(t) + " (stay)"
-        case .togglefloating: return "Float / tile"
-        case .fullscreen(let mode): return mode == 1 ? "Maximize" : "Fullscreen"
-        case .movefocus(let dir): return "Focus \(word(dir))"
-        case .movewindow(.direction(let dir)): return "Move window \(word(dir))"
-        case .movewindow(.monitor(let m)): return "Move window to monitor \(m.text)"
-        case .movewindow(.mouse): return "Move window"
-        case .resizewindow: return "Resize window"
-        case .swapwindow(let dir): return "Swap \(word(dir))"
-        case .centerwindow: return "Center window"
-        case .togglesplit: return "Toggle split direction"
-        case .swapsplit: return "Swap split"
-        case .pin: return "Pin to all workspaces"
-        case .cyclenext(let prev): return prev ? "Previous window" : "Next window"
-        case .swapnext(let prev): return prev ? "Swap with previous" : "Swap with next"
-        case .togglespecialworkspace(let name):
-            return scratchpadLabel(name)
-        case .layoutmsg(let msg):
-            return msg.hasPrefix("swapwithmaster") ? "Swap with master" : "Layout: \(msg)"
-        case .submap(let name): return name.isEmpty ? "Exit submap" : "\(name.capitalized) mode"
-        case .pause: return "Pause / resume tiling"
-        default:
-            let arg = d.argText
-            return arg.isEmpty ? d.name : "\(d.name) \(arg)"
+            return "Run: \(arguments.joined(separator: " "))"
+        case .shell:
+            return "Run shell command"
         }
     }
 
-    /// Label for `workspace` — the bind switches what you look at.
-    private static func switchLabel(_ t: WorkspaceTarget) -> String {
-        switch t {
+    private static func describe(_ action: WindowAction) -> String {
+        switch action {
+        case .close: return "Close window"
+        case .quit: return "Quit vindu"
+        case .focus(let direction): return "Focus \(word(direction))"
+        case .move(let direction): return "Move window \(word(direction))"
+        case .swap(let direction): return "Swap \(word(direction))"
+        case .workspace(let target): return switchLabel(target)
+        case .moveToWorkspace(let target): return sendLabel(target)
+        case .moveToWorkspaceSilent(let target): return sendLabel(target) + " (stay)"
+        case .toggleSpecialWorkspace(let name): return scratchpadLabel(name)
+        case .toggleFloating: return "Float / tile"
+        case .setFloating: return "Set floating"
+        case .setTiled: return "Set tiled"
+        case .fullscreen(let state): return stateLabel(state, noun: "fullscreen")
+        case .maximize(let state): return stateLabel(state, noun: "maximize")
+        case .center: return "Center window"
+        case .pin: return "Pin to all workspaces"
+        case .resize(let x, let y): return "Resize window \(plainNumber(x)) \(plainNumber(y))"
+        case .moveFloating(let x, let y): return "Move floating window \(plainNumber(x)) \(plainNumber(y))"
+        case .split(.toggle): return "Toggle split direction"
+        case .split(.horizontal): return "Split horizontally"
+        case .split(.vertical): return "Split vertically"
+        case .split(.swap): return "Swap split"
+        case .primary(.focus): return "Focus primary window"
+        case .primary(.swap): return "Swap with primary window"
+        case .primary(.add): return "Add primary window"
+        case .primary(.remove): return "Remove primary window"
+        case .monitor(let target): return "Focus monitor \(target.text)"
+        case .enterMode(let mode): return mode == "default" ? "Exit mode" : "\(mode.capitalized) mode"
+        case .raise: return "Raise window"
+        case .refresh: return "Refresh"
+        case .pause(.toggle): return "Pause / resume tiling"
+        case .pause(.on): return "Pause tiling"
+        case .pause(.off): return "Resume tiling"
+        }
+    }
+
+    private static func stateLabel(_ state: ActionState, noun: String) -> String {
+        switch (state, noun) {
+        case (.toggle, "maximize"): return "Maximize"
+        case (.on, "maximize"): return "Maximize window"
+        case (.off, "maximize"): return "Restore window"
+        case (.toggle, _): return "Fullscreen"
+        case (.on, _): return "Enter fullscreen"
+        case (.off, _): return "Exit fullscreen"
+        }
+    }
+
+    private static func action(_ drag: PointerDrag) -> String {
+        drag == .move ? "Move window" : "Resize window"
+    }
+
+    private static func actionIdentity(_ action: ConfiguredAction) -> (name: String, argument: String) {
+        switch action {
+        case .command(let command):
+            switch command.execution {
+            case .run(let arguments):
+                let data = try? JSONEncoder().encode(arguments)
+                return ("run", data.flatMap { String(data: $0, encoding: .utf8) } ?? "[]")
+            case .shell(let script): return ("shell", script)
+            }
+        case .window(let action): return actionIdentity(action)
+        }
+    }
+
+    private static func actionIdentity(_ action: WindowAction) -> (name: String, argument: String) {
+        switch action {
+        case .close: return ("close", "")
+        case .quit: return ("quit", "")
+        case .focus(let direction): return ("focus", word(direction))
+        case .move(let direction): return ("move", word(direction))
+        case .swap(let direction): return ("swap", word(direction))
+        case .workspace(let target): return ("workspace", target.text)
+        case .moveToWorkspace(let target): return ("move_to_workspace", target.text)
+        case .moveToWorkspaceSilent(let target): return ("move_to_workspace_silent", target.text)
+        case .toggleSpecialWorkspace(let name): return ("toggle_special_workspace", name)
+        case .toggleFloating: return ("toggle_floating", "")
+        case .setFloating: return ("set_floating", "")
+        case .setTiled: return ("set_tiled", "")
+        case .fullscreen(let state): return ("fullscreen", state.rawValue)
+        case .maximize(let state): return ("maximize", state.rawValue)
+        case .center: return ("center", "")
+        case .pin: return ("pin", "")
+        case .resize(let x, let y): return ("resize", "\(plainNumber(x)) \(plainNumber(y))")
+        case .moveFloating(let x, let y): return ("move_floating", "\(plainNumber(x)) \(plainNumber(y))")
+        case .split(let split): return ("split", split.rawValue)
+        case .primary(let primary): return ("primary", primary.rawValue)
+        case .monitor(let target): return ("monitor", target.text)
+        case .enterMode(let mode): return ("enter_mode", mode)
+        case .raise: return ("raise", "")
+        case .refresh: return ("refresh", "")
+        case .pause(let pause): return ("pause", pause.rawValue)
+        }
+    }
+
+    private static func switchLabel(_ target: WorkspaceTarget) -> String {
+        switch target {
         case .relative(1): return "Next workspace"
         case .relative(-1): return "Previous workspace"
         case .previous: return "Last workspace"
-        case .special(let s): return scratchpadLabel(s)
-        default: return "Workspace \(t.text)"
+        case .special(let name): return scratchpadLabel(name)
+        default: return "Workspace \(target.text)"
         }
     }
 
-    /// Label for `movetoworkspace*` — the bind moves the focused window.
-    private static func sendLabel(_ t: WorkspaceTarget) -> String {
-        switch t {
+    private static func sendLabel(_ target: WorkspaceTarget) -> String {
+        switch target {
         case .relative(1): return "Send to next workspace"
         case .relative(-1): return "Send to previous workspace"
         case .special: return "Send to scratchpad"
-        default: return "Send to workspace \(t.text)"
+        default: return "Send to workspace \(target.text)"
         }
     }
 
@@ -125,8 +229,8 @@ public enum BindDisplay {
         name == "special" || name == "magic" ? "Scratchpad" : "Scratchpad \(name)"
     }
 
-    private static func word(_ d: Direction) -> String {
-        switch d {
+    private static func word(_ direction: Direction) -> String {
+        switch direction {
         case .left: return "left"
         case .right: return "right"
         case .up: return "up"
@@ -134,35 +238,65 @@ public enum BindDisplay {
         }
     }
 
-    /// Detects runs like `mods+1 → workspace 1` … `mods+9 → workspace 9` and
-    /// folds them into a single "1…9" row. Requires at least three consecutive
-    /// digits whose target id matches the key.
-    private static func digitRun(_ binds: [Bind], from start: Int)
+    private static func modifierMask(_ modifiers: [KeyboardModifier]) -> Int {
+        var mask = 0
+        if modifiers.contains(.shift) { mask |= 1 << 0 }
+        if modifiers.contains(.control) { mask |= 1 << 1 }
+        if modifiers.contains(.option) { mask |= 1 << 2 }
+        if modifiers.contains(.command) { mask |= 1 << 3 }
+        return mask
+    }
+
+    private static func pointerKey(_ button: PointerButton) -> String {
+        switch button {
+        case .left: return "mouse:272"
+        case .right: return "mouse:273"
+        case .middle: return "mouse:274"
+        }
+    }
+
+    private static func digitRun(_ bindings: [KeyboardBinding], from start: Int)
         -> (row: (String, String), next: Int)? {
-        func digitTarget(_ b: Bind) -> (digit: Int, send: Bool)? {
-            guard b.key.count == 1, let d = Int(b.key), d >= 1 else { return nil }
-            switch b.dispatcher {
-            case .workspace(.id(d)): return (d, false)
-            case .movetoworkspace(.id(d)), .movetoworkspacesilent(.id(d)): return (d, true)
+        func target(_ binding: KeyboardBinding) -> (digit: Int, action: DigitAction)? {
+            guard binding.chord.key.count == 1,
+                  let digit = Int(binding.chord.key), digit >= 1 else { return nil }
+            switch binding.action {
+            case .window(.workspace(.id(let value))) where value == digit: return (digit, .workspace)
+            case .window(.moveToWorkspace(.id(let value))) where value == digit: return (digit, .send)
+            case .window(.moveToWorkspaceSilent(.id(let value))) where value == digit: return (digit, .sendSilent)
             default: return nil
             }
         }
-        guard let first = digitTarget(binds[start]) else { return nil }
-        let mods = binds[start].mods
+        guard let first = target(bindings[start]) else { return nil }
+        let modifiers = bindings[start].chord.modifiers
+        let edge = bindings[start].edge
+        let repeats = bindings[start].repeats
         var end = start
         var last = first
-        while end + 1 < binds.count, binds[end + 1].mods == mods,
-              let next = digitTarget(binds[end + 1]),
-              next.send == first.send, next.digit == last.digit + 1 {
+        while end + 1 < bindings.count,
+              bindings[end + 1].chord.modifiers == modifiers,
+              bindings[end + 1].edge == edge,
+              bindings[end + 1].repeats == repeats,
+              let next = target(bindings[end + 1]),
+              next.action == first.action,
+              next.digit == last.digit + 1 {
             end += 1
             last = next
         }
         guard end - start >= 2 else { return nil }
-        let symbols = modifierSymbols(mods)
+        let symbols = modifierSymbols(modifiers)
         let keys = "\(first.digit)…\(last.digit)"
         let chord = symbols.isEmpty ? keys : "\(symbols) \(keys)"
-        let action = first.send ? "Send to workspace \(first.digit)–\(last.digit)"
-                                : "Workspace \(first.digit)–\(last.digit)"
+        let action: String
+        switch first.action {
+        case .workspace: action = "Workspace \(first.digit)–\(last.digit)"
+        case .send: action = "Send to workspace \(first.digit)–\(last.digit)"
+        case .sendSilent: action = "Send to workspace \(first.digit)–\(last.digit) (stay)"
+        }
         return ((chord, action), end + 1)
+    }
+
+    private enum DigitAction {
+        case workspace, send, sendSilent
     }
 }

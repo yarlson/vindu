@@ -4,7 +4,7 @@
 
 A dynamic tiling window manager for macOS.
 
-![vindu tiling three windows: the repo in a browser, vindu.conf in an editor, and vinductl JSON output in a terminal](assets/screenshot.png)
+![vindu tiling three windows: the repo in a browser, vindu.toml in an editor, and vinductl JSON output in a terminal](assets/screenshot.png)
 
 The name is Norwegian for "window", from Old Norse _vindauga_ ("wind-eye"),
 the word English _window_ comes from.
@@ -17,319 +17,289 @@ the word English _window_ comes from.
 └────────────┴────────────┘
 ```
 
-You stop arranging windows. New windows take their place in the grid,
-keyboard moves you around, workspaces keep projects apart. It runs on the
-Accessibility API and an event tap. SIP stays on and there are no kernel
-extensions. The focus border uses optional private WindowServer interfaces;
-if macOS does not provide them, tiling keeps working without the border.
+New windows take their place in the grid. Keyboard actions move focus and
+windows. Workspaces keep projects apart. Vindu uses the Accessibility API and
+an event tap, so SIP stays on and it needs no kernel extension. Its focus border
+uses optional private WindowServer interfaces; if macOS does not provide them,
+tiling continues without the border.
 
 ## Quick start
 
 ```sh
 brew install yarlson/tap/vindu
-brew services start vindu     # runs now and at every login
+brew services start vindu
 ```
 
-macOS will prompt for Accessibility access (System Settings → Privacy &
-Security → Accessibility). Flip the toggle for `vindud` and your windows
-tile immediately. No restart needed.
+The first start writes `~/.config/vindu/vindu.toml`. Vindu validates the file
+before it asks for Accessibility access. Enable `vindud` in System Settings →
+Privacy & Security → Accessibility, then windows tile without a restart.
 
-Now try, in order:
+Try these actions:
 
-1. Open two or three apps. They split the screen on their own.
-2. `alt + h` / `alt + l` to move focus left and right. The colored border
-   shows where you are.
-3. `alt + shift + l` to push the focused window right. Tiles swap.
-4. `alt + 2` for a fresh workspace, `alt + 1` to come back.
-5. `alt + s` to summon the scratchpad. `alt + shift + s` sends the focused
-   window into it.
-6. Hold `alt` and drag any window with the mouse. The grid re-flows around
-   it as you move.
+1. Open two or three apps.
+2. Press `alt + h` or `alt + l` to move focus.
+3. Press `alt + shift + l` to move the focused window right.
+4. Press `alt + 2` for another workspace and `alt + 1` to return.
+5. Press `alt + s` to show the scratchpad. `alt + shift + s` sends a window to it.
+6. Hold `alt` and drag a window through the grid.
 
-The first launch shows a keybinding cheat sheet — click it away, bring it
-back any time from the vindu icon in the menu bar. The same icon pauses
-tiling and quits the daemon, no chords required.
-
-To pause instead of quitting: `alt + shift + p`. Windows move freely until
-you press it again and the grid reasserts. To stop: `alt + shift + m` exits
-and puts windows back where humans can reach them; `brew services stop
-vindu` turns the service off entirely. Service logs land in
-`~/Library/Logs/vindu/vindud.log`.
-
-## If something looks wrong
-
-- **I need my windows free for a minute.** `alt + shift + p` pauses tiling
-  (the menu bar icon works too). Drag things anywhere; press it again and
-  the grid reasserts.
-- **A window won't tile.** Dialogs and utility panels float on purpose.
-  `alt + v` toggles any window between floating and tiled.
-- **I dragged a window and it snapped back.** That's the point. The grid
-  owns tiled windows. Drag onto another tile to swap places, or `alt + v`
-  to float it first.
-- **Binds stopped working after I rebuilt.** macOS ties the Accessibility
-  grant to the binary identity. Re-toggle `vindud` in System Settings after
-  upgrades. `make install` signs ad-hoc so rebuilds of the same tree keep
-  the grant.
-- **An app's windows vanished.** They're on another workspace. `cmd-tab` to
-  the app takes you to its workspace, like it should.
-- **I want my config back to defaults.** Delete
-  `~/.config/vindu/vindu.conf` and restart `vindud`. It writes a fresh one.
-
-Config parse errors never crash the daemon. Check `vinductl configerrors`
-if something in the file isn't taking effect. If the config file itself
-cannot be read, startup stops; a failed live reload keeps the last good
-config active and reports the load error there.
-
----
-
-Everything below is reference. The defaults are usable without reading it.
-
-## Keymap
-
-The default mod is alt. Cmd works too, vindu swallows bound chords before
-apps see them, but cmd carries too much existing muscle memory to be a good
-default.
-
-| Keys                              | Action                                       |
-| --------------------------------- | -------------------------------------------- |
-| `alt + return`                    | open Terminal                                |
-| `alt + e`                         | open Finder                                  |
-| `alt + h/j/k/l`                   | focus left/down/up/right                     |
-| `alt + shift + h/j/k/l`           | move window (swaps tiles)                    |
-| `alt + tab` / `alt + shift + tab` | cycle windows on workspace                   |
-| `alt + 1…9`                       | switch workspace                             |
-| `alt + shift + 1…9`               | send window to workspace and follow          |
-| `alt + [` / `alt + ]`             | previous / next workspace                    |
-| `alt + s`                         | toggle the `magic` scratchpad                |
-| `alt + shift + s`                 | send window to scratchpad                    |
-| `alt + v`                         | float / tile                                 |
-| `alt + f`                         | maximize, `alt + shift + f` fullscreen       |
-| `alt + t`                         | toggle split direction                       |
-| `alt + c`                         | center a floating window                     |
-| `alt + p`                         | pin a floating window to all workspaces      |
-| `alt + m`                         | swap with master                             |
-| `alt + shift + p`                 | pause / resume tiling                        |
-| `alt + r`                         | resize submap: `h/j/k/l` resize, `esc` exits |
-| `alt + drag`                      | move a tile through the grid                 |
-| `alt + rightdrag`                 | resize (split ratios when tiled)             |
-| `alt + shift + q`                 | close window                                 |
-| `alt + shift + m`                 | quit vindu                                   |
-
-Pressing a workspace number twice bounces back to the previous one
-(`workspace_back_and_forth`, on by default).
+The first launch shows a keybinding sheet. The menu bar item can show it again,
+pause tiling, open the config, or quit. `alt + shift + p` also pauses tiling.
+Service logs are in `~/Library/Logs/vindu/vindud.log`.
 
 ## Configuration
 
-One plaintext trusted config file: `~/.config/vindu/vindu.conf`. Saves
-apply immediately, no restart. Do not use it as a secret store; scripts
-that need credentials should read Keychain or their own private files.
-Live experiments without touching the file:
+Vindu uses strict, versioned TOML 1.1:
+
+```text
+~/.config/vindu/vindu.toml
+```
+
+The root `schema = 1` field is required. Keys are case-sensitive snake_case.
+Unknown keys, duplicate keys, wrong types, invalid references, and out-of-range
+values reject the whole candidate. A rejected reload keeps the last valid
+snapshot active. On an invalid first start, the control socket and file watcher
+stay available, but Vindu does not ask for Accessibility access or manage any
+windows.
+
+Use these commands before or after starting the daemon:
 
 ```sh
-vinductl keyword general:gaps_in 12
-vinductl keyword general:layout master
+vinductl config check
+vinductl config check ./another.toml
+vinductl config status
+vinductl -j config status
+vinductl config reload
 ```
 
-```ini
-$mainMod = ALT
+Saves reload automatically. `config reload` is useful for scripts and explicit
+feedback. `config check` never creates or changes a file.
 
-general {
-    gaps_in = 5               # between tiles (each side contributes)
-    gaps_out = 12             # screen edges
-    border_size = 2
-    col.active_border = rgba(33ccffee) rgba(00ff99ee) 45deg
-    col.submap_border = rgba(ff5555ee)   # border while a submap is active
-    layout = dwindle          # or: master
-}
+An old `~/.config/vindu/vindu.conf` is not loaded or changed. If it is the only
+config present, Vindu stays in configuration-only mode and reports where to
+create `vindu.toml`.
 
-bind = $mainMod, T, exec, open -a kitty
-bind = $mainMod, B, workspace, name:browser
+The shipped [example configuration](examples/vindu.toml) is the exact first-run
+template. A compact configuration looks like this:
 
-bar {
-    enabled = false            # same-process workspace/app/status bar
-    position = top             # top or bottom
-    height = 0                 # 0 = auto; top matches the hidden menu bar
-    show_workspaces = true
-    show_app = true
-    show_indicators = true
-    indicators = pause, submap, windows, date, battery, network, keyboard, volume
-    # Open-Meteo weather; add weather to indicators after setting lat,lon
-    weather_location =
-    weather_refresh_minutes = 15
-    # Custom script item:
-    # add plugin:mail to indicators, then configure bar:plugin:mail:*
-}
+```toml
+schema = 1
 
-# Modal keymaps
-bind = $mainMod, R, submap, resize
-submap = resize
-binde = , L, resizeactive, 30 0     # binde repeats while held
-bind = , escape, submap, reset
-submap = reset
+[layout]
+kind = "dwindle"
+inner_gap = 5
+outer_gap = 12
 
-# Window rules: regex matchers, applied in order
-windowrulev2 = float, class:^(Calculator)$
-windowrulev2 = workspace 2 silent, class:^(Safari)$, title:GitHub
-windowrulev2 = size 800 600, class:^(Finder)$, floating:1
+[layout.dwindle]
+new_window_fraction = 0.5
+new_window_position = "after"
+
+[layout.master]
+primary_fraction = 0.55
+primary_position = "left"
+new_window_position = "stack-end"
+
+[focus]
+follows_pointer = false
+allow_app_activation = false
+
+[workspaces]
+back_and_forth = true
+
+[ui.menu_bar]
+enabled = true
+
+[ui.focus_border]
+width = 2
+fallback_corner_radius = 10
+active_colors = ["#33ccffee", "#00ff99ee"]
+active_angle = 45
+mode_colors = ["#ff5555ee"]
+
+[ui.bar]
+enabled = false
+position = "top"
+height = "auto"
+left = ["workspaces", "application"]
+center = ["layout"]
+right = ["pause", "mode", "windows", "network", "battery", "volume", "date"]
+
+[ui.bar.colors]
+background = "#111111cc"
+foreground = "#eeeeeeff"
+inactive = "#8a8a8aff"
+active = "#33ccffee"
+
+[keyboard]
+bindings = [
+  { chord = "option+return", run = ["/usr/bin/open", "-a", "Terminal"] },
+  { chord = "option+h", focus = "left" },
+  { chord = "option+shift+h", move = "left" },
+  { chord = "option+r", enter_mode = "resize" },
+  { mode = "resize", chord = "l", repeat = true, resize = [30, 0] },
+  { mode = "resize", chord = "escape", enter_mode = "default" },
+]
+pointer_bindings = [
+  { modifiers = ["option"], button = "left", drag = "move" },
+  { modifiers = ["option"], button = "right", drag = "resize" },
+]
+
+[startup]
+commands = []
+
+[windows]
+rules = [
+  { match = { bundle_id = "com.apple.systempreferences" }, floating = true, centered = true },
+]
 ```
 
-Workspace targets: `3`, `+1`, `e+1` (existing only), `previous`, `empty`,
-`name:mail`, `special:magic`. Rule effects: `float`, `tile`, `size`,
-`move`, `center`, `pin`, `fullscreen`, `workspace N [silent]`,
-`monitor <name>`. Matchers: `class`, `title`, `initialclass`,
-`initialtitle`, `floating`, `workspace`, `pid`, `address`.
+`run` is an argv array: no shell parses its arguments. The executable must be
+absolute or start with `~/`. Use `shell = "..."` only when shell syntax is the
+intent; Vindu runs it as `/bin/sh -lc`. A command can add validated values with
+`env = { NAME = "value" }`. It cannot replace reserved `VINDU_*` variables.
 
-The menu bar icon can be turned off with `misc:menu_bar = false`. The desktop
-bar can be enabled live with `vinductl keyword bar:enabled true`; it reserves
-screen space and shows workspaces, the focused app icon/window, and the configured
-ordered indicators.
+Window rules run in order when a window appears. `bundle_id` is an exact match;
+`app_name` and `title` are regular expressions. Later rules replace earlier
+values field by field. Rules can set `floating`, `centered`, `pinned`,
+`fullscreen`, `size`, `position`, `workspace`, or `monitor`. A reload does not
+move existing windows through the new rule set.
 
-Weather is opt-in and uses Open-Meteo. When enabled, vindu sends the configured
-latitude/longitude to Open-Meteo for each refresh. For Riga:
-`vinductl keyword bar:weather_location 56.9496,24.1052`, then include
-`weather` in `bar:indicators`.
+Workspace assignments use a positive workspace id and a display name:
 
-Custom bar items are opt-in script plugins. Add `plugin:<id>` anywhere in
-`bar:indicators`, then configure `bar:plugin:<id>:command`. Scripts run
-asynchronously in a short-lived process group. The plugin environment is
-minimal: home/user/shell/temp/locale, a safe PATH, `VINDU_BAR_PLUGIN_*`, and the
-two socket paths. Config `env =` values are inherited by `exec` commands, not by
-bar plugins. Stdout renders as the item text; stderr is not shown or logged by
-default. JSON stdout can set text, SF Symbols, color, and visibility:
-
-```conf
-bar {
-    indicators = weather,plugin:mail,network,battery,date
-    plugin {
-        mail {
-            command = ~/.config/vindu/bar/mail.sh
-            refresh_seconds = 300
-            events = workspace,activewindow
-            timeout_ms = 1000
-        }
-    }
-}
+```toml
+[[workspaces.assignments]]
+id = 2
+monitor = "Studio Display"
 ```
 
-```sh
-#!/bin/sh
-printf '{"text":"3","symbols":["envelope.badge.fill","envelope"],"color":"foreground"}\n'
+Vindu first tries a case-insensitive exact display name, then a unique partial
+match. Missing or ambiguous displays produce a runtime warning and leave the
+workspace where it is. Vindu retries after display changes.
+
+## Desktop bar
+
+The optional AppKit bar has three explicit zones. Items in `left` and `right`
+stay at their edges. The `center` zone stays at the physical center of the
+display, even when the side zones have different widths. Vindu hides the whole
+center zone when it would overlap a side or the notch; it never shifts it off
+center. Empty zones are valid.
+
+Built-in items are `workspaces`, `application`, `pause`, `mode`, `layout`,
+`windows`, `date`, `battery`, `network`, `keyboard`, `volume`, and `weather`.
+An item can appear in only one zone.
+
+Weather is opt-in. Add `weather` to a zone and configure coordinates:
+
+```toml
+[ui.bar.weather]
+latitude = 56.9496
+longitude = 24.1052
+refresh_minutes = 15
 ```
 
-Use `vinductl barplugin refresh mail` to queue a manual refresh.
+This sends the coordinates to Open-Meteo when Vindu refreshes the item.
 
-### Layouts
+Script plugins use `plugin:<id>` in any zone and a matching plugin table:
 
-- **dwindle**: each new window splits the focused tile, orientation follows
-  the tile's aspect ratio. `alt + t` transposes a split,
-  `vinductl dispatch splitratio exact 1.2` reshapes one.
-- **master**: one main area plus a stack. Controlled via `layoutmsg`:
-  `swapwithmaster`, `addmaster`, `mfact exact 0.6`, `orientationleft`
-  through `orientationcenter`.
+```toml
+[ui.bar.plugins.mail]
+run = ["~/.config/vindu/bar/mail"]
+refresh_seconds = 300
+events = ["workspace", "activewindow"]
+timeout_ms = 1000
+```
 
-Switch any time: `vinductl keyword general:layout master`. Window order
-survives the switch.
+Plugins run outside the render path with one active process per plugin, a
+timeout, and a small environment. They receive safe home, user, locale, temp,
+PATH, socket, and `VINDU_BAR_PLUGIN_*` context values plus their own `env`
+entries. They do not inherit unrelated daemon variables or file descriptors.
+Plain stdout becomes the item text. JSON can provide `text`, `symbols`, `color`,
+and `visible`. Use `vinductl barplugin refresh mail` for a manual refresh.
+
+## Default keymap
+
+| Keys | Action |
+| --- | --- |
+| `alt + return` | open Terminal |
+| `alt + e` | open Finder |
+| `alt + h/j/k/l` | focus left/down/up/right |
+| `alt + shift + h/j/k/l` | move window |
+| `alt + 1…9` | switch workspace |
+| `alt + shift + 1…9` | send window and follow |
+| `alt + [` / `alt + ]` | previous / next workspace |
+| `alt + s` | toggle the `magic` scratchpad |
+| `alt + shift + s` | send window to the scratchpad |
+| `alt + v` | float / tile |
+| `alt + f` | maximize |
+| `alt + shift + f` | fullscreen |
+| `alt + t` | toggle split direction |
+| `alt + c` | float and center a window |
+| `alt + p` | pin a floating window |
+| `alt + m` | swap with the primary window |
+| `alt + shift + p` | pause / resume tiling |
+| `alt + r` | resize mode; `h/j/k/l` resize, `escape` exits |
+| `alt + drag` | move a window through the grid |
+| `alt + right-drag` | resize a window or split |
+| `alt + shift + q` | close window |
+| `alt + shift + m` | quit Vindu |
 
 ## Scripting
 
-Two unix sockets. `vinductl` wraps the command socket; anything that can
-read a socket can consume the event stream.
+`vinductl` talks to a request socket. `vinductl events` reads a separate event
+stream. Existing runtime commands include `dispatch`, `clients`, `workspaces`,
+`monitors`, `activewindow`, `activeworkspace`, `binds`, `cursorpos`, `notify`,
+`version`, the `config` commands, and bar plugin refresh.
 
 ```sh
-$ vinductl -j activewindow
-{
-  "address": "0x2a4f",
-  "class": "kitty",
-  "title": "vim",
-  "workspace": { "id": 2, "name": "2" },
-  "floating": false,
-  ...
-}
-
-$ vinductl dispatch movetoworkspace 3      # any bindable action works here
-$ vinductl events
-workspace>>3
-activewindow>>kitty,vim
-openwindow>>0x2a51,3,Safari,GitHub
+vinductl -j activewindow
+vinductl dispatch movetoworkspace 3
+vinductl events
 ```
 
-- Command socket verbs: `dispatch`, `keyword`, `reload`, `clients`,
-  `workspaces`, `monitors`, `activewindow`, `activeworkspace`, `binds`,
-  `getoption`, `configerrors`, `cursorpos`, `notify`, `version`. Prefix
-  with `j/` (or use `vinductl -j`) for JSON.
-- Event socket: push stream of `EVENT>>DATA` lines for workspace changes,
-  focus, window lifecycle, fullscreen, submaps, monitors, config reloads,
-  tiling pause. Point a status bar (sketchybar etc.) at it instead of
-  polling.
+Information commands support JSON with `-j`. Event lines use `EVENT>>DATA` and
+cover workspace, focus, window, fullscreen, mode, monitor, config reload, and
+pause changes. Runtime dispatcher names remain separate from the configuration
+schema.
 
-## How it works
+## If something looks wrong
 
-- `VinduCore`: the config language, binds, rules, both layout engines, gap
-  math, focus geometry, workspace registry. Pure logic under `swift test`,
-  no GUI dependencies.
-- `vindud`: the daemon. Accessibility observers feed window events into the
-  layout, a session event tap owns hotkeys and mouse drags, a WindowServer
-  surface draws the focus border, and AppKit panels draw the optional desktop
-  bar. Hidden workspaces park windows just off the visible frame and restore
-  them on switch. That trick is the reason SIP can stay on.
-- `vinductl`: a thin socket client.
-
-All window and border geometry uses top-left-origin global coordinates. AppKit
-coordinate conversion is limited to AppKit UI and cursor reporting.
-
-## Limitations
-
-macOS does not let vindu change how another app renders its window, so there
-are no animations, blur, per-window opacity, or rounded clipping of other
-apps' content. The focus border is a separate WindowServer surface owned by
-vindu. Mode-0 fullscreen still shows the menu-bar strip because the window
-server owns it. Tiled windows with hard minimum sizes keep their minimum and
-the layout allots their tile anyway. The private border interface is not a
-stable macOS contract. A system update can break the border, and an unexpected
-ABI change can affect the daemon, so each supported macOS version needs live
-validation.
-
-## Migrating from Linux tiling
-
-Hyprland configs largely parse as-is: same dialect, same dispatcher names,
-same IPC verbs and event wire format. Compositor-only options like
-`animations` and `blur` no-op cleanly. Status-bar scripts written against
-the socket conventions work unchanged. Coming from i3/sway, binds, modes
-(submaps here), and rules map one-to-one conceptually.
+- `vinductl config status` shows the selected path, daemon state, active schema,
+  rejected diagnostics, and runtime warnings.
+- `vinductl config check` validates the file without contacting the daemon.
+- A window that does not tile may be a dialog or utility panel. `alt + v`
+  changes the focused window between floating and tiled.
+- If binds stop after a rebuild, re-enable `vindud` under Accessibility. macOS
+  ties the grant to the binary identity.
+- To restore defaults, remove `~/.config/vindu/vindu.toml` while no legacy
+  `vindu.conf` remains, then restart Vindu.
+- Stop the service with `brew services stop vindu`.
 
 ## Development
 
-Running from source instead of brew:
-
 ```sh
-git clone https://github.com/yarlson/vindu && cd vindu
-make build      # debug
-make test       # works with Command Line Tools alone, no Xcode needed
-make install    # release build, signs, installs to /usr/local/bin
-vindud --install-service      # run the dev build now and at every login
-vindud --config ./vindu.conf --install-service
-vindud --uninstall-service    # undo
+git clone https://github.com/yarlson/vindu
+cd vindu
+make build
+make test
+make install
+vindud --install-service
+vindud --config ./vindu.toml --install-service
+vindud --uninstall-service
 ```
 
-Two dev-loop gotchas: a rebuilt binary is a new code identity, so re-toggle
-`vindud` in Accessibility after `make install` or binds go silently dead.
-And don't run the brew service and a dev-build service at the same time —
-two window managers fight over the same windows.
+The default service does not store a config argument, so it keeps the standard
+native selection rules. A service installed with an explicit `--config` keeps
+that resolved path. Reinstall an existing service after upgrading from a build
+that stored the old default path.
 
-Releasing: push a `v*` tag that matches `VinduVersion`. CI builds and
-ad-hoc signs the universal (arm64 + x86_64) ZIP, publishes it with checksums
-and provenance, verifies the public artifact, and bumps the Homebrew formula
-in `yarlson/homebrew-tap`. The formula source of truth is
-`packaging/vindu.rb.tmpl` in this repo.
+`VinduCore` owns the strict compiler, immutable configuration types, actions,
+layouts, workspace registry, rule matching, and public IPC models.
+`VinduDaemonSupport` owns testable file, socket, watcher, plugin, weather, and
+LaunchAgent boundaries. `vindud` owns AppKit, Accessibility, input, monitor, and
+runtime orchestration. `VinduBorderEngine` contains all private WindowServer
+calls and disables only the border when that boundary fails.
 
-Layout logic, the config parser, and rule matching live in `VinduCore` and
-are covered by plain `swift test` tests. Deterministic daemon boundary helpers
-are also unit-tested without starting the daemon. Live AX/AppKit behavior needs
-Accessibility permission and a real window session.
-
-## Roadmap
-
-- Window groups (tabbed containers)
-- Inactive-window borders
-- Per-workspace layout overrides
-- Optional focus-without-raise (private SkyLight, opt-in)
+Do not run a Homebrew service and a development service at the same time. Two
+window managers will fight over the same windows. Live Accessibility, AppKit,
+notch, and private border behavior still require a real logged-in macOS session;
+the repository tests do not simulate those platform boundaries.

@@ -1,30 +1,54 @@
 # Terminology
 
-- dispatcher — one executable WM action (`movefocus l`, `exec kitty`); the same set is reachable from binds and from the IPC `dispatch` verb.
-- bind — keyboard/mouse chord mapped to a dispatcher. Flag suffixes: `binde` repeats on autorepeat, `bindr` fires on release, `bindm` is a mouse drag, `bindd` carries a description, `bindl` is accepted but moot (event taps stop at the lock screen).
-- submap — modal keymap (i3 calls these "modes"); `""` is the root keymap. An active submap changes the border color.
-- keyword — a single live config assignment applied over IPC (`general:gaps_in 10`) without touching the file.
-- workspace target — selector syntax: `3`, `+1`, `e+1` (existing only, cyclic), `previous`, `empty`, `name:web`, `special:magic`.
-- special workspace — scratchpad overlaid on the active workspace, rendered in an inset container; ids allocated downward from −99.
-- named workspace — workspace addressed by name; ids allocated downward from −1337.
-- dwindle — layout engine: binary split tree; each new window splits the focused leaf, orientation follows the leaf's aspect ratio.
-- master — layout engine: master area plus stack, driven by `layoutmsg` commands.
-- mfact — fraction of the workspace the master area occupies.
-- master order — the per-workspace window list owned by the master layout; the canonical window order, kept in sync with the dwindle tree so layouts can switch at runtime.
-- floating — window outside the tiled structures with its own remembered frame (`floatFrame`).
-- pinned — floating window that migrates to whatever workspace becomes visible on its monitor.
-- stashed / hidden — parked as a 2-pixel sliver in the monitor's bottom-right corner because its workspace is not visible; the substitute for real Space membership.
-- native fullscreen — macOS green-button fullscreen; the window lives on its own Space, leaves the layout, and is re-adopted on return.
-- fullscreen mode — WM-managed fullscreen: mode 0 covers the display (minus the menu-bar strip the window server owns), mode 1 maximizes within gaps.
-- fakefullscreen — flag reported to clients without changing geometry.
-- window rule — `windowrulev2 = effect, matcher…`: regex matchers over window fields, effects folded in config order when a window appears.
-- auxiliary window — chromeless AX surface (autocomplete popup, tooltip, input-method panel); never managed, never focused.
-- address — window identity over IPC: the CGWindowID in hex, mirroring Hyprland's window addresses.
-- command socket — request/response Unix socket, wire-compatible with Hyprland's socket1; `j/` prefix selects JSON.
-- event socket — push stream of `EVENT>>DATA` lines, wire-compatible with Hyprland's socket2.
-- tolerated keyword — Hyprland option with no macOS counterpart, accepted silently so real configs load; unknown keys in modeled sections still error.
-- user gesture — recent explicit switch action (click or ⌘Tab); decides whether an off-workspace activation may switch workspaces.
-- pause — vindu-only dispatcher suspending all tiling enforcement: frames are not asserted and non-pause chords pass through to apps; resuming reasserts the grid.
-- desktop bar — optional same-process AppKit bar configured by `bar:*`, showing workspaces, focused app/window, and state indicators while reserving screen space from layouts.
-- bar plugin — desktop bar script item addressed as `plugin:<id>`; the daemon runs it off the render path and caches parsed output.
-- cheat sheet — click-to-dismiss overlay listing the root keymap, rendered from the live parsed binds; shown on first run and from the menu bar item.
+- configuration candidate — all bytes read from one selected TOML file before
+  activation. It either compiles as a whole or is rejected as a whole.
+- configuration snapshot — immutable, validated runtime configuration owned by
+  `WindowManager`. A reload swaps the full snapshot in one main-queue operation.
+- configuration-only mode — control sockets and the config watcher are active,
+  but Vindu has no valid snapshot, does not request Accessibility access, and
+  does not manage windows.
+- action — one typed operation in a keyboard binding, such as focus, workspace,
+  fullscreen, command, or enter mode.
+- mode — a named modal keyboard map. `default` is the root map. Entering a mode
+  also changes the focus-border color.
+- workspace target — selector syntax used by typed actions: an id, a signed
+  relative offset such as `+1` or `-1`, `previous` for the last visited
+  workspace, `empty`, `name:<name>`, or `special:<name>`.
+- monitor target — a direction, index, relative index, `current`, or monitor name.
+- special workspace — scratchpad overlaid on the active workspace and rendered in
+  an inset container. Its ids allocate downward from -99.
+- named workspace — workspace addressed by name. Its ids allocate downward from
+  -1337.
+- dwindle — binary split-tree layout. Each new window splits the focused leaf and
+  the leaf shape selects the split axis.
+- master — primary area plus stack layout, controlled by typed primary actions and
+  the established runtime dispatcher surface.
+- primary fraction — share of the workspace used by the master layout's primary
+  area.
+- master order — canonical per-workspace window order, kept in sync with the
+  dwindle tree so layouts can switch at runtime.
+- floating — window outside the tiled structures with remembered `floatFrame`.
+- pinned — floating window that migrates to the workspace visible on its monitor.
+- stashed — window parked as a 2-pixel sliver because its workspace is hidden.
+- native fullscreen — macOS green-button fullscreen. The window leaves the layout
+  while it occupies its own Space.
+- fullscreen — Vindu-managed display coverage. Maximize is the separate usable-
+  area mode.
+- window rule — appearance-time matcher and field overrides. Rules fold in file
+  order and later configured fields win.
+- auxiliary window — chromeless AX surface such as a tooltip or input-method
+  panel. It is never managed or focused by Vindu.
+- address — public IPC window identity: the CGWindowID rendered in hexadecimal.
+- command socket — same-user request/response Unix socket for runtime actions,
+  information, configuration status, and reload.
+- event socket — same-user push stream of `EVENT>>DATA` lines.
+- user gesture — recent explicit click or application switch used to distinguish
+  a wanted off-workspace activation from focus stealing.
+- pause — action that stops tiling enforcement until resumed while leaving the
+  control surfaces available.
+- desktop bar — optional same-process AppKit bar with independent left, centered,
+  and right item zones.
+- bar plugin — bounded script item addressed as `plugin:<id>`; the daemon runs it
+  off the render path and caches parsed output.
+- keybinding sheet — click-to-dismiss view built from the active typed keyboard
+  bindings and available from the menu bar.

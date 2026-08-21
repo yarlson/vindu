@@ -1,5 +1,6 @@
 import AppKit
 import VinduCore
+import VinduDaemonSupport
 
 let usage = """
 vindud — the vindu tiling window manager daemon
@@ -19,15 +20,8 @@ enum StartupAction {
     case uninstallService
 }
 
-func resolveConfigPath(_ raw: String) -> String {
-    let expanded = (raw as NSString).expandingTildeInPath
-    if expanded.hasPrefix("/") { return expanded }
-    return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        .appendingPathComponent(expanded)
-        .standardized.path
-}
-
 var configPath = VinduPaths.defaultConfigPath
+var usesDefaultConfigPath = true
 var action = StartupAction.run
 var argIndex = 1
 let argv = CommandLine.arguments
@@ -39,7 +33,8 @@ while argIndex < argv.count {
             log("missing path after \(argv[argIndex - 1])")
             exit(2)
         }
-        configPath = resolveConfigPath(argv[argIndex])
+        configPath = ConfigurationPathResolver.resolve(argv[argIndex])
+        usesDefaultConfigPath = false
     case "--version":
         print("vindu \(VinduVersion.string)")
         exit(0)
@@ -62,7 +57,7 @@ switch action {
 case .run:
     break
 case .installService:
-    exit(Service.install(configPath: configPath))
+    exit(Service.install(configPath: usesDefaultConfigPath ? nil : configPath))
 case .uninstallService:
     exit(Service.uninstall())
 }
@@ -71,30 +66,36 @@ case .uninstallService:
 signal(SIGPIPE, SIG_IGN)
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let wm: WindowManager
+    private var coordinator: DaemonCoordinator!
     private var accessibilityTimer: Timer?
     private var signalSources: [DispatchSourceSignal] = []
     private var shuttingDown = false
 
-    init(configPath: String) {
-        self.wm = WindowManager(configPath: configPath)
+    init(configPath: String, usesDefaultConfigPath: Bool) {
+        super.init()
+        coordinator = DaemonCoordinator(
+            configPath: configPath,
+            usesDefaultPath: usesDefaultConfigPath,
+            requestAccessibility: { [weak self] in self?.waitForAccessibility() },
+            terminateApplication: { NSApplication.shared.terminate(nil) }
+        )
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installSignalHandlers()
-        waitForAccessibility()
+        if !coordinator.start() {
+            shutdown()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         shutdown()
     }
 
-    /// AX and event taps are dead without the Accessibility grant; prompt once
-    /// and poll so first-run users can flip the toggle without restarting.
     private func waitForAccessibility() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         if AXIsProcessTrustedWithOptions(options) {
-            wm.bootstrap()
+            coordinator.accessibilityDidBecomeAvailable()
             return
         }
         log("waiting for Accessibility permission (System Settings → Privacy & Security → Accessibility)")
@@ -102,7 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if AXIsProcessTrusted() {
                 timer.invalidate()
                 self?.accessibilityTimer = nil
-                self?.wm.bootstrap()
+                self?.coordinator.accessibilityDidBecomeAvailable()
             }
         }
     }
@@ -124,12 +125,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         accessibilityTimer?.invalidate()
         accessibilityTimer = nil
         signalSources.removeAll()
-        wm.shutdown()
+        coordinator.shutdown()
     }
 }
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
-let delegate = AppDelegate(configPath: configPath)
+let delegate = AppDelegate(configPath: configPath, usesDefaultConfigPath: usesDefaultConfigPath)
 app.delegate = delegate
 app.run()
