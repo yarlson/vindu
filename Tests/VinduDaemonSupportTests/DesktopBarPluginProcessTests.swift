@@ -38,7 +38,7 @@ struct DesktopBarPluginProcessTests {
         #expect(error.localizedDescription == "spawn setup failed: \(EINVAL)")
     }
 
-    @Test func pluginDoesNotInheritUnrelatedDescriptors() throws {
+    @Test func pluginDoesNotInheritUnrelatedDescriptors() async throws {
         let sourceFD = Darwin.open("/dev/null", O_RDONLY)
         guard sourceFD >= 0 else {
             Issue.record("could not open /dev/null")
@@ -54,7 +54,7 @@ struct DesktopBarPluginProcessTests {
             return
         }
 
-        let result = try runPlugin(
+        let result = try await runPlugin(
             command: "if [ -e /dev/fd/\(inheritedFD) ]; then printf inherited; else printf closed; fi",
             timeoutMs: 500
         )
@@ -63,8 +63,8 @@ struct DesktopBarPluginProcessTests {
         #expect(String(decoding: result.stdout, as: UTF8.self) == "closed")
     }
 
-    @Test func timeoutEscalatesPastTermIgnoringPlugin() throws {
-        let result = try runPlugin(
+    @Test func timeoutEscalatesPastTermIgnoringPlugin() async throws {
+        let result = try await runPlugin(
             command: "trap '' TERM; while :; do sleep 1; done",
             timeoutMs: 250
         )
@@ -73,22 +73,23 @@ struct DesktopBarPluginProcessTests {
         #expect(result.exitCode == -SIGKILL)
     }
 
-    @Test func backgroundChildIsKilledWhenShellExits() throws {
-        let result = try runPlugin(command: "sleep 30 & printf '%s\\n' \"$!\"", timeoutMs: 1000)
+    @Test func backgroundChildIsKilledWhenShellExits() async throws {
+        let result = try await runPlugin(command: "sleep 30 & printf '%s\\n' \"$!\"",
+                                         timeoutMs: 1000)
         let childPID = pid_t(String(decoding: result.stdout, as: UTF8.self)
             .trimmingCharacters(in: .whitespacesAndNewlines))
 
         #expect(childPID != nil)
         guard let childPID else { return }
-        waitForPhase3Condition {
+        try await waitForPluginCondition {
             Darwin.kill(childPID, 0) != 0 && errno == ESRCH
         }
         #expect(Darwin.kill(childPID, 0) != 0 && errno == ESRCH)
     }
 
-    @Test func fastStdoutAndStderrAreDrainedBeforeCompletion() throws {
+    @Test func fastStdoutAndStderrAreDrainedBeforeCompletion() async throws {
         for _ in 0..<25 {
-            let result = try runPlugin(command: """
+            let result = try await runPlugin(command: """
             i=0
             while [ "$i" -lt 200 ]; do printf x; i=$((i + 1)); done
             printf 'secret-on-stderr\\n' 1>&2
@@ -99,7 +100,7 @@ struct DesktopBarPluginProcessTests {
         }
     }
 
-    @Test func terminatedProcessCompletesAfterOwnerReleasesIt() throws {
+    @Test func terminatedProcessCompletesAfterOwnerReleasesIt() async throws {
         let pidFile = FileManager.default.temporaryDirectory
             .appendingPathComponent("vindu-plugin-\(UUID().uuidString).pid")
         defer { try? FileManager.default.removeItem(at: pidFile) }
@@ -119,7 +120,7 @@ struct DesktopBarPluginProcessTests {
         )
         let processReference = WeakPluginProcessReference(process)
         try process?.start { resultWaiter.complete(with: $0) }
-        waitForPhase3Condition {
+        try await waitForPluginCondition {
             (try? String(contentsOf: pidFile, encoding: .utf8)).flatMap(pid_t.init) != nil
         }
         let pid = try #require(pid_t(try String(contentsOf: pidFile, encoding: .utf8)))
@@ -133,12 +134,13 @@ struct DesktopBarPluginProcessTests {
         process = nil
 
         #expect(processReference.process != nil)
-        #expect(try resultWaiter.wait().exitCode == -SIGKILL)
-        waitForPhase3Condition { processReference.process == nil }
+        let completed = try await resultWaiter.wait()
+        #expect(completed.exitCode == -SIGKILL)
+        try await waitForPluginCondition { processReference.process == nil }
         #expect(processReference.process == nil)
     }
 
-    @Test func shutdownKillsReapsAndDrainsBeforeReturning() throws {
+    @Test func shutdownKillsReapsAndDrainsBeforeReturning() async throws {
         let pidFile = FileManager.default.temporaryDirectory
             .appendingPathComponent("vindu-plugin-shutdown-\(UUID().uuidString).pid")
         defer { try? FileManager.default.removeItem(at: pidFile) }
@@ -155,7 +157,7 @@ struct DesktopBarPluginProcessTests {
         let process = DesktopBarPluginProcess(request: request,
                                               completionQueue: resultWaiter.queue)
         try process.start { resultWaiter.complete(with: $0) }
-        waitForPhase3Condition {
+        try await waitForPluginCondition {
             (try? String(contentsOf: pidFile, encoding: .utf8)).flatMap(pid_t.init) != nil
         }
         let pid = try #require(pid_t(try String(contentsOf: pidFile, encoding: .utf8)))
@@ -163,12 +165,13 @@ struct DesktopBarPluginProcessTests {
         process.terminateForShutdown()
 
         #expect(Darwin.kill(pid, 0) != 0 && errno == ESRCH)
-        let completed = try resultWaiter.wait()
+        let completed = try await resultWaiter.wait()
         #expect(completed.exitCode == -SIGKILL)
         #expect(String(decoding: completed.stdout, as: UTF8.self) == "ready")
     }
 
-    private func runPlugin(command: String, timeoutMs: Int) throws -> DesktopBarPluginRunResult {
+    private func runPlugin(command: String,
+                           timeoutMs: Int) async throws -> DesktopBarPluginRunResult {
         let request = DesktopBarPluginRunRequest(id: "test",
                                                  command: command,
                                                  timeoutMs: timeoutMs,
@@ -179,25 +182,32 @@ struct DesktopBarPluginProcessTests {
         let process = DesktopBarPluginProcess(request: request,
                                               completionQueue: resultWaiter.queue)
         try process.start { resultWaiter.complete(with: $0) }
-        return try resultWaiter.wait()
+        return try await resultWaiter.wait()
     }
 }
 
 private final class PluginResultWaiter {
     let queue = DispatchQueue(label: "vindu.plugin-test.completion")
-    private let semaphore = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
     private var result: DesktopBarPluginRunResult?
 
     func complete(with result: DesktopBarPluginRunResult) {
-        self.result = result
-        semaphore.signal()
+        lock.withLock { self.result = result }
     }
 
-    func wait() throws -> DesktopBarPluginRunResult {
-        let outcome = semaphore.wait(timeout: .now() + .seconds(5))
-        try #require(outcome == .success)
-        queue.sync {}
-        return try #require(result)
+    func wait() async throws -> DesktopBarPluginRunResult {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        while true {
+            if let result = lock.withLock({ result }) {
+                queue.sync {}
+                return result
+            }
+            guard clock.now < deadline else {
+                throw PluginTestError.resultTimedOut
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
     }
 }
 
@@ -209,9 +219,19 @@ private final class WeakPluginProcessReference {
     }
 }
 
-func waitForPhase3Condition(timeout: TimeInterval = 5, _ condition: @escaping () -> Bool) {
-    let deadline = Date().addingTimeInterval(timeout)
-    while !condition(), Date() < deadline {
-        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
+private enum PluginTestError: Error {
+    case conditionTimedOut
+    case resultTimedOut
+}
+
+private func waitForPluginCondition(_ condition: @escaping () -> Bool) async throws {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(5))
+    while true {
+        if condition() { return }
+        guard clock.now < deadline else {
+            throw PluginTestError.conditionTimedOut
+        }
+        try await Task.sleep(nanoseconds: 10_000_000)
     }
 }
