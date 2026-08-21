@@ -29,16 +29,20 @@ struct GeometrySafetyTests {
 
     @Test func windowFrameValuesRejectsInvalidGeometry() {
         #expect(windowFrameValues(CGRect(x: 0, y: 0, width: 0, height: 10)) == nil)
+        #expect(windowFrameValues(CGRect(x: 0, y: 0, width: -1, height: 10)) == nil)
+        #expect(windowFrameValues(CGRect(x: 0, y: 0, width: 10, height: -1)) == nil)
         #expect(windowFrameValues(CGRect(x: CGFloat.nan, y: 0, width: 10, height: 10)) == nil)
         #expect(windowFrameValues(CGRect(x: 0, y: CGFloat.infinity, width: 10, height: 10)) == nil)
-        #expect(windowFrameValues(CGRect(x: CGFloat.greatestFiniteMagnitude,
+        let representableComponent = CGFloat(5.0e18)
+        #expect(checkedGeometryInt(representableComponent) != nil)
+        #expect(windowFrameValues(CGRect(x: representableComponent,
                                         y: 0,
-                                        width: CGFloat.greatestFiniteMagnitude,
+                                        width: representableComponent,
                                         height: 10)) == nil)
         #expect(windowFrameValues(CGRect(x: 0,
-                                        y: CGFloat.greatestFiniteMagnitude,
+                                        y: representableComponent,
                                         width: 10,
-                                        height: CGFloat.greatestFiniteMagnitude)) == nil)
+                                        height: representableComponent)) == nil)
     }
 
     @Test func windowPointValidationRejectsEitherInvalidCoordinate() {

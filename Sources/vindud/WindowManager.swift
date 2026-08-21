@@ -12,13 +12,13 @@ func isValidWindowPoint(_ point: CGPoint) -> Bool {
 }
 
 func windowFrameValues(_ frame: CGRect) -> (x: Int, y: Int, width: Int, height: Int)? {
-    guard frame.width > 0, frame.height > 0,
+    guard frame.size.width > 0, frame.size.height > 0,
           checkedGeometryInt(frame.maxX) != nil,
           checkedGeometryInt(frame.maxY) != nil,
-          let x = checkedGeometryInt(frame.minX),
-          let y = checkedGeometryInt(frame.minY),
-          let width = checkedGeometryInt(frame.width),
-          let height = checkedGeometryInt(frame.height) else { return nil }
+          let x = checkedGeometryInt(frame.origin.x),
+          let y = checkedGeometryInt(frame.origin.y),
+          let width = checkedGeometryInt(frame.size.width),
+          let height = checkedGeometryInt(frame.size.height) else { return nil }
     return (x, y, width, height)
 }
 
