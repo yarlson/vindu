@@ -52,7 +52,7 @@ struct DesktopBarPluginServiceTests {
         #expect(!harness.runs[0].terminatedForShutdown)
     }
 
-    @Test func shutdownForceTerminatesRunDetachedByOrdinaryStop() {
+    @Test func shutdownForceTerminatesRunStillExitingAfterOrdinaryStop() {
         let harness = PluginServiceHarness()
         harness.service.sync(settings: settings(), enabled: true)
 
@@ -63,7 +63,7 @@ struct DesktopBarPluginServiceTests {
         #expect(harness.runs[0].terminatedForShutdown)
     }
 
-    @Test func completedDetachedRunIsNotTerminatedAgainAtShutdown() {
+    @Test func shutdownDoesNotForceTerminateStoppedRunAfterItCompletes() {
         let harness = PluginServiceHarness()
         harness.service.sync(settings: settings(), enabled: true)
 

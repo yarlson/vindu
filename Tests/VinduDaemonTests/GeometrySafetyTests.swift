@@ -59,7 +59,7 @@ struct GeometrySafetyTests {
         #expect(relativeMonitorIndex(currentIndex: 1, offset: Int.max, count: 3) == 2)
     }
 
-    @Test func relativeMonitorIndexRejectsInvalidState() {
+    @Test func relativeMonitorIndexRejectsInvalidCountOrCurrentIndex() {
         #expect(relativeMonitorIndex(currentIndex: 0, offset: 1, count: 0) == nil)
         #expect(relativeMonitorIndex(currentIndex: -1, offset: 1, count: 3) == nil)
         #expect(relativeMonitorIndex(currentIndex: 3, offset: 1, count: 3) == nil)

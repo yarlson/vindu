@@ -27,7 +27,7 @@
 
 ## Testing and verification
 
-- All logic that can be pure lives in VinduCore and is tested with swift-testing. Daemon support logic that does not require live AX/AppKit window access lives in VinduDaemonSupport and is tested there, including active-border eligibility. Private compositor timing and drawing require an explicitly consented live `vindud` session.
+- Portable window-manager logic lives in VinduCore and is tested with swift-testing. Daemon support logic that does not require live AX/AppKit window access lives in VinduDaemonSupport and is tested there, including active-border eligibility. Deterministic daemon boundary helpers are tested through the `vindud` module without starting the daemon. Private compositor timing and drawing require an explicitly consented live `vindud` session.
 - `make test` injects Command Line Tools framework paths so `swift test` works without full Xcode.
 - The daemon re-tiles the user's real windows; runtime verification needs a live session and explicit user consent.
 

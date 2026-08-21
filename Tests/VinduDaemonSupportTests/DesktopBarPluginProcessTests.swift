@@ -32,6 +32,12 @@ struct DesktopBarPluginProcessTests {
         #expect(env["VINDU_BAR_PLUGIN_EVENT_DATA"] == "1")
     }
 
+    @Test func spawnSetupFailureHasSpecificDiagnostic() {
+        let error = DesktopBarPluginProcessError.spawnSetupFailed(EINVAL)
+
+        #expect(error.localizedDescription == "spawn setup failed: \(EINVAL)")
+    }
+
     @Test func pluginDoesNotInheritUnrelatedDescriptors() throws {
         let sourceFD = Darwin.open("/dev/null", O_RDONLY)
         guard sourceFD >= 0 else {

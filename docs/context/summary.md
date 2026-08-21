@@ -12,7 +12,7 @@ Dynamic tiling window manager for macOS. Single Swift package, zero external dep
 
 Five targets with a hard purity boundary:
 
-- `VinduCore` — library holding all logic that can be pure: config language, settings, binds, dispatchers, window rules, both layout engines, workspace registry, IPC models and wire formats. No GUI dependencies; covered by `swift test`.
+- `VinduCore` — library holding portable window-manager logic: config language, settings, binds, dispatchers, window rules, both layout engines, workspace registry, IPC models and wire formats. No GUI dependencies; covered by `swift test`.
 - `VinduDaemonSupport` — testable daemon infrastructure that does not need AX/AppKit window access: config file loading, IPC/socket helpers, config watching, LaunchAgent plist rendering, service log paths, desktop-bar plugin execution, and weather fetches.
 - `VinduBorderEngine` — internal C boundary for the optional compositor-backed active border. It dynamically loads private WindowServer symbols, owns one border surface and its event source, and has no external dependency or public product.
 - `vindud` — the daemon. Owns every OS integration: AX observers (`AXBridge`), the event tap (`HotkeyTap`), monitors, the border controller, AppKit desktop-bar panels, and launch orchestration. Single-threaded: AX events, hotkeys, and IPC all funnel into `WindowManager` on the main queue.
@@ -32,7 +32,7 @@ All window and border geometry is top-left-origin global coordinates; AppKit's f
 ## System State
 
 - Working WM distributed via Homebrew (`yarlson/tap/vindu`) and source builds, with launchd service self-install.
-- VinduCore and VinduDaemonSupport behavior are unit-tested with swift-testing. Live `vindud` behavior still requires the Accessibility grant and a real window session.
+- VinduCore, VinduDaemonSupport, and deterministic `vindud` boundary helpers are unit-tested with swift-testing. Live AX/AppKit behavior still requires the Accessibility grant and a real window session.
 
 ## Capabilities
 

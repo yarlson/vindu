@@ -40,12 +40,12 @@ protocol DesktopBarPluginRunning: AnyObject {
     func terminateForShutdown()
 }
 
-enum DesktopBarPluginProcessError: Error, CustomStringConvertible {
+enum DesktopBarPluginProcessError: Error, LocalizedError {
     case pipeFailed(Int32)
     case spawnSetupFailed(Int32)
     case spawnFailed(Int32)
 
-    var description: String {
+    var errorDescription: String? {
         switch self {
         case .pipeFailed(let code): return "pipe failed: \(code)"
         case .spawnSetupFailed(let code): return "spawn setup failed: \(code)"
