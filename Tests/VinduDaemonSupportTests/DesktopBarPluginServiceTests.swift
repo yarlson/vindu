@@ -25,6 +25,56 @@ struct DesktopBarPluginServiceTests {
         #expect(!harness.logs.joined(separator: "\n").contains("secret-value"))
     }
 
+    @Test func shutdownUsesCompletionGuaranteedTerminationForEveryActiveRun() {
+        let harness = PluginServiceHarness()
+        var configured = settings()
+        configured.items.append(.plugin("clock"))
+        configured.plugins["clock"] = BarPluginConfig(command: "clock",
+                                                       refreshSeconds: 0,
+                                                       events: [],
+                                                       timeoutMs: 500)
+        harness.service.sync(settings: configured, enabled: true)
+
+        harness.service.shutdown()
+
+        #expect(harness.runs.count == 2)
+        #expect(harness.runs.allSatisfy { $0.terminatedForShutdown })
+        #expect(harness.runs.allSatisfy { !$0.terminated })
+    }
+
+    @Test func ordinaryStopKeepsGracefulTerminationPath() {
+        let harness = PluginServiceHarness()
+        harness.service.sync(settings: settings(), enabled: true)
+
+        harness.service.stop()
+
+        #expect(harness.runs[0].terminated)
+        #expect(!harness.runs[0].terminatedForShutdown)
+    }
+
+    @Test func shutdownForceTerminatesRunStillExitingAfterOrdinaryStop() {
+        let harness = PluginServiceHarness()
+        harness.service.sync(settings: settings(), enabled: true)
+
+        harness.service.stop()
+        harness.service.shutdown()
+
+        #expect(harness.runs[0].terminated)
+        #expect(harness.runs[0].terminatedForShutdown)
+    }
+
+    @Test func shutdownDoesNotForceTerminateStoppedRunAfterItCompletes() {
+        let harness = PluginServiceHarness()
+        harness.service.sync(settings: settings(), enabled: true)
+
+        harness.service.stop()
+        harness.runs[0].complete()
+        harness.service.shutdown()
+
+        #expect(harness.runs[0].terminated)
+        #expect(!harness.runs[0].terminatedForShutdown)
+    }
+
     private func settings() -> BarSettings {
         var settings = BarSettings()
         settings.items = [.plugin("mail")]
@@ -51,6 +101,7 @@ private final class FakePluginRun: DesktopBarPluginRunning {
     let request: DesktopBarPluginRunRequest
     var completion: ((DesktopBarPluginRunResult) -> Void)?
     private(set) var terminated = false
+    private(set) var terminatedForShutdown = false
 
     init(request: DesktopBarPluginRunRequest) {
         self.request = request
@@ -62,6 +113,10 @@ private final class FakePluginRun: DesktopBarPluginRunning {
 
     func terminate() {
         terminated = true
+    }
+
+    func terminateForShutdown() {
+        terminatedForShutdown = true
     }
 
     func complete(stdout: Data = Data(),

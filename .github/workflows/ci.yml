@@ -49,7 +49,7 @@ jobs:
         run: swift build
 
       - name: Test
-        run: swift test --parallel
+        run: make test SWIFT_TEST_FLAGS=--parallel
 
       # The release configuration catches optimizer-only breakage and proves
       # the binaries actually start.

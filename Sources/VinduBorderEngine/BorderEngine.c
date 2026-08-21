@@ -3,6 +3,7 @@
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
+#include <float.h>
 #include <math.h>
 #include <mach/mach.h>
 #include <mach/ndr.h>
@@ -87,22 +88,55 @@ static CFArrayRef createWindowArray(uint32_t window) {
     return array;
 }
 
-static void orderOut(VBEEngine *engine) {
+static bool validRect(CGRect rect) {
+    return isfinite(rect.origin.x)
+        && isfinite(rect.origin.y)
+        && isfinite(rect.size.width)
+        && isfinite(rect.size.height)
+        && isfinite(CGRectGetMaxX(rect))
+        && isfinite(CGRectGetMaxY(rect))
+        && rect.size.width > 0
+        && rect.size.height > 0;
+}
+
+static bool calculateBorderBounds(CGRect target, double width, CGRect *result) {
+    if (!validRect(target) || !isfinite(width) || width <= 0) {
+        return false;
+    }
+    CGRect bounds = CGRectInset(target, -width, -width);
+    if (!validRect(bounds)) {
+        return false;
+    }
+    *result = bounds;
+    return true;
+}
+
+static bool orderOut(VBEEngine *engine) {
     if (!engine->surfaceWindow) {
         engine->visible = false;
-        return;
+        return true;
     }
-    engine->ws.setWindowAlpha(engine->surfaceConnection, engine->surfaceWindow, 0.0f);
+    bool success = engine->ws.setWindowAlpha(engine->surfaceConnection,
+                                             engine->surfaceWindow,
+                                             0.0f) == kCGErrorSuccess;
     CFTypeRef transaction = engine->ws.transactionCreate(engine->mainConnection);
     if (transaction) {
-        engine->ws.transactionOrderWindow(transaction,
-                                          engine->surfaceWindow,
-                                          0,
-                                          engine->targetWindow);
-        engine->ws.transactionCommit(transaction, 0);
+        bool ordered = engine->ws.transactionOrderWindow(transaction,
+                                                         engine->surfaceWindow,
+                                                         0,
+                                                         engine->targetWindow) == kCGErrorSuccess;
+        if (!ordered) {
+            success = false;
+        }
+        if (ordered && engine->ws.transactionCommit(transaction, 0) != kCGErrorSuccess) {
+            success = false;
+        }
         CFRelease(transaction);
+    } else {
+        success = false;
     }
     engine->visible = false;
+    return success;
 }
 
 static void cancelSpaceUpdate(VBEEngine *engine) {
@@ -158,6 +192,17 @@ static void releaseSurface(VBEEngine *engine) {
     engine->targetSpace = 0;
 }
 
+static void failBorder(VBEEngine *engine, const char *reason) {
+    releaseSurface(engine);
+    disableEngine(engine, reason);
+}
+
+static void hideBorder(VBEEngine *engine) {
+    if (!orderOut(engine)) {
+        failBorder(engine, "the WindowServer rejected hiding the border");
+    }
+}
+
 static double displayScale(CGRect windowBounds) {
     CGDirectDisplayID display = 0;
     uint32_t count = 0;
@@ -201,6 +246,9 @@ static bool configureShadow(VBEEngine *engine) {
 }
 
 static bool createSurface(VBEEngine *engine, CGRect bounds, double scale) {
+    if (!validRect(bounds) || !isfinite(scale) || scale <= 0) {
+        return false;
+    }
     CGRect localBounds = CGRectMake(0, 0, bounds.size.width, bounds.size.height);
     CFTypeRef region = NULL;
     if (engine->ws.newRegionWithRect(&localBounds, &region) != kCGErrorSuccess || !region) {
@@ -240,6 +288,13 @@ static bool createSurface(VBEEngine *engine, CGRect bounds, double scale) {
 }
 
 static bool resizeSurface(VBEEngine *engine, CGRect bounds, double scale) {
+    if (!validRect(bounds)
+        || !isfinite(scale)
+        || scale <= 0
+        || fabs(bounds.origin.x) > FLT_MAX
+        || fabs(bounds.origin.y) > FLT_MAX) {
+        return false;
+    }
     CGRect localBounds = CGRectMake(0, 0, bounds.size.width, bounds.size.height);
     if (engine->surfaceScale != scale) {
         releaseSurface(engine);
@@ -404,7 +459,7 @@ static bool drawBorder(VBEEngine *engine, double radius) {
     CGRect bounds = engine->surfaceBounds;
     CGRect inner = CGRectInset(bounds, engine->width, engine->width);
     CGMutablePathRef ring = CGPathCreateMutable();
-    if (!ring || inner.size.width <= 0 || inner.size.height <= 0) {
+    if (!ring || !validRect(bounds) || !validRect(inner) || !isfinite(radius)) {
         if (ring) {
             CGPathRelease(ring);
         }
@@ -413,6 +468,10 @@ static bool drawBorder(VBEEngine *engine, double radius) {
     double innerRadius = fmin(fmax(0, radius),
                               fmin(inner.size.width, inner.size.height) / 2);
     double outerRadius = innerRadius + engine->width;
+    if (!isfinite(innerRadius) || !isfinite(outerRadius)) {
+        CGPathRelease(ring);
+        return false;
+    }
     CGPathAddRoundedRect(ring, NULL, bounds, outerRadius, outerRadius);
     CGPathAddRoundedRect(ring, NULL, inner, innerRadius, innerRadius);
 
@@ -430,11 +489,11 @@ static bool drawBorder(VBEEngine *engine, double radius) {
         CGContextFillRect(engine->context, bounds);
         CGContextRestoreGState(engine->context);
         CGContextFlush(engine->context);
-        engine->ws.flushWindowContent(engine->surfaceConnection,
-                                      engine->surfaceWindow,
-                                      NULL);
+        CGError error = engine->ws.flushWindowContent(engine->surfaceConnection,
+                                                      engine->surfaceWindow,
+                                                      NULL);
         CGPathRelease(ring);
-        return true;
+        return error == kCGErrorSuccess;
     }
 
     size_t componentCount = engine->colorCount * 4;
@@ -476,7 +535,7 @@ static bool drawBorder(VBEEngine *engine, double radius) {
     CGContextClearRect(engine->context, bounds);
     CGContextAddPath(engine->context, ring);
     CGContextEOClip(engine->context);
-    double radians = engine->angleDegrees * M_PI / 180.0;
+    double radians = remainder(engine->angleDegrees, 360.0) * M_PI / 180.0;
     double x = cos(radians);
     double y = sin(radians);
     double distance = fabs(x) * bounds.size.width + fabs(y) * bounds.size.height;
@@ -485,6 +544,18 @@ static bool drawBorder(VBEEngine *engine, double radius) {
                                 center.y - y * distance / 2);
     CGPoint end = CGPointMake(center.x + x * distance / 2,
                               center.y + y * distance / 2);
+    if (!isfinite(distance)
+        || !isfinite(center.x)
+        || !isfinite(center.y)
+        || !isfinite(start.x)
+        || !isfinite(start.y)
+        || !isfinite(end.x)
+        || !isfinite(end.y)) {
+        CGContextRestoreGState(engine->context);
+        CGPathRelease(ring);
+        CGGradientRelease(gradient);
+        return false;
+    }
     CGContextDrawLinearGradient(engine->context,
                                 gradient,
                                 start,
@@ -493,60 +564,92 @@ static bool drawBorder(VBEEngine *engine, double radius) {
                                     | kCGGradientDrawsAfterEndLocation);
     CGContextRestoreGState(engine->context);
     CGContextFlush(engine->context);
-    engine->ws.flushWindowContent(engine->surfaceConnection,
-                                  engine->surfaceWindow,
-                                  NULL);
+    CGError error = engine->ws.flushWindowContent(engine->surfaceConnection,
+                                                  engine->surfaceWindow,
+                                                  NULL);
     CGPathRelease(ring);
     CGGradientRelease(gradient);
-    return true;
+    return error == kCGErrorSuccess;
 }
 
 static bool orderSurface(VBEEngine *engine,
                          CGRect targetBounds,
                          int level,
                          int subLevel) {
-    if (engine->ws.setWindowAlpha(engine->surfaceConnection,
-                                  engine->surfaceWindow,
-                                  1.0f) != kCGErrorSuccess) {
+    if (!validRect(targetBounds)) {
         return false;
     }
     CGPoint origin = CGPointMake(targetBounds.origin.x - engine->width,
                                  targetBounds.origin.y - engine->width);
+    if (!isfinite(origin.x) || !isfinite(origin.y)) {
+        return false;
+    }
     CFTypeRef transaction = engine->ws.transactionCreate(engine->mainConnection);
     if (!transaction) {
         return false;
     }
-    engine->ws.transactionMoveWindow(transaction, engine->surfaceWindow, origin);
+    bool success = engine->ws.transactionMoveWindow(transaction,
+                                                    engine->surfaceWindow,
+                                                    origin) == kCGErrorSuccess;
     CGAffineTransform transform = CGAffineTransformIdentity;
     transform.tx = -origin.x;
     transform.ty = -origin.y;
-    engine->ws.transactionSetTransform(transaction,
-                                       engine->surfaceWindow,
-                                       0,
-                                       0,
-                                       transform);
-    engine->ws.transactionSetLevel(transaction, engine->surfaceWindow, level);
-    engine->ws.transactionSetSubLevel(transaction, engine->surfaceWindow, subLevel);
-    engine->ws.transactionOrderWindow(transaction,
-                                      engine->surfaceWindow,
-                                      -1,
-                                      engine->targetWindow);
-    engine->ws.transactionCommit(transaction, 0);
+    if (success) {
+        success = engine->ws.transactionSetTransform(transaction,
+                                                     engine->surfaceWindow,
+                                                     0,
+                                                     0,
+                                                     transform) == kCGErrorSuccess;
+    }
+    if (success) {
+        success = engine->ws.transactionSetLevel(transaction,
+                                                 engine->surfaceWindow,
+                                                 level) == kCGErrorSuccess;
+    }
+    if (success) {
+        success = engine->ws.transactionSetSubLevel(transaction,
+                                                    engine->surfaceWindow,
+                                                    subLevel) == kCGErrorSuccess;
+    }
+    if (success) {
+        success = engine->ws.transactionOrderWindow(transaction,
+                                                    engine->surfaceWindow,
+                                                    -1,
+                                                    engine->targetWindow) == kCGErrorSuccess;
+    }
+    if (success) {
+        success = engine->ws.transactionCommit(transaction, 0) == kCGErrorSuccess;
+    }
     CFRelease(transaction);
-    return true;
+    if (!success) {
+        return false;
+    }
+    return engine->ws.setWindowAlpha(engine->surfaceConnection,
+                                     engine->surfaceWindow,
+                                     1.0f) == kCGErrorSuccess;
 }
 
 static bool moveSurface(VBEEngine *engine, CGRect targetBounds) {
+    if (!validRect(targetBounds)) {
+        return false;
+    }
     CGPoint origin = CGPointMake(targetBounds.origin.x - engine->width,
                                  targetBounds.origin.y - engine->width);
+    if (!isfinite(origin.x) || !isfinite(origin.y)) {
+        return false;
+    }
     CFTypeRef transaction = engine->ws.transactionCreate(engine->mainConnection);
     if (!transaction) {
         return false;
     }
-    engine->ws.transactionMoveWindow(transaction, engine->surfaceWindow, origin);
-    engine->ws.transactionCommit(transaction, 0);
+    bool success = engine->ws.transactionMoveWindow(transaction,
+                                                    engine->surfaceWindow,
+                                                    origin) == kCGErrorSuccess;
+    if (success) {
+        success = engine->ws.transactionCommit(transaction, 0) == kCGErrorSuccess;
+    }
     CFRelease(transaction);
-    return true;
+    return success;
 }
 
 static void moveBorder(VBEEngine *engine) {
@@ -555,6 +658,7 @@ static void moveBorder(VBEEngine *engine) {
         || engine->ws.getWindowBounds(engine->mainConnection,
                                       engine->targetWindow,
                                       &targetBounds) != kCGErrorSuccess
+        || !validRect(targetBounds)
         || targetBounds.size.width != engine->targetBounds.size.width
         || targetBounds.size.height != engine->targetBounds.size.height
         || displayScale(targetBounds) != engine->surfaceScale) {
@@ -562,7 +666,7 @@ static void moveBorder(VBEEngine *engine) {
         return;
     }
     if (!moveSurface(engine, targetBounds)) {
-        orderOut(engine);
+        failBorder(engine, "the WindowServer rejected a border move");
         return;
     }
     engine->targetBounds = targetBounds;
@@ -574,11 +678,16 @@ static void resizeBorder(VBEEngine *engine) {
         || engine->ws.getWindowBounds(engine->mainConnection,
                                       engine->targetWindow,
                                       &targetBounds) != kCGErrorSuccess
+        || !validRect(targetBounds)
         || displayScale(targetBounds) != engine->surfaceScale) {
         updateBorder(engine);
         return;
     }
-    CGRect borderBounds = CGRectInset(targetBounds, -engine->width, -engine->width);
+    CGRect borderBounds = CGRectZero;
+    if (!calculateBorderBounds(targetBounds, engine->width, &borderBounds)) {
+        hideBorder(engine);
+        return;
+    }
     CGRect localBounds = CGRectMake(0, 0, borderBounds.size.width, borderBounds.size.height);
     if (CGRectEqualToRect(localBounds, engine->surfaceBounds)) {
         moveBorder(engine);
@@ -587,8 +696,7 @@ static void resizeBorder(VBEEngine *engine) {
     if (!resizeSurface(engine, borderBounds, engine->surfaceScale)
         || !moveSurface(engine, targetBounds)
         || !drawBorder(engine, engine->drawnRadius)) {
-        orderOut(engine);
-        disableEngine(engine, "the WindowServer rejected a border resize");
+        failBorder(engine, "the WindowServer rejected a border resize");
         return;
     }
     engine->targetBounds = targetBounds;
@@ -597,7 +705,7 @@ static void resizeBorder(VBEEngine *engine) {
 static void updateBorder(VBEEngine *engine) {
     if (!engine->available || !engine->targetWindow || engine->width <= 0
         || engine->colorCount == 0) {
-        orderOut(engine);
+        hideBorder(engine);
         return;
     }
     bool ordered = false;
@@ -613,20 +721,27 @@ static void updateBorder(VBEEngine *engine) {
         || engine->ws.getWindowBounds(engine->mainConnection,
                                       engine->targetWindow,
                                       &targetBounds) != kCGErrorSuccess
-        || targetBounds.size.width <= 0
-        || targetBounds.size.height <= 0
+        || !validRect(targetBounds)
         || !copyWindowDetails(engine, &level, &radius)
         || !copyWindowSubLevel(engine, &subLevel)
         || !copyWindowSpace(engine,
                             engine->mainConnection,
                             engine->targetWindow,
                             &space)) {
-        orderOut(engine);
+        hideBorder(engine);
         return;
     }
 
-    CGRect borderBounds = CGRectInset(targetBounds, -engine->width, -engine->width);
+    CGRect borderBounds = CGRectZero;
+    if (!calculateBorderBounds(targetBounds, engine->width, &borderBounds)) {
+        hideBorder(engine);
+        return;
+    }
     double scale = displayScale(targetBounds);
+    if (!isfinite(scale) || scale <= 0) {
+        hideBorder(engine);
+        return;
+    }
     CGRect localBounds = CGRectMake(0, 0, borderBounds.size.width, borderBounds.size.height);
     bool needsResize = !engine->surfaceWindow
         || engine->surfaceScale != scale
@@ -651,8 +766,7 @@ static void updateBorder(VBEEngine *engine) {
         failure = "the WindowServer rejected border ordering";
     }
     if (!ready) {
-        orderOut(engine);
-        disableEngine(engine, failure);
+        failBorder(engine, failure);
         return;
     }
     engine->visible = true;
@@ -667,9 +781,12 @@ static void windowEvent(uint32_t event, void *data, size_t length, void *context
         return;
     }
     if (event == VBEEventSpaceChange) {
-        orderOut(engine);
+        hideBorder(engine);
+        if (!engine->available) {
+            return;
+        }
         if (!scheduleSpaceUpdate(engine)) {
-            disableEngine(engine, "cannot schedule a border Space update");
+            failBorder(engine, "cannot schedule a border Space update");
         }
         return;
     }
@@ -692,7 +809,7 @@ static void windowEvent(uint32_t event, void *data, size_t length, void *context
     if (event == VBEEventWindowHide
         || event == VBEEventWindowClose
         || event == VBEEventWindowDestroy) {
-        orderOut(engine);
+        hideBorder(engine);
         return;
     }
     if (event == VBEEventWindowMove) {
@@ -758,7 +875,7 @@ static bool registerEvents(VBEEngine *engine) {
     return true;
 }
 
-static void unregisterEvents(VBEEngine *engine) {
+static bool unregisterEvents(VBEEngine *engine) {
     if (engine->eventSource) {
         CFRunLoopRemoveSource(CFRunLoopGetMain(),
                               engine->eventSource,
@@ -772,9 +889,15 @@ static void unregisterEvents(VBEEngine *engine) {
         engine->eventPort = NULL;
     }
     while (engine->registeredEventCount > 0) {
-        size_t index = --engine->registeredEventCount;
-        engine->ws.removeNotify(windowEvent, VBEEvents[index]);
+        size_t index = engine->registeredEventCount - 1;
+        if (engine->ws.removeNotify(windowEvent,
+                                    VBEEvents[index],
+                                    engine) != kCGErrorSuccess) {
+            return false;
+        }
+        engine->registeredEventCount--;
     }
+    return true;
 }
 
 VBEEngine *VBEEngineCreate(void) {
@@ -794,12 +917,13 @@ VBEEngine *VBEEngineCreate(void) {
         || !engine->surfaceConnection
         || !registerEvents(engine)) {
         disableEngine(engine, "cannot initialize WindowServer events");
-        unregisterEvents(engine);
-        if (engine->surfaceConnection) {
-            engine->ws.releaseConnection(engine->surfaceConnection);
-            engine->surfaceConnection = 0;
+        if (unregisterEvents(engine)) {
+            if (engine->surfaceConnection) {
+                engine->ws.releaseConnection(engine->surfaceConnection);
+                engine->surfaceConnection = 0;
+            }
+            VBEWindowServerSymbolsUnload(&engine->ws);
         }
-        VBEWindowServerSymbolsUnload(&engine->ws);
         return engine;
     }
     engine->available = true;
@@ -840,8 +964,7 @@ void VBEEngineSetTarget(VBEEngine *engine,
     if (!sameColors) {
         VBEColor *copiedColors = calloc(colorCount, sizeof(VBEColor));
         if (!copiedColors) {
-            orderOut(engine);
-            disableEngine(engine, "cannot allocate the border gradient");
+            failBorder(engine, "cannot allocate the border gradient");
             return;
         }
         memcpy(copiedColors, colors, colorCount * sizeof(VBEColor));
@@ -865,8 +988,7 @@ void VBEEngineSetTarget(VBEEngine *engine,
         if (engine->ws.requestNotifications(engine->mainConnection,
                                             &windowID,
                                             1) != kCGErrorSuccess) {
-            orderOut(engine);
-            disableEngine(engine, "cannot subscribe to target window events");
+            failBorder(engine, "cannot subscribe to target window events");
             return;
         }
     }
@@ -878,7 +1000,7 @@ void VBEEngineHide(VBEEngine *engine) {
         return;
     }
     cancelSpaceUpdate(engine);
-    orderOut(engine);
+    hideBorder(engine);
     engine->targetWindow = 0;
     engine->targetSpace = 0;
     engine->targetBounds = CGRectZero;
@@ -888,12 +1010,20 @@ void VBEEngineDestroy(VBEEngine *engine) {
     if (!engine) {
         return;
     }
+    engine->available = false;
     cancelSpaceUpdate(engine);
     if (engine->ws.handle) {
-        unregisterEvents(engine);
+        bool unregistered = unregisterEvents(engine);
         releaseSurface(engine);
         if (engine->surfaceConnection) {
             engine->ws.releaseConnection(engine->surfaceConnection);
+            engine->surfaceConnection = 0;
+        }
+        free(engine->colors);
+        engine->colors = NULL;
+        engine->colorCount = 0;
+        if (!unregistered) {
+            return;
         }
         VBEWindowServerSymbolsUnload(&engine->ws);
     }

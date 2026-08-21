@@ -37,15 +37,18 @@ struct DesktopBarPluginRunResult {
 protocol DesktopBarPluginRunning: AnyObject {
     func start(completion: @escaping (DesktopBarPluginRunResult) -> Void) throws
     func terminate()
+    func terminateForShutdown()
 }
 
-enum DesktopBarPluginProcessError: Error, CustomStringConvertible {
+enum DesktopBarPluginProcessError: Error, LocalizedError {
     case pipeFailed(Int32)
+    case spawnSetupFailed(Int32)
     case spawnFailed(Int32)
 
-    var description: String {
+    var errorDescription: String? {
         switch self {
         case .pipeFailed(let code): return "pipe failed: \(code)"
+        case .spawnSetupFailed(let code): return "spawn setup failed: \(code)"
         case .spawnFailed(let code): return "spawn failed: \(code)"
         }
     }
@@ -65,6 +68,10 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
     private var killTimer: DispatchSourceTimer?
     private var timedOut = false
     private var completed = false
+    private var completionPending = false
+    private var completion: ((DesktopBarPluginRunResult) -> Void)?
+    private var lifecycleOwner: DesktopBarPluginProcess?
+    private let shutdownGroup = DispatchGroup()
 
     init(request: DesktopBarPluginRunRequest,
          completionQueue: DispatchQueue = .main) {
@@ -99,9 +106,13 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
             pid = childPid
             self.stdoutCapture = stdoutCapture
             self.stderrCapture = stderrCapture
+            self.completion = completion
+            completionPending = true
+            shutdownGroup.enter()
+            lifecycleOwner = self
             lock.unlock()
 
-            startProcessSource(pid: childPid, completion: completion)
+            startProcessSource(pid: childPid)
             startTimeout()
         } catch {
             closePipe(stdoutPipe)
@@ -112,6 +123,18 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
 
     func terminate() {
         requestTermination(markTimedOut: false)
+    }
+
+    func terminateForShutdown() {
+        lock.lock()
+        let childPid = pid
+        let shouldWait = completionPending
+        lock.unlock()
+        guard shouldWait else { return }
+
+        terminateGroup(pid: childPid, signal: SIGKILL)
+        finishOnce()
+        shutdownGroup.wait()
     }
 
     static func pluginEnvironment(for request: DesktopBarPluginRunRequest,
@@ -144,25 +167,25 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
 
     private func spawn(stdoutPipe: [Int32], stderrPipe: [Int32]) throws -> pid_t {
         var actions: posix_spawn_file_actions_t?
-        posix_spawn_file_actions_init(&actions)
+        try checkSpawnSetup(posix_spawn_file_actions_init(&actions))
         defer { posix_spawn_file_actions_destroy(&actions) }
 
         let stdoutRead = stdoutPipe[0]
         let stdoutWrite = stdoutPipe[1]
         let stderrRead = stderrPipe[0]
         let stderrWrite = stderrPipe[1]
-        posix_spawn_file_actions_adddup2(&actions, stdoutWrite, STDOUT_FILENO)
-        posix_spawn_file_actions_adddup2(&actions, stderrWrite, STDERR_FILENO)
-        posix_spawn_file_actions_addclose(&actions, stdoutRead)
-        posix_spawn_file_actions_addclose(&actions, stderrRead)
-        posix_spawn_file_actions_addclose(&actions, stdoutWrite)
-        posix_spawn_file_actions_addclose(&actions, stderrWrite)
+        try checkSpawnSetup(posix_spawn_file_actions_adddup2(&actions, stdoutWrite, STDOUT_FILENO))
+        try checkSpawnSetup(posix_spawn_file_actions_adddup2(&actions, stderrWrite, STDERR_FILENO))
+        try checkSpawnSetup(posix_spawn_file_actions_addclose(&actions, stdoutRead))
+        try checkSpawnSetup(posix_spawn_file_actions_addclose(&actions, stderrRead))
+        try checkSpawnSetup(posix_spawn_file_actions_addclose(&actions, stdoutWrite))
+        try checkSpawnSetup(posix_spawn_file_actions_addclose(&actions, stderrWrite))
 
         var attrs: posix_spawnattr_t?
-        posix_spawnattr_init(&attrs)
+        try checkSpawnSetup(posix_spawnattr_init(&attrs))
         defer { posix_spawnattr_destroy(&attrs) }
-        let flags = Int16(POSIX_SPAWN_SETSID)
-        posix_spawnattr_setflags(&attrs, flags)
+        let flags = Int16(POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT)
+        try checkSpawnSetup(posix_spawnattr_setflags(&attrs, flags))
 
         let argv = ["/bin/sh", "-lc", request.command]
         let env = Self.pluginEnvironment(for: request)
@@ -180,12 +203,17 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
         return childPid
     }
 
-    private func startProcessSource(pid: pid_t,
-                                    completion: @escaping (DesktopBarPluginRunResult) -> Void) {
+    private func checkSpawnSetup(_ status: Int32) throws {
+        guard status == 0 else {
+            throw DesktopBarPluginProcessError.spawnSetupFailed(status)
+        }
+    }
+
+    private func startProcessSource(pid: pid_t) {
         let source = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit,
                                                       queue: .global(qos: .utility))
         source.setEventHandler { [weak self] in
-            self?.finishOnce(completion: completion)
+            self?.finishOnce()
         }
         lock.lock()
         processSource = source
@@ -247,7 +275,7 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
         timer.resume()
     }
 
-    private func finishOnce(completion: @escaping (DesktopBarPluginRunResult) -> Void) {
+    private func finishOnce() {
         lock.lock()
         guard !completed else {
             lock.unlock()
@@ -261,11 +289,13 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
         let stdoutCapture = stdoutCapture
         let stderrCapture = stderrCapture
         let didTimeOut = timedOut
+        let completion = completion
         self.timeoutTimer = nil
         self.killTimer = nil
         self.processSource = nil
         self.stdoutCapture = nil
         self.stderrCapture = nil
+        self.completion = nil
         lock.unlock()
 
         timeoutTimer?.cancel()
@@ -277,12 +307,23 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
         let out = stdoutCapture?.finish() ?? Data()
         let err = stderrCapture?.finishString() ?? ""
 
-        completionQueue.async {
-            completion(DesktopBarPluginRunResult(id: self.request.id,
-                                                 stdout: out,
-                                                 stderr: err,
-                                                 exitCode: exitCode,
-                                                 timedOut: didTimeOut))
+        if let completion {
+            completionQueue.async {
+                completion(DesktopBarPluginRunResult(id: self.request.id,
+                                                     stdout: out,
+                                                     stderr: err,
+                                                     exitCode: exitCode,
+                                                     timedOut: didTimeOut))
+            }
+        }
+
+        lock.lock()
+        lifecycleOwner = nil
+        let shouldLeave = completionPending
+        completionPending = false
+        lock.unlock()
+        if shouldLeave {
+            shutdownGroup.leave()
         }
     }
 

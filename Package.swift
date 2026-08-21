@@ -30,5 +30,6 @@ let package = Package(
         .testTarget(name: "VinduDaemonSupportTests",
                     dependencies: ["VinduCore", "VinduDaemonSupport"],
                     swiftSettings: lang),
+        .testTarget(name: "VinduDaemonTests", dependencies: ["vindud"], swiftSettings: lang),
     ]
 )

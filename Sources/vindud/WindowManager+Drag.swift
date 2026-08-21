@@ -63,6 +63,7 @@ extension WindowManager {
                 var frame = session.startFrame
                 frame.origin.x += dx
                 frame.origin.y += dy
+                guard isValidWindowFrame(frame) else { return }
                 state.frame = frame
                 bridge.setFrame(session.id, frame)
                 liveSwapDuringDrag(at: point)

@@ -38,6 +38,17 @@ struct DispatcherTests {
         #expect(parse("resizeactive", "abc") == nil)
     }
 
+    @Test func nonFiniteDimensionsAndRatiosAreRejected() {
+        for value in ["nan", "inf", "-inf", "1e309"] {
+            #expect(Delta.parse(value) == nil)
+            #expect(Delta.parse("\(value)%") == nil)
+            #expect(SplitRatioArg.parse(value) == nil)
+            #expect(SplitRatioArg.parse("exact \(value)") == nil)
+            #expect(parse("resizeactive", "\(value) 10") == nil)
+            #expect(parse("splitratio", value) == nil)
+        }
+    }
+
     @Test func miscDispatchers() {
         #expect(parse("fullscreen") == .fullscreen(0))
         #expect(parse("fullscreen", "1") == .fullscreen(1))
@@ -167,5 +178,8 @@ struct ColorTests {
         #expect(single?.colors.count == 1)
         #expect(single?.angleDeg == 0)
         #expect(MLGradient.parse("notacolor") == nil)
+        #expect(MLGradient.parse("rgba(33ccffee) nandeg") == nil)
+        #expect(MLGradient.parse("rgba(33ccffee) infdeg") == nil)
+        #expect(MLGradient.parse("rgba(33ccffee) 1e309deg") == nil)
     }
 }

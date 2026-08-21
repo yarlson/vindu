@@ -34,6 +34,66 @@ struct ConfigFileLoaderTests {
         }
     }
 
+    @Test func configAtSourceByteLimitLoads() throws {
+        let dir = try TemporaryDirectory()
+        let path = dir.path("vindu.conf")
+        let setting = "general:gaps_in = 19\n"
+        let text = setting + "#" + String(repeating: "x",
+                                           count: ConfigFileLoader.maxConfigBytes - setting.utf8.count - 2) + "\n"
+        try Data(text.utf8).write(to: URL(fileURLWithPath: path))
+
+        let loaded = try ConfigFileLoader().load(path: path, defaultText: "")
+
+        #expect(text.utf8.count == ConfigFileLoader.maxConfigBytes)
+        #expect(loaded.document.settings.general.gapsIn == 19)
+    }
+
+    @Test func configOverSourceByteLimitThrowsReadFailure() throws {
+        let dir = try TemporaryDirectory()
+        let path = dir.path("vindu.conf")
+        try Data(repeating: UInt8(ascii: "x"),
+                 count: ConfigFileLoader.maxConfigBytes + 1)
+            .write(to: URL(fileURLWithPath: path))
+
+        #expect(throws: ConfigLoadError.self) {
+            try ConfigFileLoader().load(path: path, defaultText: "")
+        }
+    }
+
+    @Test func sourceFileAtByteLimitLoads() throws {
+        let dir = try TemporaryDirectory()
+        let rootPath = dir.path("vindu.conf")
+        let sourcePath = dir.path("large.conf")
+        let setting = "general:gaps_in = 21\n"
+        let source = setting + "#" + String(repeating: "x",
+                                             count: ConfigFileLoader.maxConfigBytes
+                                                 - setting.utf8.count - 2) + "\n"
+        try "source = large.conf\n".write(toFile: rootPath, atomically: true, encoding: .utf8)
+        try Data(source.utf8).write(to: URL(fileURLWithPath: sourcePath))
+
+        let loaded = try ConfigFileLoader().load(path: rootPath, defaultText: "")
+
+        #expect(source.utf8.count == ConfigFileLoader.maxConfigBytes)
+        #expect(loaded.document.errors.isEmpty)
+        #expect(loaded.document.settings.general.gapsIn == 21)
+    }
+
+    @Test func oversizedSourceFileIsRejectedBeforeParsing() throws {
+        let dir = try TemporaryDirectory()
+        let rootPath = dir.path("vindu.conf")
+        let sourcePath = dir.path("large.conf")
+        try "source = large.conf\n".write(toFile: rootPath, atomically: true, encoding: .utf8)
+        try Data(repeating: UInt8(ascii: "x"),
+                 count: ConfigFileLoader.maxConfigBytes + 1)
+            .write(to: URL(fileURLWithPath: sourcePath))
+
+        let loaded = try ConfigFileLoader().load(path: rootPath, defaultText: "")
+
+        #expect(loaded.document.errors.contains {
+            $0.message == "cannot source \(sourcePath)"
+        })
+    }
+
     @Test func reloadReadFailureKeepsPreviousConfigAndAddsLoadError() throws {
         let dir = try TemporaryDirectory()
         let path = dir.path("vindu.conf")

@@ -21,6 +21,13 @@ struct MonitorChange: Equatable {
     }
 }
 
+func relativeMonitorIndex(currentIndex: Int, offset: Int, count: Int) -> Int? {
+    guard count > 0, currentIndex >= 0, currentIndex < count else { return nil }
+    let reducedOffset = offset % count
+    let candidate = currentIndex + reducedOffset
+    return candidate >= 0 ? candidate % count : candidate + count
+}
+
 final class MonitorManager {
     private(set) var monitors: [Monitor] = []
     var onChange: ((MonitorChange) -> Void)?
@@ -85,9 +92,11 @@ final class MonitorManager {
         case .id(let n):
             return monitors.first { $0.index == n }
         case .relative(let d):
-            guard let cur = byID(current), !monitors.isEmpty else { return nil }
-            let n = monitors.count
-            return monitors[((cur.index + d) % n + n) % n]
+            guard let currentIndex = monitors.firstIndex(where: { $0.id == current }),
+                  let index = relativeMonitorIndex(currentIndex: currentIndex,
+                                                   offset: d,
+                                                   count: monitors.count) else { return nil }
+            return monitors[index]
         case .name(let s):
             return monitors.first { $0.name.localizedCaseInsensitiveContains(s) }
         case .direction(let d):

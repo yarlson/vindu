@@ -112,6 +112,9 @@ extension WindowManager {
         case .movecurrentworkspacetomonitor(let target):
             return moveWorkspaceToMonitor(currentWorkspace(), target)
         case .moveworkspacetomonitor(let wsTarget, let monTarget):
+            guard !workspaceTargetExceedsRange(wsTarget) else {
+                return "err: workspace id is out of range"
+            }
             guard let wsID = resolveWorkspaceID(wsTarget, create: false),
                   let ws = registry.existing(wsID) else { return "err: no such workspace" }
             return moveWorkspaceToMonitor(ws, monTarget)
@@ -336,11 +339,12 @@ extension WindowManager {
         case .relative(let dw, let dh):
             let dx = dw.resolved(against: usable.width)
             let dy = dh.resolved(against: usable.height)
+            guard dx.isFinite, dy.isFinite else { return "err: invalid geometry" }
             if state.floating {
                 var f = state.frame
                 f.size.width = max(120, f.width + dx)
                 f.size.height = max(90, f.height + dy)
-                applyFloatingFrame(state, f)
+                guard applyFloatingFrame(state, f) else { return "err: invalid geometry" }
             } else {
                 resizeTiledBy(id, dx: dx, dy: dy)
                 arrange(ws)
@@ -352,7 +356,7 @@ extension WindowManager {
             var f = state.frame
             f.size = CGSize(width: max(120, w.resolved(against: usable.width)),
                             height: max(90, h.resolved(against: usable.height)))
-            applyFloatingFrame(state, f)
+            guard applyFloatingFrame(state, f) else { return "err: invalid geometry" }
         }
         return "ok"
     }
@@ -371,7 +375,7 @@ extension WindowManager {
             f.origin = CGPoint(x: usable.minX + x.resolved(against: usable.width),
                                y: usable.minY + y.resolved(against: usable.height))
         }
-        applyFloatingFrame(state, f)
+        guard applyFloatingFrame(state, f) else { return "err: invalid geometry" }
         return "ok"
     }
 
@@ -384,6 +388,9 @@ extension WindowManager {
 
     func moveWindowToWorkspace(_ id: WindowID, target: WorkspaceTarget, silent: Bool) -> String {
         guard let state = windows[id] else { return "err: no such window" }
+        guard !workspaceTargetExceedsRange(target) else {
+            return "err: workspace id is out of range"
+        }
         guard let wsID = resolveWorkspaceID(target, create: true), wsID != state.workspace else {
             return "ok"
         }
@@ -541,11 +548,13 @@ extension WindowManager {
         }
         border.shutdown()
         desktopBar.hide()
-        desktopBarRefresh.stop()
+        desktopBarRefresh.shutdown()
         ipc?.stop()
         events?.stop()
         watcher?.stop()
         log("exiting")
-        exit(0)
+        DispatchQueue.main.async {
+            NSApplication.shared.terminate(nil)
+        }
     }
 }

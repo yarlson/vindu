@@ -59,6 +59,13 @@ final class DesktopBarRefreshCoordinator {
         stopClockTimer()
     }
 
+    func shutdown() {
+        systemObserver.stop()
+        weather.stop()
+        plugins.shutdown()
+        stopClockTimer()
+    }
+
     private func startClockTimer() {
         stopClockTimer()
         scheduleNextClockTick()

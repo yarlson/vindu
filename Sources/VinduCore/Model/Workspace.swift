@@ -102,13 +102,21 @@ public final class WorkspaceRegistry {
         case .id(let n):
             return (byID[n] != nil || create) ? n : nil
         case .relative(let d):
-            return max(1, currentID + d)
+            let (id, overflow) = currentID.addingReportingOverflow(d)
+            if overflow { return d < 0 ? 1 : nil }
+            return max(1, id)
         case .relativeExisting(let d):
             let ids = byID.keys.filter { $0 > 0 }.sorted()
             guard !ids.isEmpty else { return currentID }
             let idx = ids.firstIndex(of: currentID) ?? 0
             let n = ids.count
-            return ids[((idx + d) % n + n) % n]
+            let offset = d % n
+            if offset >= 0 {
+                let distanceToEnd = n - idx
+                return ids[offset < distanceToEnd ? idx + offset : offset - distanceToEnd]
+            }
+            let magnitude = -offset
+            return ids[magnitude <= idx ? idx - magnitude : n - (magnitude - idx)]
         case .previous:
             return previousID
         case .name(let s):

@@ -104,6 +104,21 @@ struct DwindleTests {
         let f = tree.frames(in: container)
         #expect(abs(f[1]!.width - 600) < 0.01)
     }
+
+    @Test func deeplySkewedTreeTraversesFramesAndRebuildsIteratively() {
+        let tree = DwindleTree()
+        let count: WindowID = 10_000
+        for window in 1...count {
+            tree.insert(window, near: window == 1 ? nil : window - 1,
+                        container: container, settings: settings)
+        }
+
+        #expect(tree.windowsInOrder == Array(1...count))
+        #expect(tree.frames(in: container).count == Int(count))
+        tree.rebuild(from: [], container: container, settings: settings)
+        #expect(tree.isEmpty)
+        #expect(tree.count == 0)
+    }
 }
 
 struct MasterTests {

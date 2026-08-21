@@ -34,6 +34,10 @@ public final class DwindleTree {
 
     public init() {}
 
+    deinit {
+        clear()
+    }
+
     public var isEmpty: Bool { root == nil }
     public var count: Int { leaves.count }
     public func contains(_ w: WindowID) -> Bool { leaves[w] != nil }
@@ -41,13 +45,15 @@ public final class DwindleTree {
     /// Leaf windows in in-order traversal (visual reading order).
     public var windowsInOrder: [WindowID] {
         var out: [WindowID] = []
-        func walk(_ n: DwindleNode?) {
-            guard let n else { return }
-            if let w = n.window { out.append(w); return }
-            walk(n.first)
-            walk(n.second)
+        var stack = root.map { [$0] } ?? []
+        while let node = stack.popLast() {
+            if let window = node.window {
+                out.append(window)
+                continue
+            }
+            if let second = node.second { stack.append(second) }
+            if let first = node.first { stack.append(first) }
         }
-        walk(root)
         return out
     }
 
@@ -142,40 +148,57 @@ public final class DwindleTree {
     /// later aspect/resize decisions.
     public func frames(in container: CGRect) -> [WindowID: CGRect] {
         var out: [WindowID: CGRect] = [:]
-        if let root {
-            walk(root, container, into: &out)
+        var stack = root.map { [($0, container)] } ?? []
+        while let (node, rect) = stack.popLast() {
+            node.lastRect = rect
+            if let window = node.window {
+                out[window] = rect
+                continue
+            }
+            guard let first = node.first, let second = node.second else { continue }
+            let ratio = clampRatio(node.ratio)
+            if node.orientation == .horizontal {
+                let firstWidth = rect.width * ratio
+                stack.append((second, CGRect(x: rect.minX + firstWidth, y: rect.minY,
+                                             width: rect.width - firstWidth, height: rect.height)))
+                stack.append((first, CGRect(x: rect.minX, y: rect.minY,
+                                            width: firstWidth, height: rect.height)))
+            } else {
+                let firstHeight = rect.height * ratio
+                stack.append((second, CGRect(x: rect.minX, y: rect.minY + firstHeight,
+                                             width: rect.width, height: rect.height - firstHeight)))
+                stack.append((first, CGRect(x: rect.minX, y: rect.minY,
+                                            width: rect.width, height: firstHeight)))
+            }
         }
         return out
+    }
+
+    private func clear() {
+        guard let root else {
+            leaves.removeAll()
+            return
+        }
+        self.root = nil
+        var stack = [root]
+        while let node = stack.popLast() {
+            if let first = node.first { stack.append(first) }
+            if let second = node.second { stack.append(second) }
+            node.first = nil
+            node.second = nil
+            node.parent = nil
+        }
+        leaves.removeAll()
     }
 
     /// Rebuilds the tree from an ordered window list (used when switching the
     /// active layout back to dwindle). Recomputes frames between inserts so
     /// aspect-based split orientation behaves as if windows arrived one by one.
     public func rebuild(from order: [WindowID], container: CGRect, settings: DwindleSettings) {
-        root = nil
-        leaves.removeAll()
+        clear()
         for w in order {
             insert(w, near: nil, container: container, settings: settings)
             _ = frames(in: container)
-        }
-    }
-
-    private func walk(_ node: DwindleNode, _ rect: CGRect, into out: inout [WindowID: CGRect]) {
-        node.lastRect = rect
-        if let w = node.window {
-            out[w] = rect
-            return
-        }
-        guard let f = node.first, let s = node.second else { return }
-        let r = clampRatio(node.ratio)
-        if node.orientation == .horizontal {
-            let w1 = rect.width * r
-            walk(f, CGRect(x: rect.minX, y: rect.minY, width: w1, height: rect.height), into: &out)
-            walk(s, CGRect(x: rect.minX + w1, y: rect.minY, width: rect.width - w1, height: rect.height), into: &out)
-        } else {
-            let h1 = rect.height * r
-            walk(f, CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: h1), into: &out)
-            walk(s, CGRect(x: rect.minX, y: rect.minY + h1, width: rect.width, height: rect.height - h1), into: &out)
         }
     }
 

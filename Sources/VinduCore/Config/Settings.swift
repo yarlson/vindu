@@ -224,7 +224,7 @@ public struct Settings: Equatable {
     private static func double(_ kp: WritableKeyPath<Settings, Double>,
                                in range: ClosedRange<Double>? = nil) -> Option {
         Option(get: { String($0[keyPath: kp]) }, set: { settings, value in
-            guard let n = Double(value) else { return "invalid number" }
+            guard let n = Double(value), n.isFinite else { return "invalid number" }
             if let range, !range.contains(n) { return "value out of range \(range)" }
             settings[keyPath: kp] = n
             return nil
@@ -256,7 +256,7 @@ public struct Settings: Equatable {
         Option(get: { settings in
             let colors = settings[keyPath: kp].colors.map(colorString)
             let angle = settings[keyPath: kp].angleDeg
-            return (colors + (angle != 0 ? ["\(Int(angle))deg"] : [])).joined(separator: " ")
+            return (colors + (angle != 0 ? ["\(plainNumber(angle))deg"] : [])).joined(separator: " ")
         }, set: { settings, value in
             guard let g = MLGradient.parse(value) else { return "invalid color" }
             settings[keyPath: kp] = g

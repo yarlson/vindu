@@ -28,6 +28,7 @@ public final class DesktopBarPluginService {
     private let log: Logger
     private let makeProcess: ProcessFactory
     private var states: [String: State] = [:]
+    private var terminatingRuns: [ObjectIdentifier: DesktopBarPluginRunning] = [:]
 
     public var current: [String: BarPluginValue] {
         states.compactMapValues(\.current)
@@ -87,6 +88,25 @@ public final class DesktopBarPluginService {
         }
     }
 
+    public func shutdown() {
+        let hadValues = states.values.contains { $0.current != nil }
+        let activeStates = Array(states.values)
+        for state in activeStates {
+            state.timer?.invalidate()
+            state.pending = nil
+        }
+        let activeRuns = activeStates.compactMap(\.run)
+        let runs = activeRuns + Array(terminatingRuns.values)
+        for run in runs {
+            run.terminateForShutdown()
+        }
+        states.removeAll()
+        terminatingRuns.removeAll()
+        if hadValues {
+            onChange?()
+        }
+    }
+
     public func refresh(id: String) -> Bool {
         guard states[id] != nil else { return false }
         refresh(id: id, Refresh(reason: "manual", eventName: "", eventPayload: ""))
@@ -136,6 +156,9 @@ public final class DesktopBarPluginService {
 
     private func finish(_ result: DesktopBarPluginRunResult,
                         run: DesktopBarPluginRunning?) {
+        if let run {
+            terminatingRuns.removeValue(forKey: ObjectIdentifier(run))
+        }
         guard let state = states[result.id], state.run === run else { return }
         state.run = nil
 
@@ -168,7 +191,10 @@ public final class DesktopBarPluginService {
     private func stop(id: String) -> Bool {
         guard let state = states.removeValue(forKey: id) else { return false }
         state.timer?.invalidate()
-        state.run?.terminate()
+        if let run = state.run {
+            terminatingRuns[ObjectIdentifier(run)] = run
+            run.terminate()
+        }
         return state.current != nil
     }
 }

@@ -10,6 +10,7 @@
 - The default config template ships inside the binary (`DefaultConfig.swift`); `examples/vindu.conf` must stay byte-identical. `make test` enforces this (`check-template`).
 - One daemon per user: the command socket file is probed before bind — a live listener aborts startup, a dead file is unlinked.
 - Private WindowServer symbols belong only to `VinduBorderEngine`, load from the fixed system framework path, and never appear as direct imports or a SkyLight link. A missing symbol or rejected setup disables the border and logs once; all other window-manager behavior continues.
+- WindowServer notification removal uses the same callback, event, and engine context as registration. The engine context and loaded framework remain alive if removal fails.
 
 ## Hyprland compatibility policy
 
@@ -26,7 +27,7 @@
 
 ## Testing and verification
 
-- All logic that can be pure lives in VinduCore and is tested with swift-testing. Daemon support logic that does not require live AX/AppKit window access lives in VinduDaemonSupport and is tested there, including active-border eligibility. Private compositor timing and drawing require an explicitly consented live `vindud` session.
+- Portable window-manager logic lives in VinduCore and is tested with swift-testing. Daemon support logic that does not require live AX/AppKit window access lives in VinduDaemonSupport and is tested there, including active-border eligibility. Deterministic daemon boundary helpers are tested through the `vindud` module without starting the daemon. Private compositor timing and drawing require an explicitly consented live `vindud` session.
 - `make test` injects Command Line Tools framework paths so `swift test` works without full Xcode.
 - The daemon re-tiles the user's real windows; runtime verification needs a live session and explicit user consent.
 

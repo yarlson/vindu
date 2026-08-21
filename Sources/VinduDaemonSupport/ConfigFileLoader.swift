@@ -37,10 +37,19 @@ public enum ConfigReloadResult {
 }
 
 public struct ConfigFileLoader {
+    static let maxConfigBytes = ConfigParserLimits().maxSourceBytes
+
     private let fileManager: FileManager
     private let parser: ConfigParser
 
-    public init(fileManager: FileManager = .default, parser: ConfigParser = ConfigParser()) {
+    public init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+        self.parser = ConfigParser(fileLoader: { path in
+            try Self.readUTF8File(path: path, maxBytes: Self.maxConfigBytes)
+        })
+    }
+
+    public init(fileManager: FileManager = .default, parser: ConfigParser) {
         self.fileManager = fileManager
         self.parser = parser
     }
@@ -50,7 +59,7 @@ public struct ConfigFileLoader {
         let wroteDefault: Bool
         if fileManager.fileExists(atPath: path) {
             do {
-                text = try String(contentsOfFile: path, encoding: .utf8)
+                text = try Self.readUTF8File(path: path, maxBytes: Self.maxConfigBytes)
                 wroteDefault = false
             } catch {
                 throw ConfigLoadError.readFailed(path: path, reason: error.localizedDescription)
@@ -71,6 +80,28 @@ public struct ConfigFileLoader {
         return ConfigFileLoad(document: document, wroteDefault: wroteDefault)
     }
 
+    private static func readUTF8File(path: String, maxBytes: Int) throws -> String {
+        let file = try FileHandle(forReadingFrom: URL(fileURLWithPath: path))
+        defer { try? file.close() }
+
+        var data = Data()
+        while data.count <= maxBytes {
+            let remaining = maxBytes + 1 - data.count
+            guard let chunk = try file.read(upToCount: min(64 * 1024, remaining)),
+                  !chunk.isEmpty else {
+                break
+            }
+            data.append(chunk)
+        }
+        guard data.count <= maxBytes else {
+            throw ConfigFileReadError.tooLarge
+        }
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw CocoaError(.fileReadInapplicableStringEncoding)
+        }
+        return text
+    }
+
     public func reload(path: String, defaultText: String, previous: ConfigDocument) -> ConfigReloadResult {
         do {
             return .loaded(try load(path: path, defaultText: defaultText))
@@ -80,6 +111,14 @@ public struct ConfigFileLoader {
             let loadError = ConfigLoadError.readFailed(path: path, reason: error.localizedDescription)
             return .keptPrevious(document: previous.withConfigLoadError(loadError), error: loadError)
         }
+    }
+}
+
+private enum ConfigFileReadError: LocalizedError {
+    case tooLarge
+
+    var errorDescription: String? {
+        "file exceeds the 1 MiB config source limit"
     }
 }
 

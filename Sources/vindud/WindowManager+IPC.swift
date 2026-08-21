@@ -71,7 +71,10 @@ extension WindowManager {
         case "cursorpos":
             let p = NSEvent.mouseLocation
             let y = monitorMgr.primaryHeight - p.y
-            return json ? "{\"x\": \(Int(p.x)), \"y\": \(Int(y))}" : "\(Int(p.x)), \(Int(y))"
+            guard let x = checkedGeometryInt(p.x), let y = checkedGeometryInt(y) else {
+                return "err: invalid cursor position"
+            }
+            return json ? "{\"x\": \(x), \"y\": \(y)}" : "\(x), \(y)"
         case "configerrors":
             if doc.errors.isEmpty { return json ? "[]" : "no errors" }
             return doc.errors.map { "line \($0.line): \($0.message)" }.joined(separator: "\n")
@@ -110,7 +113,7 @@ extension WindowManager {
     // MARK: Info builders
 
     func clientInfo(_ id: WindowID) -> ClientInfo? {
-        guard let s = windows[id] else { return nil }
+        guard let s = windows[id], let frame = windowFrameValues(s.frame) else { return nil }
         let ws = workspace(forID: s.workspace)
         let monitorIndex = monitorMgr.byID(ws.monitor)?.index ?? 0
         let fullscreen = ws.fullscreen == id ? (ws.fullscreenMode == 0 ? 2 : 1) : 0
@@ -118,8 +121,8 @@ extension WindowManager {
             address: windowAddress(id),
             mapped: !s.minimized,
             hidden: s.hidden,
-            at: [Int(s.frame.minX), Int(s.frame.minY)],
-            size: [Int(s.frame.width), Int(s.frame.height)],
+            at: [frame.x, frame.y],
+            size: [frame.width, frame.height],
             workspace: WorkspaceRef(id: ws.id, name: ws.name),
             floating: s.floating,
             pinned: s.pinned,
@@ -184,7 +187,10 @@ extension WindowManager {
     }
 
     func monitorInfos() -> [MonitorInfo] {
-        monitorMgr.monitors.map { m in
+        monitorMgr.monitors.compactMap { m in
+            guard let frame = windowFrameValues(m.frame), m.scale.isFinite, m.scale > 0 else {
+                return nil
+            }
             let activeID = activeWS[m.id] ?? 1
             let active = registry.existing(activeID)
             let specialID = shownSpecial[m.id]
@@ -192,10 +198,10 @@ extension WindowManager {
             return MonitorInfo(
                 id: m.index,
                 name: m.name,
-                width: Int(m.frame.width),
-                height: Int(m.frame.height),
-                x: Int(m.frame.minX),
-                y: Int(m.frame.minY),
+                width: frame.width,
+                height: frame.height,
+                x: frame.x,
+                y: frame.y,
                 activeWorkspace: WorkspaceRef(id: activeID, name: active?.name ?? String(activeID)),
                 specialWorkspace: WorkspaceRef(id: specialID ?? 0, name: special?.name ?? ""),
                 scale: m.scale,

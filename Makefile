@@ -14,14 +14,24 @@ TEST_FLAGS := -Xswiftc -F -Xswiftc $(CLT_FRAMEWORKS) \
 endif
 
 PREFIX ?= /usr/local
+SWIFT_TEST_FLAGS ?=
+BORDER_TEST_BINARY := .build/vindu-tests/border-engine-tests
 
-.PHONY: build test check-template release install uninstall clean
+.PHONY: build test test-border check-template release install uninstall clean
 
 build:
 	swift build
 
-test: check-template
-	swift test $(TEST_FLAGS)
+test: check-template test-border
+	swift test $(TEST_FLAGS) $(SWIFT_TEST_FLAGS)
+
+test-border:
+	@mkdir -p $(dir $(BORDER_TEST_BINARY))
+	xcrun clang -std=c11 -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer \
+		-I Sources/VinduBorderEngine -I Sources/VinduBorderEngine/include \
+		-framework CoreFoundation -framework CoreGraphics \
+		Tests/VinduBorderEngineTests/BorderEngineTests.c -o $(BORDER_TEST_BINARY)
+	$(BORDER_TEST_BINARY)
 
 release:
 	swift build -c release

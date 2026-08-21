@@ -21,7 +21,7 @@ extension WindowManager {
     // MARK: - Desktop bar
 
     func refreshDesktopBar() {
-        guard settings.bar.enabled else {
+        guard !shutdownRequested, settings.bar.enabled else {
             desktopBarRefreshQueued = false
             desktopBar.hide()
             return
@@ -36,7 +36,7 @@ extension WindowManager {
     }
 
     private func renderDesktopBar() {
-        guard settings.bar.enabled else {
+        guard !shutdownRequested, settings.bar.enabled else {
             desktopBar.hide()
             return
         }

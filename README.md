@@ -323,8 +323,9 @@ in `yarlson/homebrew-tap`. The formula source of truth is
 `packaging/vindu.rb.tmpl` in this repo.
 
 Layout logic, the config parser, and rule matching live in `VinduCore` and
-are covered by plain `swift test` tests. The daemon is the only part that
-needs the Accessibility permission, and the only part you can't unit test.
+are covered by plain `swift test` tests. Deterministic daemon boundary helpers
+are also unit-tested without starting the daemon. Live AX/AppKit behavior needs
+Accessibility permission and a real window session.
 
 ## Roadmap
 
