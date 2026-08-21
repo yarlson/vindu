@@ -135,6 +135,20 @@ struct WorkspaceStateMembershipTests {
         #expect(ws.tiled == [1, 2, 3])
     }
 
+    @Test func inactiveDwindleKeepsAspectAwareInsertionGeometry() {
+        let ws = WorkspaceState(id: 1, name: "1", monitor: 0)
+        for id: WindowID in [1, 2, 3] {
+            ws.insertTiled(id, near: id == 1 ? nil : id - 1, container: container,
+                           dwindleConfiguration: workspaceDwindleConfiguration,
+                           masterConfiguration: workspaceMasterConfiguration)
+        }
+
+        let frames = ws.dwindle.frames(in: container)
+        #expect(frames[1] == CGRect(x: 0, y: 0, width: 500, height: 600))
+        #expect(frames[2] == CGRect(x: 500, y: 0, width: 500, height: 300))
+        #expect(frames[3] == CGRect(x: 500, y: 300, width: 500, height: 300))
+    }
+
     @Test func swapTiledSyncsBothStructures() {
         let ws = makeWorkspace(tiled: [1, 2])
         ws.swapTiled(1, 2)

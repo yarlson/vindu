@@ -34,6 +34,7 @@ public final class WorkspaceState {
                             dwindleConfiguration: DwindleConfiguration,
                             masterConfiguration: MasterConfiguration) {
         master.insert(id, configuration: masterConfiguration)
+        _ = dwindle.frames(in: container)
         let anchor = near.flatMap { dwindle.contains($0) ? $0 : nil }
         dwindle.insert(id, near: anchor, container: container,
                        configuration: dwindleConfiguration)
