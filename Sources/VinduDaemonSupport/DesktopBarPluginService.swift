@@ -28,6 +28,7 @@ public final class DesktopBarPluginService {
     private let log: Logger
     private let makeProcess: ProcessFactory
     private var states: [String: State] = [:]
+    private var terminatingRuns: [ObjectIdentifier: DesktopBarPluginRunning] = [:]
 
     public var current: [String: BarPluginValue] {
         states.compactMapValues(\.current)
@@ -93,9 +94,14 @@ public final class DesktopBarPluginService {
         for state in activeStates {
             state.timer?.invalidate()
             state.pending = nil
-            state.run?.terminateForShutdown()
+        }
+        let activeRuns = activeStates.compactMap(\.run)
+        let runs = activeRuns + Array(terminatingRuns.values)
+        for run in runs {
+            run.terminateForShutdown()
         }
         states.removeAll()
+        terminatingRuns.removeAll()
         if hadValues {
             onChange?()
         }
@@ -150,6 +156,9 @@ public final class DesktopBarPluginService {
 
     private func finish(_ result: DesktopBarPluginRunResult,
                         run: DesktopBarPluginRunning?) {
+        if let run {
+            terminatingRuns.removeValue(forKey: ObjectIdentifier(run))
+        }
         guard let state = states[result.id], state.run === run else { return }
         state.run = nil
 
@@ -182,7 +191,10 @@ public final class DesktopBarPluginService {
     private func stop(id: String) -> Bool {
         guard let state = states.removeValue(forKey: id) else { return false }
         state.timer?.invalidate()
-        state.run?.terminate()
+        if let run = state.run {
+            terminatingRuns[ObjectIdentifier(run)] = run
+            run.terminate()
+        }
         return state.current != nil
     }
 }

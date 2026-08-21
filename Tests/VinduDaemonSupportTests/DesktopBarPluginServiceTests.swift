@@ -52,6 +52,29 @@ struct DesktopBarPluginServiceTests {
         #expect(!harness.runs[0].terminatedForShutdown)
     }
 
+    @Test func shutdownForceTerminatesRunDetachedByOrdinaryStop() {
+        let harness = PluginServiceHarness()
+        harness.service.sync(settings: settings(), enabled: true)
+
+        harness.service.stop()
+        harness.service.shutdown()
+
+        #expect(harness.runs[0].terminated)
+        #expect(harness.runs[0].terminatedForShutdown)
+    }
+
+    @Test func completedDetachedRunIsNotTerminatedAgainAtShutdown() {
+        let harness = PluginServiceHarness()
+        harness.service.sync(settings: settings(), enabled: true)
+
+        harness.service.stop()
+        harness.runs[0].complete()
+        harness.service.shutdown()
+
+        #expect(harness.runs[0].terminated)
+        #expect(!harness.runs[0].terminatedForShutdown)
+    }
+
     private func settings() -> BarSettings {
         var settings = BarSettings()
         settings.items = [.plugin("mail")]
