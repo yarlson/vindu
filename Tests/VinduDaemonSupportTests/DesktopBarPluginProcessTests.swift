@@ -105,6 +105,36 @@ struct DesktopBarPluginProcessTests {
         #expect(processReference.process == nil)
     }
 
+    @Test func shutdownKillsReapsAndDrainsBeforeReturning() throws {
+        let pidFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vindu-plugin-shutdown-\(UUID().uuidString).pid")
+        defer { try? FileManager.default.removeItem(at: pidFile) }
+
+        let request = DesktopBarPluginRunRequest(
+            id: "shutdown",
+            command: "printf ready; printf '%s' $$ > '\(pidFile.path)'; trap '' TERM; while :; do sleep 1; done",
+            timeoutMs: 5_000,
+            reason: "manual",
+            eventName: "",
+            eventPayload: ""
+        )
+        let process = DesktopBarPluginProcess(request: request)
+        var result: DesktopBarPluginRunResult?
+        try process.start { result = $0 }
+        waitForPhase3Condition {
+            (try? String(contentsOf: pidFile, encoding: .utf8)).flatMap(pid_t.init) != nil
+        }
+        let pid = try #require(pid_t(try String(contentsOf: pidFile, encoding: .utf8)))
+
+        process.terminateForShutdown()
+
+        #expect(Darwin.kill(pid, 0) != 0 && errno == ESRCH)
+        waitForPhase3Condition { result != nil }
+        let completed = try #require(result)
+        #expect(completed.exitCode == -SIGKILL)
+        #expect(String(decoding: completed.stdout, as: UTF8.self) == "ready")
+    }
+
     private func runPlugin(command: String, timeoutMs: Int) throws -> DesktopBarPluginRunResult {
         let request = DesktopBarPluginRunRequest(id: "test",
                                                  command: command,

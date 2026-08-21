@@ -210,21 +210,23 @@ private final class WeatherURLProtocol: URLProtocol {
         case .chunked(let status, let chunks):
             sendResponse(status: status)
             for chunk in chunks {
-                var work: DispatchWorkItem!
-                work = DispatchWorkItem { [weak self] in
-                    guard !work.isCancelled, let self else { return }
+                let reference = WeakDispatchWorkItem()
+                let work = DispatchWorkItem { [weak self] in
+                    guard reference.item?.isCancelled == false, let self else { return }
                     Self.trackingLock.withLock { Self.chunkCount += 1 }
                     self.client?.urlProtocol(self, didLoad: chunk.data)
                 }
+                reference.item = work
                 workItems.append(work)
                 DispatchQueue.global().asyncAfter(deadline: .now() + chunk.delay,
                                                   execute: work)
             }
-            var finishWork: DispatchWorkItem!
-            finishWork = DispatchWorkItem { [weak self] in
-                guard !finishWork.isCancelled, let self else { return }
+            let finishReference = WeakDispatchWorkItem()
+            let finishWork = DispatchWorkItem { [weak self] in
+                guard finishReference.item?.isCancelled == false, let self else { return }
                 self.client?.urlProtocolDidFinishLoading(self)
             }
+            finishReference.item = finishWork
             workItems.append(finishWork)
             let finishDelay = (chunks.map(\.delay).max() ?? 0) + 0.05
             DispatchQueue.global().asyncAfter(deadline: .now() + finishDelay,
@@ -253,4 +255,8 @@ private final class WeatherURLProtocol: URLProtocol {
                                        headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
     }
+}
+
+private final class WeakDispatchWorkItem {
+    weak var item: DispatchWorkItem?
 }

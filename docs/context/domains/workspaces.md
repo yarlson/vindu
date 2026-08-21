@@ -21,7 +21,7 @@ macOS exposes no per-Space window membership without disabling SIP, so invisible
 - Hide = stash each window as a 2-pixel sliver at its monitor's bottom-right corner (pinned and native-fullscreen windows are skipped).
 - Show = re-arrange, which restores every frame, then focus the workspace's last-focused window.
 - Pinned floating windows migrate into the incoming workspace on every switch.
-- Daemon shutdown first restores all stashed windows to reachable positions, stops owned services once, and asks AppKit to terminate on the next main-queue turn.
+- Daemon shutdown first restores all stashed windows to reachable positions, stops owned services once, waits for active bar-plugin processes to be killed, reaped, and drained, and asks AppKit to terminate on the next main-queue turn.
 
 ## Multi-monitor
 

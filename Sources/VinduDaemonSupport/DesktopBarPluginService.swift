@@ -87,6 +87,20 @@ public final class DesktopBarPluginService {
         }
     }
 
+    public func shutdown() {
+        let hadValues = states.values.contains { $0.current != nil }
+        let activeStates = Array(states.values)
+        for state in activeStates {
+            state.timer?.invalidate()
+            state.pending = nil
+            state.run?.terminateForShutdown()
+        }
+        states.removeAll()
+        if hadValues {
+            onChange?()
+        }
+    }
+
     public func refresh(id: String) -> Bool {
         guard states[id] != nil else { return false }
         refresh(id: id, Refresh(reason: "manual", eventName: "", eventPayload: ""))

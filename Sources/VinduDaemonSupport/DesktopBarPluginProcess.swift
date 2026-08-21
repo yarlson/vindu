@@ -37,6 +37,7 @@ struct DesktopBarPluginRunResult {
 protocol DesktopBarPluginRunning: AnyObject {
     func start(completion: @escaping (DesktopBarPluginRunResult) -> Void) throws
     func terminate()
+    func terminateForShutdown()
 }
 
 enum DesktopBarPluginProcessError: Error, CustomStringConvertible {
@@ -65,7 +66,10 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
     private var killTimer: DispatchSourceTimer?
     private var timedOut = false
     private var completed = false
+    private var completionPending = false
+    private var completion: ((DesktopBarPluginRunResult) -> Void)?
     private var lifecycleOwner: DesktopBarPluginProcess?
+    private let shutdownGroup = DispatchGroup()
 
     init(request: DesktopBarPluginRunRequest,
          completionQueue: DispatchQueue = .main) {
@@ -100,10 +104,13 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
             pid = childPid
             self.stdoutCapture = stdoutCapture
             self.stderrCapture = stderrCapture
+            self.completion = completion
+            completionPending = true
+            shutdownGroup.enter()
             lifecycleOwner = self
             lock.unlock()
 
-            startProcessSource(pid: childPid, completion: completion)
+            startProcessSource(pid: childPid)
             startTimeout()
         } catch {
             closePipe(stdoutPipe)
@@ -114,6 +121,18 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
 
     func terminate() {
         requestTermination(markTimedOut: false)
+    }
+
+    func terminateForShutdown() {
+        lock.lock()
+        let childPid = pid
+        let shouldWait = completionPending
+        lock.unlock()
+        guard shouldWait else { return }
+
+        terminateGroup(pid: childPid, signal: SIGKILL)
+        finishOnce()
+        shutdownGroup.wait()
     }
 
     static func pluginEnvironment(for request: DesktopBarPluginRunRequest,
@@ -182,12 +201,11 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
         return childPid
     }
 
-    private func startProcessSource(pid: pid_t,
-                                    completion: @escaping (DesktopBarPluginRunResult) -> Void) {
+    private func startProcessSource(pid: pid_t) {
         let source = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit,
                                                       queue: .global(qos: .utility))
         source.setEventHandler { [weak self] in
-            self?.finishOnce(completion: completion)
+            self?.finishOnce()
         }
         lock.lock()
         processSource = source
@@ -249,7 +267,7 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
         timer.resume()
     }
 
-    private func finishOnce(completion: @escaping (DesktopBarPluginRunResult) -> Void) {
+    private func finishOnce() {
         lock.lock()
         guard !completed else {
             lock.unlock()
@@ -263,11 +281,13 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
         let stdoutCapture = stdoutCapture
         let stderrCapture = stderrCapture
         let didTimeOut = timedOut
+        let completion = completion
         self.timeoutTimer = nil
         self.killTimer = nil
         self.processSource = nil
         self.stdoutCapture = nil
         self.stderrCapture = nil
+        self.completion = nil
         lock.unlock()
 
         timeoutTimer?.cancel()
@@ -279,17 +299,24 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
         let out = stdoutCapture?.finish() ?? Data()
         let err = stderrCapture?.finishString() ?? ""
 
-        completionQueue.async {
-            completion(DesktopBarPluginRunResult(id: self.request.id,
-                                                 stdout: out,
-                                                 stderr: err,
-                                                 exitCode: exitCode,
-                                                 timedOut: didTimeOut))
+        if let completion {
+            completionQueue.async {
+                completion(DesktopBarPluginRunResult(id: self.request.id,
+                                                     stdout: out,
+                                                     stderr: err,
+                                                     exitCode: exitCode,
+                                                     timedOut: didTimeOut))
+            }
         }
 
         lock.lock()
         lifecycleOwner = nil
+        let shouldLeave = completionPending
+        completionPending = false
         lock.unlock()
+        if shouldLeave {
+            shutdownGroup.leave()
+        }
     }
 
     private func terminateGroup(pid: pid_t, signal: Int32) {

@@ -57,6 +57,7 @@ final class AXBridge {
         let name: String
         var observer: AXObserver?
         var windows: [(element: AXUIElement, id: WindowID)] = []
+        var pendingRegistrationIDs: Set<WindowID> = []
         weak var bridge: AXBridge?
 
         init(pid: pid_t, name: String, bridge: AXBridge) {
@@ -67,6 +68,7 @@ final class AXBridge {
         }
     }
 
+    private static let registrationRetryDelays: [TimeInterval] = [0.1, 0.5, 1.5]
     private var apps: [pid_t: AppHandle] = [:]
     /// Consecutive reconcile passes a tracked window was absent from the
     /// window server's list. Two misses = really gone.
@@ -170,23 +172,79 @@ final class AXBridge {
         guard (axValue(element, kAXRoleAttribute) as String?) == kAXWindowRole else { return nil }
         var wid: CGWindowID = 0
         guard _AXUIElementGetWindow(element, &wid) == .success, wid != 0 else { return nil }
-        if app.windows.contains(where: { $0.id == wid }) { return wid }
+        if app.windows.contains(where: { $0.id == wid }) {
+            app.pendingRegistrationIDs.remove(wid)
+            return wid
+        }
         let kind = classify(element)
-        guard kind != .auxiliary,
-              let snapshot = snapshot(element: element, id: wid, app: app, kind: kind) else {
+        guard kind != .auxiliary else {
+            app.pendingRegistrationIDs.remove(wid)
+            return nil
+        }
+        guard let snapshot = snapshot(element: element, id: wid, app: app, kind: kind) else {
+            scheduleRegistrationRetry(element: element, id: wid, app: app, attempt: 0)
             return nil
         }
 
-        guard let observer = app.observer else { return nil }
+        guard let observer = app.observer else {
+            app.pendingRegistrationIDs.remove(wid)
+            return nil
+        }
         let refcon = Unmanaged.passUnretained(app).toOpaque()
         for note in [kAXUIElementDestroyedNotification, kAXWindowMovedNotification,
                      kAXWindowResizedNotification, kAXTitleChangedNotification,
                      kAXWindowMiniaturizedNotification, kAXWindowDeminiaturizedNotification] {
             AXObserverAddNotification(observer, element, note as CFString, refcon)
         }
+        app.pendingRegistrationIDs.remove(wid)
         app.windows.append((element: element, id: wid))
         delegate?.windowAppeared(snapshot)
         return wid
+    }
+
+    private func scheduleRegistrationRetry(element: AXUIElement, id: WindowID,
+                                           app: AppHandle, attempt: Int) {
+        guard attempt < Self.registrationRetryDelays.count else {
+            app.pendingRegistrationIDs.remove(id)
+            return
+        }
+        if attempt == 0 {
+            guard app.pendingRegistrationIDs.insert(id).inserted else { return }
+        } else {
+            guard app.pendingRegistrationIDs.contains(id) else { return }
+        }
+
+        let delay = Self.registrationRetryDelays[attempt]
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak app] in
+            guard let self, let app,
+                  self.apps[app.pid] === app,
+                  app.pendingRegistrationIDs.contains(id) else { return }
+            guard let windows: [AXUIElement] = axValue(app.element, kAXWindowsAttribute) else {
+                self.scheduleRegistrationRetry(element: element, id: id, app: app,
+                                               attempt: attempt + 1)
+                return
+            }
+            guard windows.contains(where: { CFEqual($0, element) }) else {
+                self.scheduleRegistrationRetry(element: element, id: id, app: app,
+                                               attempt: attempt + 1)
+                return
+            }
+            var currentID: CGWindowID = 0
+            guard _AXUIElementGetWindow(element, &currentID) == .success else {
+                self.scheduleRegistrationRetry(element: element, id: id, app: app,
+                                               attempt: attempt + 1)
+                return
+            }
+            guard currentID == id else {
+                app.pendingRegistrationIDs.remove(id)
+                return
+            }
+            if self.register(element: element, app: app) == nil,
+               app.pendingRegistrationIDs.contains(id) {
+                self.scheduleRegistrationRetry(element: element, id: id, app: app,
+                                               attempt: attempt + 1)
+            }
+        }
     }
 
     fileprivate func handle(notification: String, element: AXUIElement, app: AppHandle) {
