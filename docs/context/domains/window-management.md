@@ -16,10 +16,11 @@ AX frame coordinates must be finite and integer-representable; width and height 
 
 Every AXWindow is classified before management:
 
-- standard → tiles; dialog (including system dialogs and floating panels) → floats; auxiliary → never managed.
+- resizable standard → tiles by default; fixed-size standard and dialog (including system dialogs and floating panels) → float by default; auxiliary → never managed.
 - A window whose AXMain attribute is not settable is auxiliary (input-method candidate panels, picker HUDs, non-activating system surfaces).
 - Unknown or missing subrole falls back to chrome heuristics: a title or close button means a real window; chromeless surfaces (autocomplete dropdowns, tooltips) stay invisible to window management. Their actual focus is still reported so the active border hides until focus returns to the managed parent.
-- Border eligibility is narrower than management: only a standard window whose AX size is settable can receive the active border. Dialogs, sheets, progress windows, popups, and fixed-size windows do not.
+- A failed AX size-capability query leaves a standard window tiled by default but border-ineligible. Window rules can override each managed window's default placement.
+- Border eligibility is narrower than management: only a standard window whose AX size is known to be settable can receive the active border. Dialogs, sheets, progress windows, popups, fixed-size windows, and windows with an unknown resize capability do not.
 
 ## Per-window state
 

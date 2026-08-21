@@ -8,14 +8,20 @@ import VinduCore
 @discardableResult
 func _AXUIElementGetWindow(_ element: AXUIElement, _ wid: inout CGWindowID) -> AXError
 
-/// What kind of surface an AXWindow is:
-/// standard windows tile, dialogs float, and chromeless auxiliary surfaces
-/// (autocomplete dropdowns, tooltips) are never managed, so window-manager
-/// focus stays with their parent window.
+/// What kind of surface an AXWindow is: standard windows use their resize
+/// capability for default placement, dialogs default to floating, and
+/// chromeless auxiliary surfaces (autocomplete dropdowns, tooltips) are never
+/// managed, so window-manager focus stays with their parent window.
 enum WindowKind {
     case standard
     case dialog
     case auxiliary
+}
+
+enum WindowResizeCapability {
+    case resizable
+    case fixed
+    case unknown
 }
 
 struct WindowSnapshot {
@@ -26,8 +32,20 @@ struct WindowSnapshot {
     let title: String
     let frame: CGRect
     let kind: WindowKind
-    let isResizable: Bool
+    let resizeCapability: WindowResizeCapability
     let isMinimized: Bool
+
+    var defaultFloating: Bool {
+        switch kind {
+        case .standard: return resizeCapability == .fixed
+        case .dialog: return true
+        case .auxiliary: return false
+        }
+    }
+
+    var borderEligible: Bool {
+        kind == .standard && resizeCapability == .resizable
+    }
 }
 
 protocol AXBridgeDelegate: AnyObject {
@@ -333,17 +351,19 @@ final class AXBridge {
             title: axValue(element, kAXTitleAttribute) ?? "",
             frame: frame,
             kind: kind,
-            isResizable: isResizable(element),
+            resizeCapability: resizeCapability(element),
             isMinimized: (axValue(element, kAXMinimizedAttribute) as Bool?) ?? false
         )
     }
 
-    private func isResizable(_ element: AXUIElement) -> Bool {
+    private func resizeCapability(_ element: AXUIElement) -> WindowResizeCapability {
         var settable = DarwinBoolean(false)
-        return AXUIElementIsAttributeSettable(element,
-                                               kAXSizeAttribute as CFString,
-                                               &settable) == .success
-            && settable.boolValue
+        guard AXUIElementIsAttributeSettable(element,
+                                             kAXSizeAttribute as CFString,
+                                             &settable) == .success else {
+            return .unknown
+        }
+        return settable.boolValue ? .resizable : .fixed
     }
 
     /// Reaps tracked windows the window server no longer lists. A window must

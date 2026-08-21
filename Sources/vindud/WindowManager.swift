@@ -763,7 +763,7 @@ extension WindowManager: AXBridgeDelegate {
             bundleID: snap.bundleID,
             appName: snap.clazz,
             title: snap.title,
-            defaultFloating: snap.kind == .dialog,
+            defaultFloating: snap.defaultFloating,
             windowFrame: snap.frame,
             usable: monitor?.usable ?? .zero
         )
@@ -784,7 +784,7 @@ extension WindowManager: AXBridgeDelegate {
             bundleID: snap.bundleID,
             appName: snap.clazz,
             title: snap.title,
-            defaultFloating: snap.kind == .dialog,
+            defaultFloating: snap.defaultFloating,
             windowFrame: snap.frame,
             usable: destinationUsable
         )
@@ -792,7 +792,7 @@ extension WindowManager: AXBridgeDelegate {
         let state = WindowState(id: snap.id, pid: snap.pid, bundleID: snap.bundleID,
                                 clazz: snap.clazz,
                                 title: snap.title, workspace: wsID, frame: snap.frame,
-                                borderEligible: snap.kind == .standard && snap.isResizable)
+                                borderEligible: snap.borderEligible)
         state.floating = placement.floating
         state.pinned = placement.pinned
         state.minimized = snap.isMinimized
@@ -803,14 +803,12 @@ extension WindowManager: AXBridgeDelegate {
         }
         windows[snap.id] = state
 
-        if state.minimized {
-            // Tracked but not laid out until deminiaturized.
-        } else if state.floating {
+        if state.floating {
             ws.floating.append(snap.id)
             if state.floatFrame == nil {
                 state.floatFrame = snap.frame.isEmpty ? defaultFloatFrame(for: ws) : snap.frame
             }
-        } else {
+        } else if !state.minimized {
             insertTiled(snap.id, into: ws)
         }
         if placement.fullscreen {
