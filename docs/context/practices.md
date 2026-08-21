@@ -9,7 +9,7 @@
 - Config parse errors never crash the daemon: they are collected with line numbers, readable via `configerrors`, and surfaced as a user notification. Config file read failures are different: startup fails closed, while reload keeps the last good config and reports a line-0 load error.
 - The default config template ships inside the binary (`DefaultConfig.swift`); `examples/vindu.conf` must stay byte-identical. `make test` enforces this (`check-template`).
 - One daemon per user: the command socket file is probed before bind — a live listener aborts startup, a dead file is unlinked.
-- Private WindowServer symbols belong only to `VinduBorderEngine`, load from the fixed system framework path, and never appear as direct imports or a SkyLight link. A missing symbol or rejected setup disables the border and logs once; all other window-manager behavior continues.
+- Private WindowServer symbols belong only to `VinduBorderEngine`, load from the fixed system framework path, and never appear as direct imports or a SkyLight link. A missing symbol or supported setup failure disables the border and logs once; all other window-manager behavior continues. Undocumented transaction-operation return values are advisory. Showing or moving still requires transaction creation, while hiding remains enforced through the surface alpha call.
 - WindowServer notification removal uses the same callback, event, and engine context as registration. The engine context and loaded framework remain alive if removal fails.
 
 ## Hyprland compatibility policy

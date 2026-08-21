@@ -121,19 +121,12 @@ static bool orderOut(VBEEngine *engine) {
                                              0.0f) == kCGErrorSuccess;
     CFTypeRef transaction = engine->ws.transactionCreate(engine->mainConnection);
     if (transaction) {
-        bool ordered = engine->ws.transactionOrderWindow(transaction,
-                                                         engine->surfaceWindow,
-                                                         0,
-                                                         engine->targetWindow) == kCGErrorSuccess;
-        if (!ordered) {
-            success = false;
-        }
-        if (ordered && engine->ws.transactionCommit(transaction, 0) != kCGErrorSuccess) {
-            success = false;
-        }
+        engine->ws.transactionOrderWindow(transaction,
+                                          engine->surfaceWindow,
+                                          0,
+                                          engine->targetWindow);
+        engine->ws.transactionCommit(transaction, 0);
         CFRelease(transaction);
-    } else {
-        success = false;
     }
     engine->visible = false;
     return success;
@@ -588,42 +581,23 @@ static bool orderSurface(VBEEngine *engine,
     if (!transaction) {
         return false;
     }
-    bool success = engine->ws.transactionMoveWindow(transaction,
-                                                    engine->surfaceWindow,
-                                                    origin) == kCGErrorSuccess;
+    engine->ws.transactionMoveWindow(transaction, engine->surfaceWindow, origin);
     CGAffineTransform transform = CGAffineTransformIdentity;
     transform.tx = -origin.x;
     transform.ty = -origin.y;
-    if (success) {
-        success = engine->ws.transactionSetTransform(transaction,
-                                                     engine->surfaceWindow,
-                                                     0,
-                                                     0,
-                                                     transform) == kCGErrorSuccess;
-    }
-    if (success) {
-        success = engine->ws.transactionSetLevel(transaction,
-                                                 engine->surfaceWindow,
-                                                 level) == kCGErrorSuccess;
-    }
-    if (success) {
-        success = engine->ws.transactionSetSubLevel(transaction,
-                                                    engine->surfaceWindow,
-                                                    subLevel) == kCGErrorSuccess;
-    }
-    if (success) {
-        success = engine->ws.transactionOrderWindow(transaction,
-                                                    engine->surfaceWindow,
-                                                    -1,
-                                                    engine->targetWindow) == kCGErrorSuccess;
-    }
-    if (success) {
-        success = engine->ws.transactionCommit(transaction, 0) == kCGErrorSuccess;
-    }
+    engine->ws.transactionSetTransform(transaction,
+                                       engine->surfaceWindow,
+                                       0,
+                                       0,
+                                       transform);
+    engine->ws.transactionSetLevel(transaction, engine->surfaceWindow, level);
+    engine->ws.transactionSetSubLevel(transaction, engine->surfaceWindow, subLevel);
+    engine->ws.transactionOrderWindow(transaction,
+                                      engine->surfaceWindow,
+                                      -1,
+                                      engine->targetWindow);
+    engine->ws.transactionCommit(transaction, 0);
     CFRelease(transaction);
-    if (!success) {
-        return false;
-    }
     return engine->ws.setWindowAlpha(engine->surfaceConnection,
                                      engine->surfaceWindow,
                                      1.0f) == kCGErrorSuccess;
@@ -642,14 +616,10 @@ static bool moveSurface(VBEEngine *engine, CGRect targetBounds) {
     if (!transaction) {
         return false;
     }
-    bool success = engine->ws.transactionMoveWindow(transaction,
-                                                    engine->surfaceWindow,
-                                                    origin) == kCGErrorSuccess;
-    if (success) {
-        success = engine->ws.transactionCommit(transaction, 0) == kCGErrorSuccess;
-    }
+    engine->ws.transactionMoveWindow(transaction, engine->surfaceWindow, origin);
+    engine->ws.transactionCommit(transaction, 0);
     CFRelease(transaction);
-    return success;
+    return true;
 }
 
 static void moveBorder(VBEEngine *engine) {

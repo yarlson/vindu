@@ -12,6 +12,7 @@ typedef struct {
     uint32_t removeFailureEvent;
     uint32_t removedEvents[32];
     void *removedContexts[32];
+    bool transactionCreateFails;
     int transactionStep;
     int transactionFailureStep;
     int alphaOneCalls;
@@ -48,6 +49,9 @@ static CGError fakeRemove(VBEWindowEventCallback callback, uint32_t event, void 
 
 static CFTypeRef fakeTransactionCreate(int connection) {
     (void)connection;
+    if (fake.transactionCreateFails) {
+        return NULL;
+    }
     return CFRetain(CFSTR("transaction"));
 }
 
@@ -217,15 +221,15 @@ static void testDestroyRetainsFailedCallbackContext(void) {
     assert(fake.unloadCalls == 1);
 }
 
-static void testTransactionFailuresDoNotRaiseSurface(void) {
+static void testTransactionReturnValuesAreAdvisory(void) {
     CGRect target = CGRectMake(10, 20, 800, 600);
     for (int failure = 0; failure < 6; failure++) {
         resetFake();
         VBEEngine engine = transactionEngine();
         fake.transactionFailureStep = failure;
-        assert(!orderSurface(&engine, target, 1, 2));
-        assert(fake.transactionStep == failure + 1);
-        assert(fake.alphaOneCalls == 0);
+        assert(orderSurface(&engine, target, 1, 2));
+        assert(fake.transactionStep == 6);
+        assert(fake.alphaOneCalls == 1);
     }
 
     resetFake();
@@ -244,14 +248,14 @@ static void testTransactionFailuresDoNotRaiseSurface(void) {
     engine = transactionEngine();
     engine.visible = true;
     fake.transactionFailureStep = 0;
-    assert(!orderOut(&engine));
-    assert(fake.transactionStep == 1);
+    assert(orderOut(&engine));
+    assert(fake.transactionStep == 2);
 
     resetFake();
     engine = transactionEngine();
     engine.visible = true;
     fake.transactionFailureStep = 1;
-    assert(!orderOut(&engine));
+    assert(orderOut(&engine));
     assert(fake.transactionStep == 2);
 
     resetFake();
@@ -265,12 +269,29 @@ static void testTransactionFailuresDoNotRaiseSurface(void) {
     assert(fake.releaseWindowCalls == 1);
 }
 
-static void testMoveChecksCommit(void) {
+static void testMoveTransactionReturnValuesAreAdvisory(void) {
+    for (int failure = 0; failure < 2; failure++) {
+        resetFake();
+        VBEEngine engine = transactionEngine();
+        fake.transactionFailureStep = failure;
+        assert(moveSurface(&engine, CGRectMake(10, 20, 800, 600)));
+        assert(fake.transactionStep == 2);
+    }
+}
+
+static void testTransactionCreationBoundsSurfaceActions(void) {
     resetFake();
     VBEEngine engine = transactionEngine();
-    fake.transactionFailureStep = 1;
-    assert(!moveSurface(&engine, CGRectMake(10, 20, 800, 600)));
-    assert(fake.transactionStep == 2);
+    fake.transactionCreateFails = true;
+    CGRect target = CGRectMake(10, 20, 800, 600);
+
+    assert(!orderSurface(&engine, target, 1, 2));
+    assert(fake.alphaOneCalls == 0);
+    assert(!moveSurface(&engine, target));
+
+    engine.visible = true;
+    assert(orderOut(&engine));
+    assert(!engine.visible);
 }
 
 static void testGeometryRejectsInvalidDerivedBounds(void) {
@@ -347,8 +368,9 @@ int main(void) {
     testRegistrationRollback();
     testRemovalRetry();
     testDestroyRetainsFailedCallbackContext();
-    testTransactionFailuresDoNotRaiseSurface();
-    testMoveChecksCommit();
+    testTransactionReturnValuesAreAdvisory();
+    testMoveTransactionReturnValuesAreAdvisory();
+    testTransactionCreationBoundsSurfaceActions();
     testGeometryRejectsInvalidDerivedBounds();
     testDrawReportsFlushFailureAndHandlesHugeAngle();
     return 0;

@@ -1,7 +1,7 @@
 import Foundation
 
 public enum VinduVersion {
-    public static let string = "0.5.2"
+    public static let string = "0.5.3"
 }
 
 public enum VinduPaths {
