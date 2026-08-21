@@ -85,9 +85,13 @@ final class MonitorManager {
         case .id(let n):
             return monitors.first { $0.index == n }
         case .relative(let d):
-            guard let cur = byID(current), !monitors.isEmpty else { return nil }
+            guard let currentIndex = monitors.firstIndex(where: { $0.id == current }),
+                  !monitors.isEmpty else { return nil }
             let n = monitors.count
-            return monitors[((cur.index + d) % n + n) % n]
+            let offset = d % n
+            let candidate = currentIndex + offset
+            let index = candidate >= 0 ? candidate % n : candidate + n
+            return monitors[index]
         case .name(let s):
             return monitors.first { $0.name.localizedCaseInsensitiveContains(s) }
         case .direction(let d):

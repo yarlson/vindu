@@ -132,18 +132,83 @@ func setSocketNonBlocking(_ fd: Int32) throws {
     }
 }
 
-func bindAndListen(path: String) throws -> Int32 {
+final class BoundSocket {
+    let fd: Int32
+
+    private let path: String
+    private let device: dev_t
+    private let inode: ino_t
+    private var closed = false
+
+    init(fd: Int32, path: String, stat: stat) {
+        self.fd = fd
+        self.path = path
+        device = stat.st_dev
+        inode = stat.st_ino
+    }
+
+    func closeDescriptor() {
+        guard !closed else { return }
+        closed = true
+        Darwin.close(fd)
+    }
+
+    func unlinkIfOwned() {
+        var current = stat()
+        guard lstat(path, &current) == 0,
+              current.st_uid == getuid(),
+              current.st_dev == device,
+              current.st_ino == inode,
+              (current.st_mode & S_IFMT) == S_IFSOCK else { return }
+        _ = unlink(path)
+    }
+
+    func closeAndUnlink() {
+        unlinkIfOwned()
+        closeDescriptor()
+    }
+
+    deinit {
+        closeDescriptor()
+    }
+}
+
+func bindAndListen(
+    path: String,
+    makeNonBlocking: (Int32) throws -> Void = setSocketNonBlocking,
+    setPermissions: (String, mode_t) -> Int32 = { chmod($0, $1) }
+) throws -> BoundSocket {
     try SocketSecurity.prepareSocketPath(path)
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
     guard fd >= 0 else { throw SecureSocketError.socketFailed("socket(): \(errno)") }
-    guard UnixSocket.bind(fd, to: path) == 0, listen(fd, 16) == 0 else {
+
+    guard UnixSocket.bind(fd, to: path) == 0 else {
         let e = errno
         close(fd)
-        throw SecureSocketError.socketFailed("bind/listen failed for \(path): \(e)")
+        throw SecureSocketError.socketFailed("bind failed for \(path): \(e)")
     }
-    try setSocketNonBlocking(fd)
-    _ = chmod(path, S_IRUSR | S_IWUSR)
-    return fd
+
+    var socketStat = stat()
+    guard lstat(path, &socketStat) == 0 else {
+        let e = errno
+        close(fd)
+        throw SecureSocketError.socketFailed("cannot stat bound socket \(path): \(e)")
+    }
+
+    let boundSocket = BoundSocket(fd: fd, path: path, stat: socketStat)
+    do {
+        guard listen(fd, 16) == 0 else {
+            throw SecureSocketError.socketFailed("listen failed for \(path): \(errno)")
+        }
+        try makeNonBlocking(fd)
+        guard setPermissions(path, S_IRUSR | S_IWUSR) == 0 else {
+            throw SecureSocketError.socketFailed("chmod failed for \(path): \(errno)")
+        }
+        return boundSocket
+    } catch {
+        boundSocket.closeAndUnlink()
+        throw error
+    }
 }
 
 public func writeAll(_ fd: Int32, data: [UInt8]) -> Bool {

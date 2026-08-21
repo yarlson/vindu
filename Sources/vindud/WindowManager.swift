@@ -2,6 +2,30 @@ import AppKit
 import VinduCore
 import VinduDaemonSupport
 
+func checkedGeometryInt(_ value: CGFloat) -> Int? {
+    guard value.isFinite else { return nil }
+    return Int(exactly: value.rounded(.towardZero))
+}
+
+func isValidWindowPoint(_ point: CGPoint) -> Bool {
+    checkedGeometryInt(point.x) != nil && checkedGeometryInt(point.y) != nil
+}
+
+func windowFrameValues(_ frame: CGRect) -> (x: Int, y: Int, width: Int, height: Int)? {
+    guard frame.width > 0, frame.height > 0,
+          checkedGeometryInt(frame.maxX) != nil,
+          checkedGeometryInt(frame.maxY) != nil,
+          let x = checkedGeometryInt(frame.minX),
+          let y = checkedGeometryInt(frame.minY),
+          let width = checkedGeometryInt(frame.width),
+          let height = checkedGeometryInt(frame.height) else { return nil }
+    return (x, y, width, height)
+}
+
+func isValidWindowFrame(_ frame: CGRect) -> Bool {
+    windowFrameValues(frame) != nil
+}
+
 /// Per-window state the WM owns; geometry lives in top-left-origin coords.
 final class WindowState {
     let id: WindowID
@@ -82,6 +106,7 @@ final class WindowManager {
     private var lastFullscreenPoll: [WindowID: Double] = [:]
     private var settleWork: [WindowID: DispatchWorkItem] = [:]
     var desktopBarRefreshQueued = false
+    private var didReportInvalidGeometry = false
     /// Last explicit switch gesture (⌘Tab, Dock click). Activations that
     /// follow one are user intent and may switch workspaces.
     private var lastUserGesture = 0.0
@@ -211,6 +236,11 @@ final class WindowManager {
                            create: create)
     }
 
+    func workspaceTargetExceedsRange(_ target: WorkspaceTarget) -> Bool {
+        guard case .relative(let delta) = target, delta > 0 else { return false }
+        return (activeWS[focusedMonitorID] ?? 1).addingReportingOverflow(delta).overflow
+    }
+
     func currentWorkspace() -> WorkspaceState {
         workspace(forID: activeWS[focusedMonitorID] ?? 1)
     }
@@ -259,6 +289,7 @@ final class WindowManager {
             raw = ws.master.frames(in: container, settings: settings.master)
         }
 
+        var frames: [(state: WindowState, frame: CGRect)] = []
         for (id, rect) in raw {
             guard id != excluding, let state = windows[id], !state.minimized else { continue }
             var frame = LayoutMath.applyGaps(to: rect, within: container,
@@ -267,9 +298,7 @@ final class WindowManager {
             if ws.fullscreen == id {
                 frame = fullscreenFrame(for: ws)
             }
-            state.frame = frame
-            state.hidden = false
-            bridge.setFrame(id, frame)
+            frames.append((state, frame))
         }
 
         for id in ws.floating {
@@ -278,9 +307,18 @@ final class WindowManager {
             if ws.fullscreen == id {
                 frame = fullscreenFrame(for: ws)
             }
+            frames.append((state, frame))
+        }
+
+        guard frames.allSatisfy({ isValidWindowFrame($0.frame) }) else {
+            reportInvalidGeometry()
+            return
+        }
+
+        for (state, frame) in frames {
             state.frame = frame
             state.hidden = false
-            bridge.setFrame(id, frame)
+            bridge.setFrame(state.id, frame)
         }
 
         if let fs = ws.fullscreen {
@@ -362,6 +400,9 @@ final class WindowManager {
         if case .id(let n) = target, n == currentID, settings.binds.workspaceBackAndForth,
            let prev = prevWS[mon] {
             resolved = .id(prev)
+        }
+        guard !workspaceTargetExceedsRange(resolved) else {
+            return "err: workspace id is out of range"
         }
         guard let wsID = resolveWorkspaceID(resolved, create: true) else { return "ok" }
         if wsID == currentID, let ws = registry.existing(wsID), isVisible(ws) {
@@ -527,11 +568,22 @@ final class WindowManager {
                     fallbackRadius: settings.decoration.rounding)
     }
 
-    /// Applies a frame to a floating window and keeps every dependent in sync.
-    func applyFloatingFrame(_ state: WindowState, _ frame: CGRect) {
+    @discardableResult
+    func applyFloatingFrame(_ state: WindowState, _ frame: CGRect) -> Bool {
+        guard isValidWindowFrame(frame) else {
+            reportInvalidGeometry()
+            return false
+        }
         state.frame = frame
         state.floatFrame = frame
         bridge.setFrame(state.id, frame)
+        return true
+    }
+
+    private func reportInvalidGeometry() {
+        guard !didReportInvalidGeometry else { return }
+        didReportInvalidGeometry = true
+        log("invalid window geometry ignored; check numeric configuration values")
     }
 
     func followMouse(_ point: CGPoint) {
@@ -600,7 +652,7 @@ final class WindowManager {
 
 extension WindowManager: AXBridgeDelegate {
     func windowAppeared(_ snap: WindowSnapshot) {
-        guard windows[snap.id] == nil else { return }
+        guard windows[snap.id] == nil, isValidWindowFrame(snap.frame) else { return }
 
         let center = CGPoint(x: snap.frame.midX, y: snap.frame.midY)
         let monitor = monitorMgr.containing(center) ?? monitorMgr.primary
@@ -626,7 +678,11 @@ extension WindowManager: AXBridgeDelegate {
         state.floating = placement.floating
         state.pinned = placement.pinned
         state.minimized = snap.isMinimized
-        state.floatFrame = placement.floatFrame
+        if let frame = placement.floatFrame, isValidWindowFrame(frame) {
+            state.floatFrame = frame
+        } else if placement.floatFrame != nil {
+            reportInvalidGeometry()
+        }
         windows[snap.id] = state
 
         let ws = workspace(forID: wsID)
@@ -709,7 +765,7 @@ extension WindowManager: AXBridgeDelegate {
     }
 
     func windowMovedOrResized(_ id: WindowID, frame: CGRect) {
-        guard let state = windows[id], !frame.isEmpty else { return }
+        guard let state = windows[id], isValidWindowFrame(frame) else { return }
         if handleFullscreenTransition(state, frame) { return }
         if state.nativeFullscreen { return } // the system owns its frame
         if paused {

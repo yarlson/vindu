@@ -6,6 +6,8 @@
 
 Target resolution handles: absolute id, `±n` relative, `e±n` cyclic over existing positive ids, `previous`, `empty` (first id in 1…1000 with no windows), `name:` (allocating when creation is allowed), `special:`.
 
+Relative targets use the full signed integer id range without trapping. A result below workspace 1 resolves to 1, a positive overflow does not resolve, and cyclic existing-workspace targets reduce any offset before applying it.
+
 Dynamic lifecycle: a workspace that is empty, not visible, not special, and not bound by a workspace rule is destroyed. Garbage collection runs after switches, window moves, and closes.
 
 ## Visibility model
@@ -19,7 +21,7 @@ macOS exposes no per-Space window membership without disabling SIP, so invisible
 - Hide = stash each window as a 2-pixel sliver at its monitor's bottom-right corner (pinned and native-fullscreen windows are skipped).
 - Show = re-arrange, which restores every frame, then focus the workspace's last-focused window.
 - Pinned floating windows migrate into the incoming workspace on every switch.
-- Daemon shutdown first restores all stashed windows to reachable positions.
+- Daemon shutdown first restores all stashed windows to reachable positions, stops owned services once, and asks AppKit to terminate on the next main-queue turn.
 
 ## Multi-monitor
 

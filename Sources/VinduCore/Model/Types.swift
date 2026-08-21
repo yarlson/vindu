@@ -140,7 +140,7 @@ public struct Delta: Equatable {
             percent = true
             s = String(s.dropLast())
         }
-        guard let v = Double(s) else { return nil }
+        guard let v = Double(s), v.isFinite else { return nil }
         return Delta(value: v, percent: percent)
     }
 

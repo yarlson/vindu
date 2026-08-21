@@ -65,6 +65,7 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
     private var killTimer: DispatchSourceTimer?
     private var timedOut = false
     private var completed = false
+    private var lifecycleOwner: DesktopBarPluginProcess?
 
     init(request: DesktopBarPluginRunRequest,
          completionQueue: DispatchQueue = .main) {
@@ -99,6 +100,7 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
             pid = childPid
             self.stdoutCapture = stdoutCapture
             self.stderrCapture = stderrCapture
+            lifecycleOwner = self
             lock.unlock()
 
             startProcessSource(pid: childPid, completion: completion)
@@ -284,6 +286,10 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
                                                  exitCode: exitCode,
                                                  timedOut: didTimeOut))
         }
+
+        lock.lock()
+        lifecycleOwner = nil
+        lock.unlock()
     }
 
     private func terminateGroup(pid: pid_t, signal: Int32) {

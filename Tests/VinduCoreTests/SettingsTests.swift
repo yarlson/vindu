@@ -60,6 +60,8 @@ struct SettingsTests {
         var s = Settings()
         #expect(s.set("general:col.active_border", "rgba(33ccffee) rgba(00ff99ee) 45deg") == nil)
         #expect(s.get("general:col.active_border") == "rgba(33ccffee) rgba(00ff99ee) 45deg")
+        #expect(s.set("general:col.active_border", "rgba(33ccffee) 45.5deg") == nil)
+        #expect(s.get("general:col.active_border") == "rgba(33ccffee) 45.5deg")
         #expect(s.set("general:col.inactive_border", "rgba(595959aa)") == nil)
         #expect(s.get("general:col.inactive_border") == "rgba(595959aa)")
         #expect(s.set("general:col.submap_border", "rgba(ff0000ff)") == nil)
@@ -68,6 +70,30 @@ struct SettingsTests {
         #expect(s.get("bar:col.background") == "rgba(111111cc)")
         #expect(s.set("bar:col.active", "rgba(33ccffee)") == nil)
         #expect(s.get("bar:col.active") == "rgba(33ccffee)")
+    }
+
+    @Test func nonFiniteNumbersPreserveSettings() {
+        let keywords = [
+            "general:gaps_in", "general:gaps_out", "general:border_size",
+            "decoration:rounding", "dwindle:default_split_ratio", "master:mfact", "bar:height",
+        ]
+        for keyword in keywords {
+            for value in ["nan", "inf", "-inf", "1e309"] {
+                var settings = Settings()
+                let before = settings
+                #expect(settings.set(keyword, value) != nil)
+                #expect(settings == before)
+            }
+        }
+    }
+
+    @Test func nonFiniteGradientAnglesPreserveSettings() {
+        for value in ["nan", "inf", "-inf", "1e309"] {
+            var settings = Settings()
+            let before = settings
+            #expect(settings.set("general:col.active_border", "rgba(33ccffee) \(value)deg") != nil)
+            #expect(settings == before)
+        }
     }
 
     @Test func rangeAndTypeValidation() {

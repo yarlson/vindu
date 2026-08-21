@@ -10,6 +10,7 @@
 - The default config template ships inside the binary (`DefaultConfig.swift`); `examples/vindu.conf` must stay byte-identical. `make test` enforces this (`check-template`).
 - One daemon per user: the command socket file is probed before bind — a live listener aborts startup, a dead file is unlinked.
 - Private WindowServer symbols belong only to `VinduBorderEngine`, load from the fixed system framework path, and never appear as direct imports or a SkyLight link. A missing symbol or rejected setup disables the border and logs once; all other window-manager behavior continues.
+- WindowServer notification removal uses the same callback, event, and engine context as registration. The engine context and loaded framework remain alive if removal fails.
 
 ## Hyprland compatibility policy
 

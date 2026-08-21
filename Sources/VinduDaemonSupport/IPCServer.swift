@@ -11,8 +11,40 @@ public typealias IPCError = SecureSocketError
 public final class IPCServer {
     public typealias Handler = (String) -> String
 
-    private final class Client {
+    private final class DescriptorLifetime {
         let fd: Int32
+        private var sourceCount = 0
+        private var closed = false
+
+        init(fd: Int32) {
+            self.fd = fd
+        }
+
+        func sourceCreated() {
+            sourceCount += 1
+        }
+
+        func sourceCancelled() {
+            guard sourceCount > 0 else { return }
+            sourceCount -= 1
+            if sourceCount == 0 {
+                closeDescriptor()
+            }
+        }
+
+        private func closeDescriptor() {
+            guard !closed else { return }
+            closed = true
+            Darwin.close(fd)
+        }
+
+        deinit {
+            closeDescriptor()
+        }
+    }
+
+    private final class Client {
+        let descriptor: DescriptorLifetime
         let source: DispatchSourceRead
         let timer: DispatchSourceTimer
         var data = Data()
@@ -22,8 +54,12 @@ public final class IPCServer {
         var finishedReading = false
         var closed = false
 
-        init(fd: Int32, source: DispatchSourceRead, timer: DispatchSourceTimer) {
-            self.fd = fd
+        var fd: Int32 { descriptor.fd }
+
+        init(descriptor: DescriptorLifetime,
+             source: DispatchSourceRead,
+             timer: DispatchSourceTimer) {
+            self.descriptor = descriptor
             self.source = source
             self.timer = timer
         }
@@ -35,7 +71,9 @@ public final class IPCServer {
     private let peerValidator: PeerValidator
     private let idleTimeout: DispatchTimeInterval
     private let maxClients: Int
-    private var fd: Int32 = -1
+    private let queueKey = DispatchSpecificKey<UInt8>()
+    private let usesMainQueue: Bool
+    private var listener: BoundSocket?
     private var source: DispatchSourceRead?
     private var clients: [Int32: Client] = [:]
 
@@ -51,31 +89,48 @@ public final class IPCServer {
         self.maxClients = maxClients
         self.peerValidator = peerValidator
         self.handler = handler
+        usesMainQueue = queue === DispatchQueue.main
+        queue.setSpecific(key: queueKey, value: 1)
+    }
+
+    deinit {
+        stop()
     }
 
     public func start() throws {
-        fd = try bindAndListen(path: path)
-        let src = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
-        src.setEventHandler { [weak self] in self?.acceptConnections() }
-        src.setCancelHandler { [path, fd] in
-            if fd >= 0 { Darwin.close(fd) }
-            unlink(path)
+        try onQueue {
+            guard listener == nil else {
+                throw SecureSocketError.alreadyRunning(path)
+            }
+            let boundSocket = try bindAndListen(path: path)
+            let src = DispatchSource.makeReadSource(fileDescriptor: boundSocket.fd, queue: queue)
+            src.setEventHandler { [weak self] in self?.acceptConnections() }
+            src.setCancelHandler {
+                boundSocket.closeAndUnlink()
+            }
+            listener = boundSocket
+            source = src
+            src.resume()
         }
-        source = src
-        src.resume()
     }
 
     public func stop() {
+        onQueue { stopOnQueue() }
+    }
+
+    private func stopOnQueue() {
         for client in Array(clients.values) {
             close(client)
         }
         clients.removeAll()
         source?.cancel()
+        listener?.unlinkIfOwned()
         source = nil
-        fd = -1
+        listener = nil
     }
 
     private func acceptConnections() {
+        guard let fd = listener?.fd else { return }
         while true {
             let conn = accept(fd, nil, nil)
             guard conn >= 0 else {
@@ -96,14 +151,19 @@ public final class IPCServer {
     }
 
     private func track(_ conn: Int32) {
+        let descriptor = DescriptorLifetime(fd: conn)
+        descriptor.sourceCreated()
         let readSource = DispatchSource.makeReadSource(fileDescriptor: conn, queue: queue)
         let timer = DispatchSource.makeTimerSource(queue: queue)
-        let client = Client(fd: conn, source: readSource, timer: timer)
+        let client = Client(descriptor: descriptor, source: readSource, timer: timer)
         clients[conn] = client
 
         readSource.setEventHandler { [weak self, weak client] in
             guard let self, let client else { return }
             self.read(client)
+        }
+        readSource.setCancelHandler {
+            descriptor.sourceCancelled()
         }
 
         timer.schedule(deadline: .now() + idleTimeout)
@@ -117,6 +177,9 @@ public final class IPCServer {
     }
 
     private func read(_ client: Client) {
+        guard clients[client.fd] === client,
+              !client.finishedReading,
+              !client.closed else { return }
         var buf = [UInt8](repeating: 0, count: 4096)
         while true {
             let n = Darwin.read(client.fd, &buf, buf.count)
@@ -146,21 +209,26 @@ public final class IPCServer {
     private func finish(_ client: Client) {
         guard clients[client.fd] === client, !client.finishedReading else { return }
         client.finishedReading = true
-        client.source.cancel()
 
         let request = String(decoding: client.data, as: UTF8.self)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         startWrite(client, data: Array((handler(request) + "\n").utf8))
+        client.source.cancel()
     }
 
     private func startWrite(_ client: Client, data: [UInt8]) {
         guard clients[client.fd] === client, !client.closed else { return }
         client.writeData = data
+        client.descriptor.sourceCreated()
         let writeSource = DispatchSource.makeWriteSource(fileDescriptor: client.fd, queue: queue)
         client.writeSource = writeSource
+        let descriptor = client.descriptor
         writeSource.setEventHandler { [weak self, weak client] in
             guard let self, let client else { return }
             self.write(client)
+        }
+        writeSource.setCancelHandler {
+            descriptor.sourceCancelled()
         }
         writeSource.resume()
     }
@@ -199,7 +267,14 @@ public final class IPCServer {
         client.timer.cancel()
         client.source.cancel()
         client.writeSource?.cancel()
-        Darwin.close(client.fd)
+    }
+
+    private func onQueue<T>(_ operation: () throws -> T) rethrows -> T {
+        if DispatchQueue.getSpecific(key: queueKey) == 1 ||
+            (usesMainQueue && Thread.isMainThread) {
+            return try operation()
+        }
+        return try queue.sync(execute: operation)
     }
 }
 
@@ -211,7 +286,9 @@ public final class EventBroadcaster {
     private let peerValidator: PeerValidator
     private let writer: SocketWriter
     private let maxClients: Int
-    private var fd: Int32 = -1
+    private let queueKey = DispatchSpecificKey<UInt8>()
+    private let usesMainQueue: Bool
+    private var listener: BoundSocket?
     private var source: DispatchSourceRead?
     private var clients: [Int32] = []
 
@@ -225,31 +302,51 @@ public final class EventBroadcaster {
         self.maxClients = maxClients
         self.peerValidator = peerValidator
         self.writer = writer
+        usesMainQueue = queue === DispatchQueue.main
+        queue.setSpecific(key: queueKey, value: 1)
+    }
+
+    deinit {
+        stop()
     }
 
     public func start() throws {
-        fd = try bindAndListen(path: path)
-        let src = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
-        src.setEventHandler { [weak self] in self?.acceptConnections() }
-        src.setCancelHandler { [path, fd] in
-            if fd >= 0 { close(fd) }
-            unlink(path)
+        try onQueue {
+            guard listener == nil else {
+                throw SecureSocketError.alreadyRunning(path)
+            }
+            let boundSocket = try bindAndListen(path: path)
+            let src = DispatchSource.makeReadSource(fileDescriptor: boundSocket.fd, queue: queue)
+            src.setEventHandler { [weak self] in self?.acceptConnections() }
+            src.setCancelHandler {
+                boundSocket.closeAndUnlink()
+            }
+            listener = boundSocket
+            source = src
+            src.resume()
         }
-        source = src
-        src.resume()
     }
 
     public func stop() {
+        onQueue { stopOnQueue() }
+    }
+
+    private func stopOnQueue() {
         source?.cancel()
+        listener?.unlinkIfOwned()
         source = nil
         for client in clients {
             close(client)
         }
         clients.removeAll()
-        fd = -1
+        listener = nil
     }
 
     public func broadcast(_ event: WMEvent) {
+        onQueue { broadcastOnQueue(event) }
+    }
+
+    private func broadcastOnQueue(_ event: WMEvent) {
         guard !clients.isEmpty else { return }
         let data = Array((event.line + "\n").utf8)
         clients.removeAll { conn in
@@ -263,6 +360,7 @@ public final class EventBroadcaster {
     }
 
     private func acceptConnections() {
+        guard let fd = listener?.fd else { return }
         while true {
             let conn = accept(fd, nil, nil)
             guard conn >= 0 else {
@@ -283,6 +381,14 @@ public final class EventBroadcaster {
     }
 
     var clientCountForTesting: Int {
-        clients.count
+        onQueue { clients.count }
+    }
+
+    private func onQueue<T>(_ operation: () throws -> T) rethrows -> T {
+        if DispatchQueue.getSpecific(key: queueKey) == 1 ||
+            (usesMainQueue && Thread.isMainThread) {
+            return try operation()
+        }
+        return try queue.sync(execute: operation)
     }
 }

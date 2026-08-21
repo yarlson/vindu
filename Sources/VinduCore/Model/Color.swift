@@ -59,7 +59,8 @@ public struct MLGradient: Equatable {
         var colors: [MLColor] = []
         var angle = 0.0
         for token in raw.split(separator: " ").map(String.init) {
-            if let deg = token.lowercased().removingSuffix("deg"), let v = Double(deg) {
+            if let deg = token.lowercased().removingSuffix("deg"),
+               let v = Double(deg), v.isFinite {
                 angle = v
             } else if let c = MLColor.parse(token) {
                 colors.append(c)
@@ -71,4 +72,3 @@ public struct MLGradient: Equatable {
         return MLGradient(colors: colors, angleDeg: angle)
     }
 }
-

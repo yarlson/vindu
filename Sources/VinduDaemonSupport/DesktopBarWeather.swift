@@ -11,7 +11,10 @@ public struct DesktopBarWeatherInfo: Equatable {
     }
 
     public var text: String {
-        "\(Int(temperatureC.rounded()))°C"
+        guard let temperature = Int(exactly: temperatureC.rounded()) else {
+            return "—"
+        }
+        return "\(temperature)°C"
     }
 
     public var symbolNames: [String] {
@@ -56,14 +59,20 @@ public final class DesktopBarWeatherService {
         case failure(String)
     }
 
+    private enum StreamResult {
+        case completed(data: Data?, response: URLResponse?, error: Error?)
+        case failure(String)
+    }
+
     private let session: URLSession
     private let decodeQueue: DispatchQueue
     private let callbackQueue: DispatchQueue
     private let log: Logger
     private var configuration: Configuration?
     private var refreshTimer: Timer?
-    private var request: URLSessionDataTask?
+    private var request: Task<Void, Never>?
     private var fetching = false
+    private var generation = 0
 
     public init(session: URLSession = DesktopBarWeatherService.defaultSession(),
                 decodeQueue: DispatchQueue = DispatchQueue(label: "vindu.weather.decode",
@@ -92,6 +101,7 @@ public final class DesktopBarWeatherService {
 
     public func stop() {
         let hadWeather = current != nil
+        generation &+= 1
         request?.cancel()
         request = nil
         refreshTimer?.invalidate()
@@ -122,27 +132,46 @@ public final class DesktopBarWeatherService {
         }
 
         fetching = true
-        request = session.dataTask(with: url) { [weak self] data, response, error in
-            guard let self else { return }
-            self.decodeQueue.async {
-                let result = Self.result(data: data, response: response, error: error)
-                self.callbackQueue.async {
-                    guard self.configuration == configuration else { return }
-                    self.fetching = false
-                    self.request = nil
-                    switch result {
-                    case .success(let weather):
-                        if self.current != weather {
-                            self.current = weather
-                            self.onChange?()
-                        }
-                    case .failure(let message):
-                        self.log("weather: \(message)")
+        let generation = generation
+        let session = session
+        let request = Task { [weak self] in
+            let streamResult = await Self.collect(session: session, url: url)
+            self?.finish(streamResult,
+                         configuration: configuration,
+                         generation: generation)
+        }
+        self.request = request
+    }
+
+    private func finish(_ streamResult: StreamResult,
+                        configuration: Configuration,
+                        generation: Int) {
+        decodeQueue.async {
+            let result: FetchResult
+            switch streamResult {
+            case .completed(let data, let response, let error):
+                result = Self.result(data: data, response: response, error: error)
+            case .failure(let message):
+                result = .failure(message)
+            }
+            self.callbackQueue.async {
+                guard self.generation == generation,
+                      self.configuration == configuration else {
+                    return
+                }
+                self.fetching = false
+                self.request = nil
+                switch result {
+                case .success(let weather):
+                    if self.current != weather {
+                        self.current = weather
+                        self.onChange?()
                     }
+                case .failure(let message):
+                    self.log("weather: \(message)")
                 }
             }
         }
-        request?.resume()
     }
 
     public static func defaultSession() -> URLSession {
@@ -192,9 +221,37 @@ public final class DesktopBarWeatherService {
         return .success(weather)
     }
 
+    private static func collect(session: URLSession, url: URL) async -> StreamResult {
+        do {
+            let (bytes, response) = try await session.bytes(from: url)
+            guard let http = response as? HTTPURLResponse else {
+                bytes.task.cancel()
+                return .failure("missing http response")
+            }
+            guard http.statusCode == 200 else {
+                bytes.task.cancel()
+                return .failure("http \(http.statusCode)")
+            }
+
+            var data = Data()
+            for try await byte in bytes {
+                guard data.count < maxResponseBytes else {
+                    bytes.task.cancel()
+                    return .failure("response too large")
+                }
+                data.append(byte)
+            }
+            return .completed(data: data, response: response, error: nil)
+        } catch {
+            return .completed(data: nil, response: nil, error: error)
+        }
+    }
+
     private static func decode(_ data: Data) -> DesktopBarWeatherInfo? {
         guard let response = try? JSONDecoder().decode(OpenMeteoResponse.self, from: data),
-              let current = response.current else {
+              let current = response.current,
+              current.temperature.isFinite,
+              Int(exactly: current.temperature.rounded()) != nil else {
             return nil
         }
         return DesktopBarWeatherInfo(temperatureC: current.temperature,

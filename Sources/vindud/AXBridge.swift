@@ -144,9 +144,18 @@ final class AXBridge {
         if let observer = handle.observer {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .defaultMode)
         }
-        for (_, id) in handle.windows {
-            delegate?.windowDestroyed(id)
+        for id in handle.windows.map(\.id) {
+            removeTrackedWindow(id, from: handle)
         }
+    }
+
+    @discardableResult
+    private func removeTrackedWindow(_ id: WindowID, from app: AppHandle) -> Bool {
+        guard let index = app.windows.firstIndex(where: { $0.id == id }) else { return false }
+        app.windows.remove(at: index)
+        missCounts.removeValue(forKey: id)
+        delegate?.windowDestroyed(id)
+        return true
     }
 
     private func scanWindows(of handle: AppHandle) {
@@ -162,7 +171,11 @@ final class AXBridge {
         var wid: CGWindowID = 0
         guard _AXUIElementGetWindow(element, &wid) == .success, wid != 0 else { return nil }
         if app.windows.contains(where: { $0.id == wid }) { return wid }
-        guard classify(element) != .auxiliary else { return nil }
+        let kind = classify(element)
+        guard kind != .auxiliary,
+              let snapshot = snapshot(element: element, id: wid, app: app, kind: kind) else {
+            return nil
+        }
 
         guard let observer = app.observer else { return nil }
         let refcon = Unmanaged.passUnretained(app).toOpaque()
@@ -172,7 +185,7 @@ final class AXBridge {
             AXObserverAddNotification(observer, element, note as CFString, refcon)
         }
         app.windows.append((element: element, id: wid))
-        delegate?.windowAppeared(snapshot(element: element, id: wid, app: app))
+        delegate?.windowAppeared(snapshot)
         return wid
     }
 
@@ -184,21 +197,20 @@ final class AXBridge {
             reportFocused(element: element, app: app)
         case kAXUIElementDestroyedNotification:
             if let idx = app.windows.firstIndex(where: { CFEqual($0.element, element) }) {
-                let id = app.windows.remove(at: idx).id
-                delegate?.windowDestroyed(id)
+                removeTrackedWindow(app.windows[idx].id, from: app)
             } else {
                 // Destroyed elements can lose CFEqual identity; the window id
                 // usually still resolves.
                 var wid: CGWindowID = 0
                 if _AXUIElementGetWindow(element, &wid) == .success, wid != 0,
-                   let idx = app.windows.firstIndex(where: { $0.id == wid }) {
-                    app.windows.remove(at: idx)
-                    delegate?.windowDestroyed(wid)
+                   app.windows.contains(where: { $0.id == wid }) {
+                    removeTrackedWindow(wid, from: app)
                 }
             }
         case kAXWindowMovedNotification, kAXWindowResizedNotification:
-            if let entry = app.windows.first(where: { CFEqual($0.element, element) }) {
-                delegate?.windowMovedOrResized(entry.id, frame: frame(of: element) ?? .zero)
+            if let entry = app.windows.first(where: { CFEqual($0.element, element) }),
+               let frame = frame(of: element) {
+                delegate?.windowMovedOrResized(entry.id, frame: frame)
             }
         case kAXTitleChangedNotification:
             if let entry = app.windows.first(where: { CFEqual($0.element, element) }) {
@@ -246,14 +258,16 @@ final class AXBridge {
         return .auxiliary
     }
 
-    private func snapshot(element: AXUIElement, id: WindowID, app: AppHandle) -> WindowSnapshot {
-        WindowSnapshot(
+    private func snapshot(element: AXUIElement, id: WindowID, app: AppHandle,
+                          kind: WindowKind) -> WindowSnapshot? {
+        guard let frame = frame(of: element) else { return nil }
+        return WindowSnapshot(
             id: id,
             pid: app.pid,
             clazz: app.name,
             title: axValue(element, kAXTitleAttribute) ?? "",
-            frame: frame(of: element) ?? .zero,
-            kind: classify(element),
+            frame: frame,
+            kind: kind,
             isResizable: isResizable(element),
             isMinimized: (axValue(element, kAXMinimizedAttribute) as Bool?) ?? false
         )
@@ -277,7 +291,7 @@ final class AXBridge {
         }
         let alive = Set(list.compactMap { $0[kCGWindowNumber as String] as? UInt32 })
         for app in apps.values {
-            for (_, id) in app.windows {
+            for id in app.windows.map(\.id) {
                 if alive.contains(id) {
                     missCounts.removeValue(forKey: id)
                     continue
@@ -285,9 +299,7 @@ final class AXBridge {
                 let misses = (missCounts[id] ?? 0) + 1
                 missCounts[id] = misses
                 guard misses >= 2 else { continue }
-                missCounts.removeValue(forKey: id)
-                app.windows.removeAll { $0.id == id }
-                delegate?.windowDestroyed(id)
+                removeTrackedWindow(id, from: app)
             }
         }
     }
@@ -340,9 +352,10 @@ final class AXBridge {
               let sizeValue: AXValue = axValue(element, kAXSizeAttribute) else { return nil }
         var p = CGPoint.zero
         var s = CGSize.zero
-        AXValueGetValue(posValue, .cgPoint, &p)
-        AXValueGetValue(sizeValue, .cgSize, &s)
-        return CGRect(origin: p, size: s)
+        guard AXValueGetValue(posValue, .cgPoint, &p),
+              AXValueGetValue(sizeValue, .cgSize, &s) else { return nil }
+        let frame = CGRect(origin: p, size: s)
+        return isValidWindowFrame(frame) ? frame : nil
     }
 
     func frame(of id: WindowID) -> CGRect? {
@@ -350,7 +363,7 @@ final class AXBridge {
     }
 
     func setFrame(_ id: WindowID, _ rect: CGRect) {
-        guard let (el, _) = element(for: id) else { return }
+        guard isValidWindowFrame(rect), let (el, _) = element(for: id) else { return }
         // Position-size-position: apps clamp size against the current position,
         // so a single pass can land off-target when crossing displays.
         setPosition(el, rect.origin)
@@ -362,11 +375,12 @@ final class AXBridge {
     }
 
     func setPosition(_ id: WindowID, _ point: CGPoint) {
-        guard let (el, _) = element(for: id) else { return }
+        guard isValidWindowPoint(point), let (el, _) = element(for: id) else { return }
         setPosition(el, point)
     }
 
     private func setPosition(_ el: AXUIElement, _ point: CGPoint) {
+        guard isValidWindowPoint(point) else { return }
         var p = point
         if let v = AXValueCreate(.cgPoint, &p) {
             AXUIElementSetAttributeValue(el, kAXPositionAttribute as CFString, v)

@@ -68,6 +68,43 @@ struct DesktopBarPluginProcessTests {
         }
     }
 
+    @Test func terminatedProcessCompletesAfterOwnerReleasesIt() throws {
+        let pidFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vindu-plugin-\(UUID().uuidString).pid")
+        defer { try? FileManager.default.removeItem(at: pidFile) }
+
+        let request = DesktopBarPluginRunRequest(
+            id: "released",
+            command: "printf '%s' $$ > '\(pidFile.path)'; trap '' TERM; while :; do sleep 1; done",
+            timeoutMs: 5_000,
+            reason: "manual",
+            eventName: "",
+            eventPayload: ""
+        )
+        var process: DesktopBarPluginProcess? = DesktopBarPluginProcess(request: request)
+        let processReference = WeakPluginProcessReference(process)
+        var result: DesktopBarPluginRunResult?
+        try process?.start { result = $0 }
+        waitForPhase3Condition {
+            (try? String(contentsOf: pidFile, encoding: .utf8)).flatMap(pid_t.init) != nil
+        }
+        let pid = try #require(pid_t(try String(contentsOf: pidFile, encoding: .utf8)))
+        defer {
+            _ = Darwin.kill(-pid, SIGKILL)
+            var status: Int32 = 0
+            _ = waitpid(pid, &status, 0)
+        }
+
+        process?.terminate()
+        process = nil
+
+        #expect(processReference.process != nil)
+        waitForPhase3Condition { result != nil }
+        #expect(try #require(result).exitCode == -SIGKILL)
+        waitForPhase3Condition { processReference.process == nil }
+        #expect(processReference.process == nil)
+    }
+
     private func runPlugin(command: String, timeoutMs: Int) throws -> DesktopBarPluginRunResult {
         let request = DesktopBarPluginRunRequest(id: "test",
                                                  command: command,
@@ -80,6 +117,14 @@ struct DesktopBarPluginProcessTests {
         try process.start { result = $0 }
         waitForPhase3Condition { result != nil }
         return try #require(result)
+    }
+}
+
+private final class WeakPluginProcessReference {
+    weak var process: DesktopBarPluginProcess?
+
+    init(_ process: DesktopBarPluginProcess?) {
+        self.process = process
     }
 }
 

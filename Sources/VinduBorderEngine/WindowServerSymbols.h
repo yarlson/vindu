@@ -8,7 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef void (*VBEWindowEventCallback)(uint32_t, void *, size_t, void *);
+typedef void (*VBEWindowEventCallback)(uint32_t, void *, uint32_t, void *);
 
 typedef struct {
     void *handle;
@@ -19,7 +19,7 @@ typedef struct {
     CGEventRef (*nextEvent)(int);
     void (*setMachPortOptions)(CFMachPortRef, int);
     CGError (*registerNotify)(VBEWindowEventCallback, uint32_t, void *);
-    CGError (*removeNotify)(VBEWindowEventCallback, uint32_t);
+    CGError (*removeNotify)(VBEWindowEventCallback, uint32_t, void *);
     CGError (*requestNotifications)(int, uint32_t *, int);
     CGError (*getWindowBounds)(int, uint32_t, CGRect *);
     CGError (*windowIsOrderedIn)(int, uint32_t, bool *);
@@ -51,11 +51,11 @@ typedef struct {
     int (*windowIteratorLevel)(CFTypeRef);
     CFArrayRef (*windowIteratorCornerRadii)(CFTypeRef);
     CFArrayRef (*copySpacesForWindows)(int, int, CFArrayRef);
-    CGError (*moveWindowsToSpace)(int, CFArrayRef, uint64_t);
+    void (*moveWindowsToSpace)(int, CFArrayRef, uint64_t);
     int32_t (*getWindowSubLevel)(int, uint32_t);
     mach_port_t (*serverPort)(void *);
     mach_port_t (*specialReplyPort)(void);
-    mach_port_t (*deallocateSpecialReplyPort)(mach_port_t);
+    void (*deallocateSpecialReplyPort)(mach_port_t);
 } VBEWindowServerSymbols;
 
 bool VBEWindowServerSymbolsLoad(VBEWindowServerSymbols *symbols,

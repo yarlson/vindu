@@ -8,7 +8,7 @@ Hyprland dialect, parsed by `ConfigParser` (VinduCore):
 
 - `key = value` assignments; `section { … }` blocks nest into colon-joined keywords (`general:gaps_in`).
 - `$variables`, substituted longest-name-first so `$mainModShift` survives `$mainMod`.
-- `source = path` includes (tilde and relative-to-including-file resolution; nesting capped at 10, with total sourced file and byte caps).
+- `source = path` includes (tilde and relative-to-including-file resolution; nesting capped at 10, with total sourced file and byte caps). The root and each included file are read incrementally and stop at the existing 1 MiB source budget before parsing.
 - `#` comments; `##` escapes a literal `#`; a line starting with `#` is wholly a comment.
 - `submap = name` … `submap = reset` delimit modal bind blocks.
 
@@ -26,6 +26,8 @@ Parsing produces a `ConfigDocument`: settings, binds, window rules, workspace ru
 ## Settings
 
 `Settings` is a typed option table keyed by full keyword; each entry implements both `set` (with validation and ranges) and `get` (serves IPC `getoption`). Modeled sections: general, decoration (rounding only), dwindle, master, input, misc, binds, bar. Bar plugin options validate both when parsed from the file and when applied live: a `plugin:<id>` item in `bar:indicators` needs a configured command before the config is considered clean.
+
+Numeric settings and dispatcher dimensions accept finite values only. A rejected live assignment leaves the current value unchanged. Finite gradient angles retain their configured value when read through `getoption`.
 
 `general:border_size` is the active-border width; zero disables the border. `general:col.active_border` and `general:col.submap_border` keep every configured color stop and angle. `decoration:rounding` is used only when the WindowServer cannot report the target's corner radius. `general:col.inactive_border` remains a compatibility no-op because vindu draws no inactive borders.
 

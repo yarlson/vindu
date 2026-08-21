@@ -6,10 +6,10 @@ public enum SplitRatioArg: Equatable {
 
     public static func parse(_ raw: String) -> SplitRatioArg? {
         let parts = raw.split(separator: " ").map(String.init)
-        if parts.count == 2, parts[0] == "exact", let v = Double(parts[1]) {
+        if parts.count == 2, parts[0] == "exact", let v = Double(parts[1]), v.isFinite {
             return .exact(v)
         }
-        if parts.count == 1, let v = Double(parts[0]) {
+        if parts.count == 1, let v = Double(parts[0]), v.isFinite {
             return .delta(v)
         }
         return nil

@@ -49,6 +49,21 @@ struct WorkspaceRegistryTests {
         #expect(reg.resolveID(.previous, currentID: 3, previousID: nil, monitor: 0, create: false) == nil)
     }
 
+    @Test func relativeTargetsHandleIntegerExtremes() {
+        let reg = makeRegistry()
+        for id in [1, 3, 7] {
+            _ = reg.workspace(forID: id, monitor: 0)
+        }
+        #expect(reg.resolveID(.relative(1), currentID: .max, previousID: nil,
+                              monitor: 0, create: true) == nil)
+        #expect(reg.resolveID(.relative(-1), currentID: .min, previousID: nil,
+                              monitor: 0, create: true) == 1)
+        #expect(reg.resolveID(.relativeExisting(.max), currentID: 3, previousID: nil,
+                              monitor: 0, create: false) == 7)
+        #expect(reg.resolveID(.relativeExisting(.min), currentID: 3, previousID: nil,
+                              monitor: 0, create: false) == 7)
+    }
+
     @Test func emptyTargetSkipsOccupiedWorkspaces() {
         let reg = makeRegistry()
         let ws1 = reg.workspace(forID: 1, monitor: 0)

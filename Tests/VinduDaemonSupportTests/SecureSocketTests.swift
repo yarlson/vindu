@@ -36,6 +36,10 @@ private func connectUnixSocket(_ path: String) throws -> Int32 {
     return fd
 }
 
+private enum ExpectedSocketFailure: Error {
+    case failed
+}
+
 @Suite struct SecureSocketTests {
     @Test func runtimeDirectoryMustNotBeSymlink() throws {
         let owner = try ShortTemporaryDirectory()
@@ -124,6 +128,59 @@ private func connectUnixSocket(_ path: String) throws -> Int32 {
         }
     }
 
+    @Test func failedDescriptorSetupClosesDescriptorAndRemovesSocket() throws {
+        let owner = try ShortTemporaryDirectory()
+        let socketPath = owner.url.appendingPathComponent("vindu.sock").path
+        var descriptor: Int32 = -1
+        var originalDescriptorStat = stat()
+
+        #expect(throws: ExpectedSocketFailure.self) {
+            _ = try bindAndListen(path: socketPath) { fd in
+                descriptor = fd
+                #expect(fstat(fd, &originalDescriptorStat) == 0)
+                throw ExpectedSocketFailure.failed
+            }
+        }
+
+        #expect(descriptor >= 0)
+        var currentDescriptorStat = stat()
+        let statResult = fstat(descriptor, &currentDescriptorStat)
+        #expect(statResult == -1 ||
+                currentDescriptorStat.st_dev != originalDescriptorStat.st_dev ||
+                currentDescriptorStat.st_ino != originalDescriptorStat.st_ino)
+        #expect(!FileManager.default.fileExists(atPath: socketPath))
+    }
+
+    @Test func failedPermissionSetupClosesDescriptorAndRemovesSocket() throws {
+        let owner = try ShortTemporaryDirectory()
+        let socketPath = owner.url.appendingPathComponent("vindu.sock").path
+        var descriptor: Int32 = -1
+        var originalDescriptorStat = stat()
+
+        #expect(throws: SecureSocketError.self) {
+            _ = try bindAndListen(
+                path: socketPath,
+                makeNonBlocking: { fd in
+                    descriptor = fd
+                    #expect(fstat(fd, &originalDescriptorStat) == 0)
+                    try setSocketNonBlocking(fd)
+                },
+                setPermissions: { _, _ in
+                    errno = EPERM
+                    return -1
+                }
+            )
+        }
+
+        #expect(descriptor >= 0)
+        var currentDescriptorStat = stat()
+        let statResult = fstat(descriptor, &currentDescriptorStat)
+        #expect(statResult == -1 ||
+                currentDescriptorStat.st_dev != originalDescriptorStat.st_dev ||
+                currentDescriptorStat.st_ino != originalDescriptorStat.st_ino)
+        #expect(!FileManager.default.fileExists(atPath: socketPath))
+    }
+
     @Test func commandServerRepliesAndCloses() throws {
         let owner = try ShortTemporaryDirectory()
         let path = owner.url.appendingPathComponent("vindu.sock").path
@@ -140,6 +197,63 @@ private func connectUnixSocket(_ path: String) throws -> Int32 {
         shutdown(fd, SHUT_WR)
 
         #expect(try readUntilEOF(fd: fd) == "reply:ping\n")
+    }
+
+    @Test func commandServerStopsAndRestartsFromItsQueue() throws {
+        let owner = try ShortTemporaryDirectory()
+        let path = owner.url.appendingPathComponent("vindu.sock").path
+        let queue = DispatchQueue(label: "vindu.ipc.restart.test")
+        let server = IPCServer(path: path, queue: queue) { _ in "ok" }
+        try server.start()
+
+        try queue.sync {
+            server.stop()
+            try server.start()
+        }
+        server.stop()
+
+        #expect(!FileManager.default.fileExists(atPath: path))
+    }
+
+    @Test @MainActor func commandServerStartsAndStopsOnMainThread() throws {
+        let owner = try ShortTemporaryDirectory()
+        let path = owner.url.appendingPathComponent("vindu.sock").path
+        let server = IPCServer(path: path) { _ in "ok" }
+
+        try server.start()
+        server.stop()
+
+        #expect(!FileManager.default.fileExists(atPath: path))
+    }
+
+    @Test func commandServerCancellationPreservesReplacementSocket() throws {
+        let owner = try ShortTemporaryDirectory()
+        let path = owner.url.appendingPathComponent("vindu.sock").path
+        let queue = DispatchQueue(label: "vindu.ipc.replacement.test")
+        let server = IPCServer(path: path, queue: queue) { _ in "ok" }
+        try server.start()
+        var replacement: Int32 = -1
+
+        try queue.sync {
+            server.stop()
+            replacement = socket(AF_UNIX, SOCK_STREAM, 0)
+            guard replacement >= 0 else {
+                throw SecureSocketError.socketFailed("socket(): \(errno)")
+            }
+            guard UnixSocket.bind(replacement, to: path) == 0,
+                  listen(replacement, 1) == 0 else {
+                throw SecureSocketError.socketFailed("replacement bind/listen: \(errno)")
+            }
+        }
+        defer {
+            if replacement >= 0 { close(replacement) }
+            unlink(path)
+        }
+        queue.sync {}
+
+        var socketStat = stat()
+        #expect(lstat(path, &socketStat) == 0)
+        #expect((socketStat.st_mode & mode_t(S_IFMT)) == mode_t(S_IFSOCK))
     }
 
     @Test func commandServerRejectsUnauthorizedPeer() throws {
@@ -217,10 +331,26 @@ private func connectUnixSocket(_ path: String) throws -> Int32 {
 
         let fd = try connectUnixSocket(path)
         defer { close(fd) }
-        try waitForCondition { queue.sync { events.clientCountForTesting == 1 } }
-        queue.sync { events.broadcast(.workspace("2")) }
+        try waitForCondition { events.clientCountForTesting == 1 }
+        events.broadcast(.workspace("2"))
 
         #expect(try readAvailable(fd: fd) == "workspace>>2\n")
+    }
+
+    @Test func eventBroadcasterStopsAndRestartsFromItsQueue() throws {
+        let owner = try ShortTemporaryDirectory()
+        let path = owner.url.appendingPathComponent("vindu.events.sock").path
+        let queue = DispatchQueue(label: "vindu.events.restart.test")
+        let events = EventBroadcaster(path: path, queue: queue)
+        try events.start()
+
+        try queue.sync {
+            events.stop()
+            try events.start()
+        }
+        events.stop()
+
+        #expect(!FileManager.default.fileExists(atPath: path))
     }
 
     @Test func eventBroadcasterRejectsUnauthorizedPeer() throws {
