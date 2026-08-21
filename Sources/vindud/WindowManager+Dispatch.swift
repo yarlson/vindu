@@ -105,7 +105,7 @@ extension WindowManager {
                 if let last = ws.lastFocused ?? ws.allWindows.first {
                     focusWindow(last)
                 } else {
-                    refreshBorder()
+                    syncBorder()
                 }
             }
             broadcastFocusedMon()
@@ -122,7 +122,7 @@ extension WindowManager {
         case .submap(let name):
             tap.setSubmap(name)
             broadcast(.submap(name))
-            refreshBorder()
+            syncBorder()
         case .focuscurrentorlast:
             if let last = focusHistory.dropFirst().first(where: { windows[$0] != nil }) {
                 return dispatch(.focuswindow("address:\(windowAddress(last))"))
@@ -539,7 +539,7 @@ extension WindowManager {
             let container = containerRect(for: ws)
             bridge.setPosition(id, CGPoint(x: container.minX + 40, y: container.minY + 40))
         }
-        border.hide()
+        border.shutdown()
         desktopBar.hide()
         desktopBarRefresh.stop()
         ipc?.stop()

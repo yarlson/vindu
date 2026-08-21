@@ -19,8 +19,9 @@ the word English _window_ comes from.
 
 You stop arranging windows. New windows take their place in the grid,
 keyboard moves you around, workspaces keep projects apart. It runs on the
-public Accessibility API and an event tap: SIP stays on, no kernel
-extensions, no private frameworks.
+Accessibility API and an event tap. SIP stays on and there are no kernel
+extensions. The focus border uses optional private WindowServer interfaces;
+if macOS does not provide them, tiling keeps working without the border.
 
 ## Quick start
 
@@ -267,23 +268,26 @@ openwindow>>0x2a51,3,Safari,GitHub
   math, focus geometry, workspace registry. Pure logic under `swift test`,
   no GUI dependencies.
 - `vindud`: the daemon. Accessibility observers feed window events into the
-  layout, a session event tap owns hotkeys and mouse drags, overlay panels draw
-  the focus border and optional desktop bar. Hidden workspaces park windows just
-  off the visible frame and restore them on switch. That trick is the reason SIP
-  can stay on.
+  layout, a session event tap owns hotkeys and mouse drags, a WindowServer
+  surface draws the focus border, and AppKit panels draw the optional desktop
+  bar. Hidden workspaces park windows just off the visible frame and restore
+  them on switch. That trick is the reason SIP can stay on.
 - `vinductl`: a thin socket client.
 
-All geometry is top-left-origin global coordinates. AppKit's flipped
-coordinates exist only at the border-overlay boundary.
+All window and border geometry uses top-left-origin global coordinates. AppKit
+coordinate conversion is limited to AppKit UI and cursor reporting.
 
 ## Limitations
 
-macOS doesn't let anything near its compositor, so there are no animations,
-no blur, no per-window opacity, no rounded clipping of other apps' windows.
-Not from vindu, not from anything that keeps SIP on. The focus border is an
-overlay. Mode-0 fullscreen still shows the menu-bar strip because the
-window server owns it. Tiled windows with hard minimum sizes keep their
-minimum and the layout allots their tile anyway.
+macOS does not let vindu change how another app renders its window, so there
+are no animations, blur, per-window opacity, or rounded clipping of other
+apps' content. The focus border is a separate WindowServer surface owned by
+vindu. Mode-0 fullscreen still shows the menu-bar strip because the window
+server owns it. Tiled windows with hard minimum sizes keep their minimum and
+the layout allots their tile anyway. The private border interface is not a
+stable macOS contract. A system update can break the border, and an unexpected
+ABI change can affect the daemon, so each supported macOS version needs live
+validation.
 
 ## Migrating from Linux tiling
 

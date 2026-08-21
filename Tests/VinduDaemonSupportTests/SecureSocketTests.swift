@@ -300,11 +300,11 @@ private final class LockedCounter {
     }
 }
 
-private func readUntilEOF(fd: Int32, timeoutMs: Int = 1_000) throws -> String {
-    try setReadTimeout(fd: fd, timeoutMs: timeoutMs)
+private func readUntilEOF(fd: Int32, timeoutMs: Int32 = 3_000) throws -> String {
     var data = Data()
     var buf = [UInt8](repeating: 0, count: 4096)
     while true {
+        try waitUntilReadable(fd: fd, timeoutMs: timeoutMs)
         let n = read(fd, &buf, buf.count)
         if n > 0 {
             data.append(contentsOf: buf[0..<n])
@@ -320,8 +320,8 @@ private func readUntilEOF(fd: Int32, timeoutMs: Int = 1_000) throws -> String {
     }
 }
 
-private func readAvailable(fd: Int32, timeoutMs: Int = 1_000) throws -> String {
-    try setReadTimeout(fd: fd, timeoutMs: timeoutMs)
+private func readAvailable(fd: Int32, timeoutMs: Int32 = 3_000) throws -> String {
+    try waitUntilReadable(fd: fd, timeoutMs: timeoutMs)
     var buf = [UInt8](repeating: 0, count: 4096)
     let n = read(fd, &buf, buf.count)
     if n > 0 {
@@ -333,16 +333,19 @@ private func readAvailable(fd: Int32, timeoutMs: Int = 1_000) throws -> String {
     throw SecureSocketError.socketFailed("read(): \(errno)")
 }
 
-private func setReadTimeout(fd: Int32, timeoutMs: Int) throws {
-    var timeout = timeval(tv_sec: timeoutMs / 1000,
-                          tv_usec: Int32(timeoutMs % 1000) * 1000)
-    let result = withUnsafePointer(to: &timeout) { ptr in
-        ptr.withMemoryRebound(to: UInt8.self, capacity: MemoryLayout<timeval>.size) {
-            setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, $0, socklen_t(MemoryLayout<timeval>.size))
+private func waitUntilReadable(fd: Int32, timeoutMs: Int32) throws {
+    var descriptor = pollfd(fd: fd, events: Int16(POLLIN | POLLHUP), revents: 0)
+    while true {
+        let result = poll(&descriptor, 1, timeoutMs)
+        if result > 0 {
+            return
         }
-    }
-    if result != 0 {
-        throw SecureSocketError.socketFailed("setsockopt(SO_RCVTIMEO): \(errno)")
+        if result == 0 {
+            throw SecureSocketError.socketFailed("read timed out")
+        }
+        if errno != EINTR {
+            throw SecureSocketError.socketFailed("poll(): \(errno)")
+        }
     }
 }
 

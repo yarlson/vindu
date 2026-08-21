@@ -27,6 +27,8 @@ Parsing produces a `ConfigDocument`: settings, binds, window rules, workspace ru
 
 `Settings` is a typed option table keyed by full keyword; each entry implements both `set` (with validation and ranges) and `get` (serves IPC `getoption`). Modeled sections: general, decoration (rounding only), dwindle, master, input, misc, binds, bar. Bar plugin options validate both when parsed from the file and when applied live: a `plugin:<id>` item in `bar:indicators` needs a configured command before the config is considered clean.
 
+`general:border_size` is the active-border width; zero disables the border. `general:col.active_border` and `general:col.submap_border` keep every configured color stop and angle. `decoration:rounding` is used only when the WindowServer cannot report the target's corner radius. `general:col.inactive_border` remains a compatibility no-op because vindu draws no inactive borders.
+
 The `bar` section is a vindu extension for the same-process desktop bar:
 
 - `bar:enabled` turns it on/off (off by default so existing installs keep the same screen geometry).

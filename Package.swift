@@ -16,7 +16,15 @@ let package = Package(
     targets: [
         .target(name: "VinduCore", swiftSettings: lang),
         .target(name: "VinduDaemonSupport", dependencies: ["VinduCore"], swiftSettings: lang),
-        .executableTarget(name: "vindud", dependencies: ["VinduCore", "VinduDaemonSupport"], swiftSettings: lang),
+        .target(
+            name: "VinduBorderEngine",
+            linkerSettings: [.linkedFramework("CoreGraphics")]
+        ),
+        .executableTarget(
+            name: "vindud",
+            dependencies: ["VinduCore", "VinduDaemonSupport", "VinduBorderEngine"],
+            swiftSettings: lang
+        ),
         .executableTarget(name: "vinductl", dependencies: ["VinduCore", "VinduDaemonSupport"], swiftSettings: lang),
         .testTarget(name: "VinduCoreTests", dependencies: ["VinduCore"], swiftSettings: lang),
         .testTarget(name: "VinduDaemonSupportTests",
