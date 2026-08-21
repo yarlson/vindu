@@ -42,11 +42,13 @@ protocol DesktopBarPluginRunning: AnyObject {
 
 enum DesktopBarPluginProcessError: Error, CustomStringConvertible {
     case pipeFailed(Int32)
+    case spawnSetupFailed(Int32)
     case spawnFailed(Int32)
 
     var description: String {
         switch self {
         case .pipeFailed(let code): return "pipe failed: \(code)"
+        case .spawnSetupFailed(let code): return "spawn setup failed: \(code)"
         case .spawnFailed(let code): return "spawn failed: \(code)"
         }
     }
@@ -165,25 +167,25 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
 
     private func spawn(stdoutPipe: [Int32], stderrPipe: [Int32]) throws -> pid_t {
         var actions: posix_spawn_file_actions_t?
-        posix_spawn_file_actions_init(&actions)
+        try checkSpawnSetup(posix_spawn_file_actions_init(&actions))
         defer { posix_spawn_file_actions_destroy(&actions) }
 
         let stdoutRead = stdoutPipe[0]
         let stdoutWrite = stdoutPipe[1]
         let stderrRead = stderrPipe[0]
         let stderrWrite = stderrPipe[1]
-        posix_spawn_file_actions_adddup2(&actions, stdoutWrite, STDOUT_FILENO)
-        posix_spawn_file_actions_adddup2(&actions, stderrWrite, STDERR_FILENO)
-        posix_spawn_file_actions_addclose(&actions, stdoutRead)
-        posix_spawn_file_actions_addclose(&actions, stderrRead)
-        posix_spawn_file_actions_addclose(&actions, stdoutWrite)
-        posix_spawn_file_actions_addclose(&actions, stderrWrite)
+        try checkSpawnSetup(posix_spawn_file_actions_adddup2(&actions, stdoutWrite, STDOUT_FILENO))
+        try checkSpawnSetup(posix_spawn_file_actions_adddup2(&actions, stderrWrite, STDERR_FILENO))
+        try checkSpawnSetup(posix_spawn_file_actions_addclose(&actions, stdoutRead))
+        try checkSpawnSetup(posix_spawn_file_actions_addclose(&actions, stderrRead))
+        try checkSpawnSetup(posix_spawn_file_actions_addclose(&actions, stdoutWrite))
+        try checkSpawnSetup(posix_spawn_file_actions_addclose(&actions, stderrWrite))
 
         var attrs: posix_spawnattr_t?
-        posix_spawnattr_init(&attrs)
+        try checkSpawnSetup(posix_spawnattr_init(&attrs))
         defer { posix_spawnattr_destroy(&attrs) }
-        let flags = Int16(POSIX_SPAWN_SETSID)
-        posix_spawnattr_setflags(&attrs, flags)
+        let flags = Int16(POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT)
+        try checkSpawnSetup(posix_spawnattr_setflags(&attrs, flags))
 
         let argv = ["/bin/sh", "-lc", request.command]
         let env = Self.pluginEnvironment(for: request)
@@ -199,6 +201,12 @@ final class DesktopBarPluginProcess: DesktopBarPluginRunning {
             throw DesktopBarPluginProcessError.spawnFailed(status)
         }
         return childPid
+    }
+
+    private func checkSpawnSetup(_ status: Int32) throws {
+        guard status == 0 else {
+            throw DesktopBarPluginProcessError.spawnSetupFailed(status)
+        }
     }
 
     private func startProcessSource(pid: pid_t) {

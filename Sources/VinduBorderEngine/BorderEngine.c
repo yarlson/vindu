@@ -775,7 +775,7 @@ static void updateBorder(VBEEngine *engine) {
     engine->targetBounds = targetBounds;
 }
 
-static void windowEvent(uint32_t event, void *data, uint32_t length, void *context) {
+static void windowEvent(uint32_t event, void *data, size_t length, void *context) {
     VBEEngine *engine = context;
     if (!engine || !engine->available) {
         return;

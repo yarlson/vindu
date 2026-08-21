@@ -32,6 +32,31 @@ struct DesktopBarPluginProcessTests {
         #expect(env["VINDU_BAR_PLUGIN_EVENT_DATA"] == "1")
     }
 
+    @Test func pluginDoesNotInheritUnrelatedDescriptors() throws {
+        let sourceFD = Darwin.open("/dev/null", O_RDONLY)
+        guard sourceFD >= 0 else {
+            Issue.record("could not open /dev/null")
+            return
+        }
+        let inheritedFD = fcntl(sourceFD, F_DUPFD, 100)
+        defer {
+            if inheritedFD >= 0 { Darwin.close(inheritedFD) }
+            Darwin.close(sourceFD)
+        }
+        guard inheritedFD >= 100 else {
+            Issue.record("could not duplicate a high-numbered descriptor")
+            return
+        }
+
+        let result = try runPlugin(
+            command: "if [ -e /dev/fd/\(inheritedFD) ]; then printf inherited; else printf closed; fi",
+            timeoutMs: 500
+        )
+
+        #expect(result.exitCode == 0)
+        #expect(String(decoding: result.stdout, as: UTF8.self) == "closed")
+    }
+
     @Test func timeoutEscalatesPastTermIgnoringPlugin() throws {
         let result = try runPlugin(
             command: "trap '' TERM; while :; do sleep 1; done",

@@ -8,7 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef void (*VBEWindowEventCallback)(uint32_t, void *, uint32_t, void *);
+typedef void (*VBEWindowEventCallback)(uint32_t, void *, size_t, void *);
 
 typedef struct {
     void *handle;
