@@ -2,7 +2,7 @@
 
 ## AX bridge
 
-`AXBridge` owns one AX observer per regular-activation-policy app and translates accessibility notifications into delegate callbacks (appeared, destroyed, focused, moved/resized, title changed, minimized/deminimized). The CGWindowID comes from `_AXUIElementGetWindow` — private but long-stable, the standard approach for macOS tiling WMs.
+`AXBridge` owns one AX observer per regular-activation-policy app and translates accessibility notifications into delegate callbacks (appeared, destroyed, managed focus, actual focused surface, moved/resized, title changed, minimized/deminimized). The CGWindowID comes from `_AXUIElementGetWindow` — private but long-stable, the standard approach for macOS tiling WMs.
 
 Reliability measures, all load-bearing:
 
@@ -14,9 +14,10 @@ Reliability measures, all load-bearing:
 
 Every AXWindow is classified before management:
 
-- standard → tiles; dialog (including system dialogs and floating panels) → floats; auxiliary → never managed or focused.
+- standard → tiles; dialog (including system dialogs and floating panels) → floats; auxiliary → never managed.
 - A window whose AXMain attribute is not settable is auxiliary (input-method candidate panels, picker HUDs, non-activating system surfaces).
-- Unknown or missing subrole falls back to chrome heuristics: a title or close button means a real window; chromeless surfaces (autocomplete dropdowns, tooltips) stay invisible to the WM, and their focus events are swallowed so the parent window keeps focus and border.
+- Unknown or missing subrole falls back to chrome heuristics: a title or close button means a real window; chromeless surfaces (autocomplete dropdowns, tooltips) stay invisible to window management. Their actual focus is still reported so the active border hides until focus returns to the managed parent.
+- Border eligibility is narrower than management: only a standard window whose AX size is settable can receive the active border. Dialogs, sheets, progress windows, popups, and fixed-size windows do not.
 
 ## Per-window state
 
@@ -24,7 +25,7 @@ Every AXWindow is classified before management:
 
 ## Focus
 
-- Focus the WM initiates and focus the OS reports share one bookkeeping path (focused window, workspace lastFocused, focused monitor, history, border, events).
+- Focus the WM initiates and managed focus the OS reports share one bookkeeping path (focused window, workspace lastFocused, focused monitor, history, events). Actual system focus is tracked separately for active-border eligibility, including auxiliary surfaces that never enter `WindowState`.
 - A new window is focused only when user-driven — its app is frontmost or nothing holds focus. Background spawns (input panels, updaters, slow launches the user tabbed away from) are managed, not focused. A non-silent `workspace …` rule follows the window to that workspace; `workspace … silent` moves it there without changing what the user sees.
 - An OS focus event for a window on a hidden workspace switches there only if a user gesture (click or ⌘Tab) happened within the last few seconds, or `misc:focus_on_activate` is enabled; otherwise it is a focus steal and is ignored.
 - Focus history (bounded) picks the next window after closes and minimizes; `focuscurrentorlast` uses it too.
@@ -38,9 +39,13 @@ Tiled windows stick to their assigned tile: drift beyond a few pixels is re-asse
 
 The green button moves a window onto its own Space. Detection combines an AXFullScreen poll gated on already-fullscreen windows, monitor-sized event frames, and a rate-limited poll that catches app-internal animated transitions; an `activeSpaceDidChange` sweep covers transitions that deliver no AX move event at all. While native-fullscreen the window leaves the tiled structures; on exit it is re-adopted and re-arranged or stashed.
 
-## Border overlay
+## Active border
 
-A click-through, non-activating panel that joins all Spaces, framed around the focused window's live frame (coordinates convert to AppKit space at this boundary only). It renders the active-border gradient's first color, switches to the submap border color while a submap is active, and hides for hidden, minimized, or fullscreen windows.
+`WindowManager` selects at most one target: the actual focused surface must match the managed focused window, the window must be a resizable standard window, and it must be visible, unminimized, outside native and managed fullscreen, and not paused. `general:border_size <= 0` also hides it. Focus on a dialog, sheet, progress window, popup, or other auxiliary surface removes the border. Auxiliary focus leaves managed focus on the parent; managed dialogs remain floating and border-ineligible.
+
+`BorderController` passes only the target id and current style to `VinduBorderEngine`. The engine owns one hollow, noninteractive WindowServer surface. It reads target bounds from WindowServer events, follows move and resize transactions, joins the target Space, copies its level and sublevel, and orders immediately below it. The full configured gradient is drawn. The target's reported corner radius is authoritative; `decoration:rounding` is the fallback when that capability is absent.
+
+Every private symbol is resolved at runtime from the fixed SkyLight framework path. A missing symbol or a reported setup or runtime failure disables only the border and emits one diagnostic. A private ABI change that preserves the symbol names can still affect the in-process daemon, so each supported macOS version needs live validation. There is no AppKit border fallback, polling loop, external border process, or direct SkyLight link.
 
 ## Pause
 

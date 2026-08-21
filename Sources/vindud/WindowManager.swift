@@ -8,6 +8,7 @@ final class WindowState {
     let pid: pid_t
     let initialClass: String
     let initialTitle: String
+    let borderEligible: Bool
     var clazz: String
     var title: String
     var workspace: Int
@@ -24,13 +25,15 @@ final class WindowState {
     var hidden = false
     var floatFrame: CGRect?
 
-    init(id: WindowID, pid: pid_t, clazz: String, title: String, workspace: Int, frame: CGRect) {
+    init(id: WindowID, pid: pid_t, clazz: String, title: String, workspace: Int,
+         frame: CGRect, borderEligible: Bool) {
         self.id = id
         self.pid = pid
         self.clazz = clazz
         self.title = title
         self.initialClass = clazz
         self.initialTitle = title
+        self.borderEligible = borderEligible
         self.workspace = workspace
         self.frame = frame
     }
@@ -42,7 +45,7 @@ final class WindowManager {
     let bridge = AXBridge()
     let monitorMgr = MonitorManager()
     let tap = HotkeyTap()
-    let border = BorderOverlay()
+    let border = BorderController()
     let statusItem = StatusItem()
     let desktopBar = DesktopBar()
     let desktopBarRefresh = DesktopBarRefreshCoordinator()
@@ -69,6 +72,7 @@ final class WindowManager {
     /// Special workspace currently overlaid per monitor.
     var shownSpecial: [CGDirectDisplayID: Int] = [:]
     var focusedWindow: WindowID?
+    var systemFocusedSurface: WindowID?
     var focusedMonitorID: CGDirectDisplayID = 0
     var focusHistory: [WindowID] = []
 
@@ -154,9 +158,7 @@ final class WindowManager {
 
         arrangeAllVisible()
         refreshDesktopBar()
-        if let focused = bridge.systemFocusedWindowID() {
-            windowFocused(focused)
-        }
+        bridge.reportSystemFocus()
         // First run: nobody knows the chords yet — show the cheat sheet once
         // the initial tiling has settled.
         if wroteDefaultConfig {
@@ -287,7 +289,7 @@ final class WindowManager {
         if ws.isSpecial {
             for id in ws.allWindows { bridge.raise(id) }
         }
-        refreshBorder()
+        syncBorder()
     }
 
     func arrangeAllVisible() {
@@ -332,6 +334,7 @@ final class WindowManager {
         guard let monitor = monitorMgr.byID(workspace(forID: state.workspace).monitor)
                 ?? monitorMgr.primary else { return }
         state.hidden = true
+        if focusedWindow == id { syncBorder() }
         bridge.setPosition(id, CGPoint(x: monitor.frame.maxX - 2, y: monitor.frame.maxY - 2))
     }
 
@@ -466,14 +469,14 @@ final class WindowManager {
         ws.lastFocused = state.id
         focusedMonitorID = ws.monitor
         pushFocusHistory(state.id)
-        refreshBorder()
+        syncBorder()
         broadcast(.activewindow(clazz: state.clazz, title: state.title))
         broadcast(.activewindowv2(state.id))
     }
 
     func clearFocus() {
         focusedWindow = nil
-        refreshBorder()
+        syncBorder()
         broadcast(.activewindow(clazz: "", title: ""))
         broadcast(.activewindowv2(nil))
     }
@@ -495,26 +498,33 @@ final class WindowManager {
         }
     }
 
-    func refreshBorder() {
-        guard !paused, let id = focusedWindow, let state = windows[id], !state.hidden, !state.minimized,
-              !state.nativeFullscreen,
-              workspace(forID: state.workspace).fullscreen != id else {
+    func syncBorder() {
+        guard let id = focusedWindow, let state = windows[id] else {
+            border.hide()
+            return
+        }
+        let borderState = ActiveBorderState(
+            managedWindowID: id,
+            systemWindowID: systemFocusedSurface,
+            eligible: state.borderEligible,
+            paused: paused,
+            hidden: state.hidden,
+            minimized: state.minimized,
+            nativeFullscreen: state.nativeFullscreen,
+            managedFullscreen: workspace(forID: state.workspace).fullscreen == id,
+            width: settings.general.borderSize
+        )
+        guard let target = ActiveBorderPolicy.targetWindowID(for: borderState) else {
             border.hide()
             return
         }
         let gradient = tap.activeSubmap.isEmpty
             ? settings.general.activeBorder
             : settings.general.submapBorder
-        border.show(around: borderFrame(for: state),
+        border.show(windowID: target,
                     gradient: gradient,
                     width: settings.general.borderSize,
-                    rounding: settings.decoration.rounding,
-                    primaryHeight: monitorMgr.primaryHeight)
-    }
-
-    private func borderFrame(for state: WindowState) -> CGRect {
-        guard let live = bridge.frame(of: state.id), !live.isEmpty else { return state.frame }
-        return live
+                    fallbackRadius: settings.decoration.rounding)
     }
 
     /// Applies a frame to a floating window and keeps every dependent in sync.
@@ -522,7 +532,6 @@ final class WindowManager {
         state.frame = frame
         state.floatFrame = frame
         bridge.setFrame(state.id, frame)
-        refreshBorder()
     }
 
     func followMouse(_ point: CGPoint) {
@@ -573,14 +582,14 @@ final class WindowManager {
         statusItem.update(paused: on)
         broadcast(.pause(on))
         if on {
-            border.hide()
+            syncBorder()
             log("tiling paused")
         } else {
             for ws in registry.byID.values where !isVisible(ws) {
                 hideWorkspace(ws)
             }
             arrangeAllVisible()
-            refreshBorder()
+            syncBorder()
             log("tiling resumed")
         }
     }
@@ -612,7 +621,8 @@ extension WindowManager: AXBridgeDelegate {
         }
 
         let state = WindowState(id: snap.id, pid: snap.pid, clazz: snap.clazz,
-                                title: snap.title, workspace: wsID, frame: snap.frame)
+                                title: snap.title, workspace: wsID, frame: snap.frame,
+                                borderEligible: snap.kind == .standard && snap.isResizable)
         state.floating = placement.floating
         state.pinned = placement.pinned
         state.minimized = snap.isMinimized
@@ -658,6 +668,7 @@ extension WindowManager: AXBridgeDelegate {
 
     func windowDestroyed(_ id: WindowID) {
         guard let state = windows.removeValue(forKey: id) else { return }
+        if focusedWindow == id { syncBorder() }
         let ws = workspace(forID: state.workspace)
         ws.removeWindow(id)
         focusHistory.removeAll { $0 == id }
@@ -690,6 +701,11 @@ extension WindowManager: AXBridgeDelegate {
                 : .id(ws.id))
         }
         noteFocus(state)
+    }
+
+    func systemFocusedSurfaceChanged(_ id: WindowID?) {
+        systemFocusedSurface = id
+        syncBorder()
     }
 
     func windowMovedOrResized(_ id: WindowID, frame: CGRect) {
@@ -741,7 +757,7 @@ extension WindowManager: AXBridgeDelegate {
         if native {
             if !state.floating { ws.removeTiled(state.id) }
             if isVisible(ws) { arrange(ws) }
-            refreshBorder()
+            syncBorder()
         } else {
             state.hidden = false
             if !state.floating, !ws.master.contains(state.id) { insertTiled(state.id, into: ws) }
@@ -763,12 +779,12 @@ extension WindowManager: AXBridgeDelegate {
                 applyNativeFullscreen(state, native)
             }
         }
-        refreshBorder()
+        syncBorder()
     }
 
     /// Move events for the window we're dragging: bindm echoes of our own
     /// setFrame are swallowed; native drags engage the session and track the
-    /// OS-driven frame so the border rides along.
+    /// OS-driven frame.
     private func handleDragEcho(_ state: WindowState, _ frame: CGRect) -> Bool {
         guard var session = drag, session.id == state.id else { return false }
         guard session.source == .native else { return true }
@@ -785,7 +801,6 @@ extension WindowManager: AXBridgeDelegate {
         drag = session
         if session.engaged {
             state.frame = frame
-            if state.id == focusedWindow { refreshBorder() }
         }
         return true
     }
@@ -793,7 +808,6 @@ extension WindowManager: AXBridgeDelegate {
     private func trackFloatingFrame(_ state: WindowState, _ frame: CGRect) {
         state.frame = frame
         state.floatFrame = frame
-        if state.id == focusedWindow { refreshBorder() }
     }
 
     /// Tiled windows stick to their tile. Re-assert promptly (cooldown
@@ -805,18 +819,13 @@ extension WindowManager: AXBridgeDelegate {
             if frameDistance(frame, centered) > 4 {
                 reassertFrame(centered, for: state.id)
             }
-            if state.id == focusedWindow { refreshBorder() }
             return
         }
 
         let drift = frameDistance(frame, desired)
-        guard drift > 4 else {
-            if state.id == focusedWindow { refreshBorder() }
-            return
-        }
+        guard drift > 4 else { return }
         reassertFrame(desired, for: state.id)
         scheduleSettle(state.id)
-        if state.id == focusedWindow { refreshBorder() }
     }
 
     private func frameDistance(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
@@ -861,7 +870,6 @@ extension WindowManager: AXBridgeDelegate {
                   !state.floating, !state.hidden, !state.minimized,
                   self.isVisible(self.workspace(forID: state.workspace)) else { return }
             self.bridge.setFrame(id, state.frame)
-            if id == self.focusedWindow { self.refreshBorder() }
         }
         settleWork[id] = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
@@ -879,6 +887,7 @@ extension WindowManager: AXBridgeDelegate {
     func windowMinimized(_ id: WindowID) {
         guard let state = windows[id] else { return }
         state.minimized = true
+        if focusedWindow == id { syncBorder() }
         let ws = workspace(forID: state.workspace)
         if !state.floating {
             ws.removeTiled(id)

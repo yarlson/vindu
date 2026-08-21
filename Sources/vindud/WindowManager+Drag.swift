@@ -65,7 +65,6 @@ extension WindowManager {
                 frame.origin.y += dy
                 state.frame = frame
                 bridge.setFrame(session.id, frame)
-                refreshBorder()
                 liveSwapDuringDrag(at: point)
             } else {
                 let ddx = point.x - session.lastPoint.x
@@ -133,12 +132,10 @@ extension WindowManager {
         guard let session = drag else { return }
         drag = nil
         guard let state = windows[session.id] else {
-            refreshBorder()
             return
         }
         if state.floating {
             state.floatFrame = state.frame
-            refreshBorder()
             return
         }
         if session.sawResize {
@@ -160,6 +157,5 @@ extension WindowManager {
         } else {
             arrange(ws)
         }
-        refreshBorder()
     }
 }

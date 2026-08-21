@@ -10,8 +10,8 @@ func _AXUIElementGetWindow(_ element: AXUIElement, _ wid: inout CGWindowID) -> A
 
 /// What kind of surface an AXWindow is. Mirrors how Hyprland treats clients:
 /// standard windows tile, dialogs float, and chromeless auxiliary surfaces
-/// (autocomplete dropdowns, tooltips) are never managed or focused at all —
-/// keyboard focus stays with their parent window.
+/// (autocomplete dropdowns, tooltips) are never managed, so window-manager
+/// focus stays with their parent window.
 enum WindowKind {
     case standard
     case dialog
@@ -25,6 +25,7 @@ struct WindowSnapshot {
     let title: String
     let frame: CGRect
     let kind: WindowKind
+    let isResizable: Bool
     let isMinimized: Bool
 }
 
@@ -32,6 +33,7 @@ protocol AXBridgeDelegate: AnyObject {
     func windowAppeared(_ snap: WindowSnapshot)
     func windowDestroyed(_ id: WindowID)
     func windowFocused(_ id: WindowID)
+    func systemFocusedSurfaceChanged(_ id: WindowID?)
     func windowMovedOrResized(_ id: WindowID, frame: CGRect)
     func windowTitleChanged(_ id: WindowID, title: String)
     func windowMinimized(_ id: WindowID)
@@ -92,11 +94,12 @@ final class AXBridge {
         center.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
                            object: nil, queue: .main) { [weak self] note in
             guard let self,
-                  let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                  let handle = self.apps[app.processIdentifier] else { return }
-            if let focused = self.focusedWindowID(of: handle) {
-                self.delegate?.windowFocused(focused)
+                  let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            guard let handle = self.apps[app.processIdentifier] else {
+                self.delegate?.systemFocusedSurfaceChanged(nil)
+                return
             }
+            self.reportFocusedWindow(of: handle)
         }
 
         for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
@@ -178,15 +181,7 @@ final class AXBridge {
         case kAXWindowCreatedNotification:
             register(element: element, app: app)
         case kAXFocusedWindowChangedNotification:
-            var wid: CGWindowID = 0
-            if _AXUIElementGetWindow(element, &wid) == .success, wid != 0 {
-                // Auxiliary surfaces (popups) never register; swallowing their
-                // focus events keeps the parent window focused and bordered.
-                let known = app.windows.contains { $0.id == wid }
-                if known || register(element: element, app: app) != nil {
-                    delegate?.windowFocused(wid)
-                }
-            }
+            reportFocused(element: element, app: app)
         case kAXUIElementDestroyedNotification:
             if let idx = app.windows.firstIndex(where: { CFEqual($0.element, element) }) {
                 let id = app.windows.remove(at: idx).id
@@ -225,7 +220,7 @@ final class AXBridge {
     private func classify(_ element: AXUIElement) -> WindowKind {
         // Real windows can become the app's main window. Input-method
         // candidate panels, picker HUDs, and other non-activating system
-        // surfaces refuse — never manage or focus those.
+        // surfaces refuse — never manage those.
         var mainSettable = DarwinBoolean(false)
         if AXUIElementIsAttributeSettable(element, kAXMainAttribute as CFString, &mainSettable) == .success,
            !mainSettable.boolValue {
@@ -259,8 +254,17 @@ final class AXBridge {
             title: axValue(element, kAXTitleAttribute) ?? "",
             frame: frame(of: element) ?? .zero,
             kind: classify(element),
+            isResizable: isResizable(element),
             isMinimized: (axValue(element, kAXMinimizedAttribute) as Bool?) ?? false
         )
+    }
+
+    private func isResizable(_ element: AXUIElement) -> Bool {
+        var settable = DarwinBoolean(false)
+        return AXUIElementIsAttributeSettable(element,
+                                               kAXSizeAttribute as CFString,
+                                               &settable) == .success
+            && settable.boolValue
     }
 
     /// Reaps tracked windows the window server no longer lists. A window must
@@ -299,17 +303,34 @@ final class AXBridge {
         return nil
     }
 
-    private func focusedWindowID(of app: AppHandle) -> WindowID? {
-        guard let el: AXUIElement = axValue(app.element, kAXFocusedWindowAttribute) else { return nil }
-        var wid: CGWindowID = 0
-        guard _AXUIElementGetWindow(el, &wid) == .success, wid != 0 else { return nil }
-        return wid
+    private func reportFocusedWindow(of app: AppHandle) {
+        guard let element: AXUIElement = axValue(app.element, kAXFocusedWindowAttribute) else {
+            delegate?.systemFocusedSurfaceChanged(nil)
+            return
+        }
+        reportFocused(element: element, app: app)
     }
 
-    func systemFocusedWindowID() -> WindowID? {
+    private func reportFocused(element: AXUIElement, app: AppHandle) {
+        var wid: CGWindowID = 0
+        guard _AXUIElementGetWindow(element, &wid) == .success, wid != 0 else {
+            delegate?.systemFocusedSurfaceChanged(nil)
+            return
+        }
+        delegate?.systemFocusedSurfaceChanged(wid)
+        let known = app.windows.contains { $0.id == wid }
+        if known || register(element: element, app: app) != nil {
+            delegate?.windowFocused(wid)
+        }
+    }
+
+    func reportSystemFocus() {
         guard let front = NSWorkspace.shared.frontmostApplication,
-              let handle = apps[front.processIdentifier] else { return nil }
-        return focusedWindowID(of: handle)
+              let handle = apps[front.processIdentifier] else {
+            delegate?.systemFocusedSurfaceChanged(nil)
+            return
+        }
+        reportFocusedWindow(of: handle)
     }
 
     // MARK: - Window operations (top-left-origin global coordinates)

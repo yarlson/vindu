@@ -3,6 +3,7 @@
 ## Local build
 
 - SwiftPM only: `make build` (debug), `make release` (release plus ad-hoc codesign), `make install` (to PREFIX, default `/usr/local`).
+- `VinduBorderEngine` is an internal C target linked into `vindud`. Its private WindowServer calls are dynamically resolved at runtime, so the binary has no SkyLight load command or direct private-symbol imports.
 - `make test` runs `swift test`, injecting Command Line Tools framework and rpath flags when `Testing.framework` only exists in the CLT location — tests work without full Xcode.
 - `make test` also enforces the template invariant: the config template embedded in `DefaultConfig.swift` must be byte-identical to `examples/vindu.conf`.
 
@@ -16,7 +17,7 @@ macOS ties the Accessibility grant to the binary's code identity. Release and in
 
 ## CI
 
-Build-and-test matrix on the oldest and newest macOS runner images (both Apple Silicon), with a SwiftPM cache keyed by source revision, manifest, and image. A release-configuration build plus `--version` smoke runs catch optimizer-only breakage and prove the binaries start.
+Build-and-test matrix on the oldest and newest macOS runner images (both Apple Silicon), with a SwiftPM cache keyed by source revision, manifest, and image. A release-configuration build plus `--version` smoke runs catch optimizer-only breakage and prove the binaries start. CI proves the macOS 13 deployment build and pure border policy, but private border capability, drawing, input transparency, and event timing require a real logged-in window session on each supported macOS version.
 
 ## Release pipeline
 

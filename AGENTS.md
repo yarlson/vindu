@@ -4,7 +4,7 @@ This file provides guidance to coding agents when working with code in this repo
 
 ## Project
 
-vindu — a dynamic tiling window manager for macOS (repo: github.com/yarlson/vindu; the folder name "macland" is the project's old name, kept intentionally). SwiftPM, macOS 13+, zero external dependencies. Three targets: `VinduCore` (pure logic, the only tested target), `vindud` (daemon), `vinductl` (CLI).
+vindu — a dynamic tiling window manager for macOS (repo: github.com/yarlson/vindu; the folder name "macland" is the project's old name, kept intentionally). SwiftPM, macOS 13+, zero external dependencies. Five targets: `VinduCore` (pure logic), `VinduDaemonSupport` (testable daemon support), `VinduBorderEngine` (internal C border integration), `vindud` (daemon), and `vinductl` (CLI).
 
 ## Architecture docs
 
@@ -27,5 +27,6 @@ These docs describe current state only. When a change affects something they cov
 ## Rules
 
 - Never run `vindud` yourself: it re-tiles the user's real windows. Verify daemon behavior only with explicit user consent; pure logic belongs in `VinduCore` where `make test` covers it.
+- Keep private WindowServer calls inside `VinduBorderEngine` and load them dynamically from the fixed system framework path. A missing symbol or reported setup or runtime failure must disable only the border. Never link `vindud` directly to SkyLight.
 - Never change the version (`VinduVersion`) unless explicitly asked.
 - Keep user-facing strings (README lead, CLI output, notifications) Hyprland-free; Hyprland is named only as a migration aid. Full policy in `docs/context/practices.md`.

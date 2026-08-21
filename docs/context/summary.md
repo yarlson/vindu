@@ -6,18 +6,19 @@ Dynamic tiling window manager for macOS. Single Swift package, zero external dep
 
 - Tiles windows automatically (dwindle or master layout), keyboard-driven, with workspaces, floating, fullscreen, and mouse-drag re-tiling.
 - Hyprland-compatible surface: same config dialect, dispatcher names, IPC verbs, and event wire format, so Linux configs and status-bar scripts largely work unchanged.
-- Runs on the public Accessibility API plus a session event tap. SIP stays on. The only private symbol is `_AXUIElementGetWindow` (long-stable, used by every macOS tiling WM).
+- Uses the Accessibility API and a session event tap for window management. SIP stays on. `_AXUIElementGetWindow` maps AX elements to window ids; an optional internal border engine loads private WindowServer interfaces at runtime. Missing symbols and reported setup or runtime failures disable only the border.
 
 ## Architecture
 
-Four targets with a hard purity boundary:
+Five targets with a hard purity boundary:
 
 - `VinduCore` — library holding all logic that can be pure: config language, settings, binds, dispatchers, window rules, both layout engines, workspace registry, IPC models and wire formats. No GUI dependencies; covered by `swift test`.
 - `VinduDaemonSupport` — testable daemon infrastructure that does not need AX/AppKit window access: config file loading, IPC/socket helpers, config watching, LaunchAgent plist rendering, service log paths, desktop-bar plugin execution, and weather fetches.
-- `vindud` — the daemon. Owns every OS integration: AX observers (`AXBridge`), the event tap (`HotkeyTap`), monitors, border overlay, AppKit desktop-bar panels, and launch orchestration. Single-threaded: AX events, hotkeys, and IPC all funnel into `WindowManager` on the main queue.
+- `VinduBorderEngine` — internal C boundary for the optional compositor-backed active border. It dynamically loads private WindowServer symbols, owns one border surface and its event source, and has no external dependency or public product.
+- `vindud` — the daemon. Owns every OS integration: AX observers (`AXBridge`), the event tap (`HotkeyTap`), monitors, the border controller, AppKit desktop-bar panels, and launch orchestration. Single-threaded: AX events, hotkeys, and IPC all funnel into `WindowManager` on the main queue.
 - `vinductl` — thin socket-client CLI.
 
-All geometry is top-left-origin global coordinates; AppKit's flipped coordinates appear only at the border-overlay and cursor-position boundaries.
+All window and border geometry is top-left-origin global coordinates; AppKit's flipped coordinates appear only at AppKit UI and cursor-position boundaries.
 
 ## Core Flow
 
@@ -26,6 +27,7 @@ All geometry is top-left-origin global coordinates; AppKit's flipped coordinates
 3. The window joins its workspace's dual layout structure (master order + dwindle tree, kept in lockstep).
 4. Visible workspaces re-arrange: layout frames → gap math → border inset → AX setFrame. Hidden workspaces stash windows just off-screen instead (macOS offers no Space control with SIP on).
 5. The event tap swallows bound chords and dispatches them; the command socket accepts the same dispatchers; every state change broadcasts on the event socket.
+6. For one focused, resizable standard window, `WindowManager` gives the border engine only the target id and style. WindowServer events keep the border surface synchronized without AX frame reads.
 
 ## System State
 
@@ -44,8 +46,8 @@ All geometry is top-left-origin global coordinates; AppKit's flipped coordinates
 
 ## Tech Stack
 
-- Swift (tools 6.0, language mode 5 for C callback interop), SwiftPM, macOS 13+.
-- AppKit + ApplicationServices (AX) + CGEvent taps, in the daemon only.
+- Swift (tools 6.0, language mode 5 for C callback interop) plus one internal C target, SwiftPM, macOS 13+.
+- AppKit + ApplicationServices (AX) + CGEvent taps in the daemon; CoreGraphics and the dynamically loaded WindowServer boundary in the border engine.
 - GitHub Actions CI on a two-image macOS matrix; tag-driven releases with universal binaries, provenance attestation, and an automated Homebrew formula bump.
 
 See [context-map.md](context-map.md) for the file index.
