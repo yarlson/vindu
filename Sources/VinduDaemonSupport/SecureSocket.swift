@@ -132,6 +132,17 @@ func setSocketNonBlocking(_ fd: Int32) throws {
     }
 }
 
+public func setSocketNoSigPipe(_ fd: Int32) throws {
+    var enabled: Int32 = 1
+    guard setsockopt(fd,
+                     SOL_SOCKET,
+                     SO_NOSIGPIPE,
+                     &enabled,
+                     socklen_t(MemoryLayout.size(ofValue: enabled))) == 0 else {
+        throw SecureSocketError.socketFailed("setsockopt(SO_NOSIGPIPE): \(errno)")
+    }
+}
+
 final class BoundSocket {
     let fd: Int32
 

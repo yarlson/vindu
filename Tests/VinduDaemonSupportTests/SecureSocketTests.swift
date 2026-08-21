@@ -28,12 +28,16 @@ private final class ShortTemporaryDirectory {
 private func connectUnixSocket(_ path: String) throws -> Int32 {
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
     guard fd >= 0 else { throw SecureSocketError.socketFailed("socket(): \(errno)") }
-    guard UnixSocket.connect(fd, to: path) == 0 else {
-        let e = errno
+    do {
+        try setSocketNoSigPipe(fd)
+        guard UnixSocket.connect(fd, to: path) == 0 else {
+            throw SecureSocketError.socketFailed("connect \(path): \(errno)")
+        }
+        return fd
+    } catch {
         close(fd)
-        throw SecureSocketError.socketFailed("connect \(path): \(e)")
+        throw error
     }
-    return fd
 }
 
 private enum ExpectedSocketFailure: Error {
@@ -41,6 +45,37 @@ private enum ExpectedSocketFailure: Error {
 }
 
 @Suite struct SecureSocketTests {
+    @Test func disconnectedSocketWriteReturnsEPIPE() throws {
+        var descriptors = [Int32](repeating: -1, count: 2)
+        guard socketpair(AF_UNIX, SOCK_STREAM, 0, &descriptors) == 0 else {
+            throw SecureSocketError.socketFailed("socketpair(): \(errno)")
+        }
+        let writer = descriptors[0]
+        let peer = descriptors[1]
+        var peerIsOpen = true
+        defer {
+            close(writer)
+            if peerIsOpen { close(peer) }
+        }
+
+        try setSocketNoSigPipe(writer)
+        var enabled: Int32 = 0
+        var optionLength = socklen_t(MemoryLayout.size(ofValue: enabled))
+        #expect(getsockopt(writer, SOL_SOCKET, SO_NOSIGPIPE, &enabled, &optionLength) == 0)
+        #expect(enabled == 1)
+        close(peer)
+        peerIsOpen = false
+
+        let firstWrite = writeOnce(writer, data: Array("first".utf8))
+        let firstWriteError = errno
+        #expect(firstWrite == -1)
+        #expect(firstWriteError == EPIPE)
+        let secondWrite = writeAll(writer, data: Array("second".utf8))
+        let secondWriteError = errno
+        #expect(!secondWrite)
+        #expect(secondWriteError == EPIPE)
+    }
+
     @Test func runtimeDirectoryMustNotBeSymlink() throws {
         let owner = try ShortTemporaryDirectory()
         let target = owner.url.appendingPathComponent("target")
@@ -272,10 +307,48 @@ private enum ExpectedSocketFailure: Error {
 
         let fd = try connectUnixSocket(path)
         defer { close(fd) }
-        #expect(writeAll(fd, data: Array("ping".utf8)))
-        shutdown(fd, SHUT_WR)
 
         #expect(try readUntilEOF(fd: fd) == "")
+    }
+
+    @Test func commandServerSurvivesClientDisconnectBeforeReply() throws {
+        let owner = try ShortTemporaryDirectory()
+        let path = owner.url.appendingPathComponent("vindu.sock").path
+        let queue = DispatchQueue(label: "vindu.ipc.disconnect.test")
+        let handlerStarted = DispatchSemaphore(value: 0)
+        let allowReply = DispatchSemaphore(value: 0)
+        let server = IPCServer(path: path,
+                               queue: queue,
+                               idleTimeout: .seconds(5),
+                               peerValidator: { _ in true }) { _ in
+            handlerStarted.signal()
+            allowReply.wait()
+            return "ok"
+        }
+        try server.start()
+        defer {
+            allowReply.signal()
+            server.stop()
+        }
+
+        var fd = try connectUnixSocket(path)
+        defer {
+            if fd >= 0 { close(fd) }
+        }
+        #expect(writeAll(fd, data: Array("ping".utf8)))
+        shutdown(fd, SHUT_WR)
+        guard handlerStarted.wait(timeout: .now() + 1) == .success else {
+            Issue.record("handler did not start")
+            return
+        }
+
+        close(fd)
+        fd = -1
+        allowReply.signal()
+
+        try waitForCondition {
+            queue.sync { server.clientCountForTesting == 0 }
+        }
     }
 
     @Test func commandServerClosesIdleClient() throws {
@@ -335,6 +408,28 @@ private enum ExpectedSocketFailure: Error {
         events.broadcast(.workspace("2"))
 
         #expect(try readAvailable(fd: fd) == "workspace>>2\n")
+    }
+
+    @Test func eventBroadcasterPrunesDisconnectedClient() throws {
+        let owner = try ShortTemporaryDirectory()
+        let path = owner.url.appendingPathComponent("vindu.events.sock").path
+        let queue = DispatchQueue(label: "vindu.events.disconnect.test")
+        let events = EventBroadcaster(path: path, queue: queue)
+        try events.start()
+        defer { events.stop() }
+
+        var fd = try connectUnixSocket(path)
+        defer {
+            if fd >= 0 { close(fd) }
+        }
+        try waitForCondition { events.clientCountForTesting == 1 }
+        #expect(shutdown(fd, SHUT_RDWR) == 0)
+        close(fd)
+        fd = -1
+
+        events.broadcast(.workspace("2"))
+
+        #expect(events.clientCountForTesting == 0)
     }
 
     @Test func eventBroadcasterStopsAndRestartsFromItsQueue() throws {

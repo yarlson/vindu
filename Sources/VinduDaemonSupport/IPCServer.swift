@@ -137,11 +137,12 @@ public final class IPCServer {
                 if errno == EAGAIN || errno == EWOULDBLOCK { return }
                 return
             }
-            guard clients.count < maxClients, peerValidator(conn) else {
-                Darwin.close(conn)
-                continue
-            }
             do {
+                try setSocketNoSigPipe(conn)
+                guard clients.count < maxClients, peerValidator(conn) else {
+                    Darwin.close(conn)
+                    continue
+                }
                 try setSocketNonBlocking(conn)
                 track(conn)
             } catch {
@@ -269,6 +270,10 @@ public final class IPCServer {
         client.writeSource?.cancel()
     }
 
+    var clientCountForTesting: Int {
+        onQueue { clients.count }
+    }
+
     private func onQueue<T>(_ operation: () throws -> T) rethrows -> T {
         if DispatchQueue.getSpecific(key: queueKey) == 1 ||
             (usesMainQueue && Thread.isMainThread) {
@@ -367,11 +372,12 @@ public final class EventBroadcaster {
                 if errno == EAGAIN || errno == EWOULDBLOCK { return }
                 return
             }
-            guard clients.count < maxClients, peerValidator(conn) else {
-                close(conn)
-                continue
-            }
             do {
+                try setSocketNoSigPipe(conn)
+                guard clients.count < maxClients, peerValidator(conn) else {
+                    close(conn)
+                    continue
+                }
                 try setSocketNonBlocking(conn)
                 clients.append(conn)
             } catch {

@@ -7,7 +7,7 @@ Two Unix sockets live in the per-user runtime dir (`XDG_RUNTIME_DIR` if set, els
 Request/response, wire-compatible with Hyprland's socket1: one plain-text command per connection, one reply, close. A `j/` prefix (what `vinductl -j` sends) selects JSON. Replies are `ok`, payload text/JSON, or `err: …`.
 
 - Accepted peers must have the same UID (`getpeereid`). This prevents cross-user control; same-user processes are trusted by design.
-- The accept loop uses nonblocking per-client dispatch sources with an idle timeout, request-size cap, active-client cap, and full reply writes. Server state and public operations are serialized on the queue passed by `vindud`, which is the main queue because the WM is single-threaded. Client descriptors remain open until every dispatch source that references them has finished cancellation.
+- The accept loop uses nonblocking per-client dispatch sources with an idle timeout, request-size cap, active-client cap, and full reply writes. Socket writes suppress `SIGPIPE`, so a client disconnect becomes a normal write failure and cleanup path. Server state and public operations are serialized on the queue passed by `vindud`, which is the main queue because the WM is single-threaded. Client descriptors remain open until every dispatch source that references them has finished cancellation.
 - Startup probes an existing socket file: a live listener means another instance and the daemon exits; a dead Unix socket is stale and unlinked. Regular files, directories, symlinks, and non-owned paths are not unlinked. Failed startup and shutdown remove only the socket file created by that listener, so delayed dispatch-source cancellation cannot unlink a replacement socket.
 - Verb families: `dispatch` (the full dispatcher set), `keyword`, `reload`, info verbs (`clients`, `workspaces`, `monitors`, `activewindow`, `activeworkspace`, `binds`, `getoption`, `configerrors`, `cursorpos`, `version`), plus `barplugin refresh <id>`, `notify`, and `splash`. Hyprland verbs with no macOS meaning return an explicit `err: … has no macOS equivalent`; `kill` (the click-to-close picker) is impossible and says so.
 - While tiling is paused, `dispatch` rejects everything except `pause`, `exit`, and `exec` with an error pointing at the resume path.
@@ -22,4 +22,4 @@ Push stream, wire-compatible with Hyprland's socket2: one `EVENT>>DATA` line per
 
 ## vinductl
 
-Thin client: joins its arguments into one request line, prints the reply, and exits 1 when the reply starts with `err` or `unknown`. `vinductl events` streams the event socket to stdout. The daemon ignores SIGPIPE so vanishing event clients cannot kill it.
+Thin client: joins its arguments into one request line, prints the reply, and exits 1 when the reply starts with `err` or `unknown`. `vinductl events` streams the event socket to stdout. Its command socket also suppresses `SIGPIPE`, so a daemon disconnect produces an error instead of terminating the process with a signal.

@@ -30,12 +30,16 @@ func connectSocket(path: String) throws -> Int32 {
     try SocketSecurity.validateSocketPathForConnect(path)
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
     guard fd >= 0 else { throw SecureSocketError.socketFailed("socket(): \(errno)") }
-    guard UnixSocket.connect(fd, to: path) == 0 else {
-        let e = errno
+    do {
+        try setSocketNoSigPipe(fd)
+        guard UnixSocket.connect(fd, to: path) == 0 else {
+            throw SecureSocketError.socketFailed("connect \(path): \(errno)")
+        }
+        return fd
+    } catch {
         close(fd)
-        throw SecureSocketError.socketFailed("connect \(path): \(e)")
+        throw error
     }
-    return fd
 }
 
 func die(_ message: String) -> Never {
