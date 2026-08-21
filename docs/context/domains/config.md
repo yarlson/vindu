@@ -8,7 +8,7 @@ Hyprland dialect, parsed by `ConfigParser` (VinduCore):
 
 - `key = value` assignments; `section { … }` blocks nest into colon-joined keywords (`general:gaps_in`).
 - `$variables`, substituted longest-name-first so `$mainModShift` survives `$mainMod`.
-- `source = path` includes (tilde and relative-to-including-file resolution; nesting capped at 10, with total sourced file and byte caps). The root and each included file are read incrementally and stop at the existing 1 MiB source budget before parsing.
+- `source = path` includes (tilde and relative-to-including-file resolution; nesting capped at 10, with total sourced file and byte caps). The loader reads the root and each included file in chunks and rejects any individual file larger than 1 MiB before parsing. The parser separately caps the combined bytes of included files at 1 MiB.
 - `#` comments; `##` escapes a literal `#`; a line starting with `#` is wholly a comment.
 - `submap = name` … `submap = reset` delimit modal bind blocks.
 
