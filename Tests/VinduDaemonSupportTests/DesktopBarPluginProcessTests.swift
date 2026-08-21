@@ -106,16 +106,19 @@ struct DesktopBarPluginProcessTests {
 
         let request = DesktopBarPluginRunRequest(
             id: "released",
-            command: "printf '%s' $$ > '\(pidFile.path)'; trap '' TERM; while :; do sleep 1; done",
+            command: "trap '' TERM; printf '%s' $$ > '\(pidFile.path)'; while :; do sleep 1; done",
             timeoutMs: 5_000,
             reason: "manual",
             eventName: "",
             eventPayload: ""
         )
-        var process: DesktopBarPluginProcess? = DesktopBarPluginProcess(request: request)
+        let resultWaiter = PluginResultWaiter()
+        var process: DesktopBarPluginProcess? = DesktopBarPluginProcess(
+            request: request,
+            completionQueue: resultWaiter.queue
+        )
         let processReference = WeakPluginProcessReference(process)
-        var result: DesktopBarPluginRunResult?
-        try process?.start { result = $0 }
+        try process?.start { resultWaiter.complete(with: $0) }
         waitForPhase3Condition {
             (try? String(contentsOf: pidFile, encoding: .utf8)).flatMap(pid_t.init) != nil
         }
@@ -130,8 +133,7 @@ struct DesktopBarPluginProcessTests {
         process = nil
 
         #expect(processReference.process != nil)
-        waitForPhase3Condition { result != nil }
-        #expect(try #require(result).exitCode == -SIGKILL)
+        #expect(try resultWaiter.wait().exitCode == -SIGKILL)
         waitForPhase3Condition { processReference.process == nil }
         #expect(processReference.process == nil)
     }
@@ -149,9 +151,10 @@ struct DesktopBarPluginProcessTests {
             eventName: "",
             eventPayload: ""
         )
-        let process = DesktopBarPluginProcess(request: request)
-        var result: DesktopBarPluginRunResult?
-        try process.start { result = $0 }
+        let resultWaiter = PluginResultWaiter()
+        let process = DesktopBarPluginProcess(request: request,
+                                              completionQueue: resultWaiter.queue)
+        try process.start { resultWaiter.complete(with: $0) }
         waitForPhase3Condition {
             (try? String(contentsOf: pidFile, encoding: .utf8)).flatMap(pid_t.init) != nil
         }
@@ -160,8 +163,7 @@ struct DesktopBarPluginProcessTests {
         process.terminateForShutdown()
 
         #expect(Darwin.kill(pid, 0) != 0 && errno == ESRCH)
-        waitForPhase3Condition { result != nil }
-        let completed = try #require(result)
+        let completed = try resultWaiter.wait()
         #expect(completed.exitCode == -SIGKILL)
         #expect(String(decoding: completed.stdout, as: UTF8.self) == "ready")
     }
@@ -173,10 +175,28 @@ struct DesktopBarPluginProcessTests {
                                                  reason: "manual",
                                                  eventName: "",
                                                  eventPayload: "")
-        let process = DesktopBarPluginProcess(request: request)
-        var result: DesktopBarPluginRunResult?
-        try process.start { result = $0 }
-        waitForPhase3Condition { result != nil }
+        let resultWaiter = PluginResultWaiter()
+        let process = DesktopBarPluginProcess(request: request,
+                                              completionQueue: resultWaiter.queue)
+        try process.start { resultWaiter.complete(with: $0) }
+        return try resultWaiter.wait()
+    }
+}
+
+private final class PluginResultWaiter {
+    let queue = DispatchQueue(label: "vindu.plugin-test.completion")
+    private let semaphore = DispatchSemaphore(value: 0)
+    private var result: DesktopBarPluginRunResult?
+
+    func complete(with result: DesktopBarPluginRunResult) {
+        self.result = result
+        semaphore.signal()
+    }
+
+    func wait() throws -> DesktopBarPluginRunResult {
+        let outcome = semaphore.wait(timeout: .now() + .seconds(5))
+        try #require(outcome == .success)
+        queue.sync {}
         return try #require(result)
     }
 }
