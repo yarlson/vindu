@@ -4,6 +4,10 @@ on:
   push:
     tags: ["v*"]
 
+concurrency:
+  group: vindu-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
 permissions:
   contents: write # create the GitHub release
   id-token: write # sign the provenance attestation
@@ -16,6 +20,54 @@ jobs:
     steps:
       # actions/checkout v6
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - name: Validate release inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "release tag must match vX.Y.Z" >&2
+            exit 1
+          fi
+          if [[ -z "$HOMEBREW_TAP_TOKEN" ]]; then
+            echo "HOMEBREW_TAP_TOKEN is required" >&2
+            exit 1
+          fi
+          EXISTING_RELEASE_ID="$(
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq '.[] | select(.tag_name == env.GITHUB_REF_NAME) | .id'
+          )"
+          if [[ -n "$EXISTING_RELEASE_ID" ]]; then
+            echo "release $GITHUB_REF_NAME already exists" >&2
+            exit 1
+          fi
+
+          REMOTE_TAG_COMMIT="$(
+            git ls-remote origin \
+              "refs/tags/${GITHUB_REF_NAME}" \
+              "refs/tags/${GITHUB_REF_NAME}^{}" \
+              | awk '
+                  $2 ~ /\^\{\}$/ { peeled = $1 }
+                  $2 !~ /\^\{\}$/ { direct = $1 }
+                  END { if (peeled != "") print peeled; else print direct }
+                '
+          )"
+          if [[ "$REMOTE_TAG_COMMIT" != "$GITHUB_SHA" ]]; then
+            echo "remote tag does not point at workflow commit $GITHUB_SHA" >&2
+            exit 1
+          fi
+
+      # actions/checkout v6
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          repository: yarlson/homebrew-tap
+          path: tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          persist-credentials: false
 
       # Per-triple builds + lipo: works with any Swift toolchain, unlike
       # `swift build --arch a --arch b`, which requires Xcode's xcbuild.
@@ -32,57 +84,7 @@ jobs:
               -output "dist/vindu/$bin"
           done
 
-      - name: Detect Developer ID signing secrets
-        id: signing
-        env:
-          CERT_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
-          CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
-          NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
-          NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-          NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-        run: |
-          set -euo pipefail
-          if [[ -n "$CERT_P12_BASE64" && -n "$CERT_PASSWORD" && \
-                -n "$NOTARY_KEY_P8_BASE64" && -n "$NOTARY_KEY_ID" && \
-                -n "$NOTARY_ISSUER_ID" ]]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Developer ID sign binaries
-        if: steps.signing.outputs.enabled == 'true'
-        env:
-          CERT_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
-          CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
-        run: |
-          set -euo pipefail
-          KEYCHAIN="$RUNNER_TEMP/vindu-signing.keychain-db"
-          KEYCHAIN_PASSWORD="$(uuidgen)"
-          CERT_PATH="$RUNNER_TEMP/developer-id.p12"
-          cleanup() {
-            security delete-keychain "$KEYCHAIN" >/dev/null 2>&1 || true
-            rm -f "$CERT_PATH"
-          }
-          trap cleanup EXIT
-
-          printf '%s' "$CERT_P12_BASE64" | base64 -D > "$CERT_PATH"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security import "$CERT_PATH" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: \
-            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-
-          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" \
-            | awk -F '"' '/Developer ID Application/ { print $2; exit }')"
-          test -n "$IDENTITY"
-          for bin in vindud vinductl; do
-            codesign --force --sign "$IDENTITY" --options runtime --timestamp "dist/vindu/$bin"
-          done
-
-      - name: Ad-hoc sign fallback binaries
-        if: steps.signing.outputs.enabled != 'true'
+      - name: Ad-hoc sign binaries
         run: |
           set -euo pipefail
           for bin in vindud vinductl; do
@@ -92,11 +94,17 @@ jobs:
       - name: Smoke test
         run: |
           set -euo pipefail
-          lipo -archs dist/vindu/vindud | grep -q "x86_64 arm64"
-          codesign --verify --strict --verbose=2 dist/vindu/vindud
-          codesign --verify --strict --verbose=2 dist/vindu/vinductl
-          dist/vindu/vindud --version
-          dist/vindu/vinductl --version
+          VERSION="${GITHUB_REF_NAME#v}"
+          VINDUD_VERSION="$(dist/vindu/vindud --version)"
+          VINDUCTL_VERSION="$(dist/vindu/vinductl --version)"
+
+          for bin in vindud vinductl; do
+            lipo -archs "dist/vindu/$bin" | grep -q "x86_64 arm64"
+            codesign --verify --strict --verbose=2 "dist/vindu/$bin"
+          done
+          printf '%s\n' "$VINDUD_VERSION" "$VINDUCTL_VERSION"
+          test "$VINDUD_VERSION" = "vindu $VERSION"
+          test "$VINDUCTL_VERSION" = "vinductl $VERSION"
 
       - name: Package ZIP
         run: |
@@ -106,25 +114,53 @@ jobs:
           ditto -c -k --keepParent dist/vindu "$ARTIFACT"
           shasum -a 256 "$ARTIFACT" > checksums.txt
 
-      - name: Notarize ZIP
-        if: steps.signing.outputs.enabled == 'true'
-        env:
-          NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
-          NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-          NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+      - name: Prepare Homebrew formula
         run: |
           set -euo pipefail
-          KEY_PATH="$RUNNER_TEMP/AuthKey_${NOTARY_KEY_ID}.p8"
-          cleanup() { rm -f "$KEY_PATH"; }
-          trap cleanup EXIT
+          SHA="$(awk 'NR == 1 { print $1 }' checksums.txt)"
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ ! "$SHA" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "invalid release checksum" >&2
+            exit 1
+          fi
 
-          printf '%s' "$NOTARY_KEY_P8_BASE64" | base64 -D > "$KEY_PATH"
-          ARTIFACT="vindu-${GITHUB_REF_NAME}-macos-universal.zip"
-          xcrun notarytool submit "$ARTIFACT" \
-            --key "$KEY_PATH" \
-            --key-id "$NOTARY_KEY_ID" \
-            --issuer "$NOTARY_ISSUER_ID" \
-            --wait
+          sed -e "s/__TAG__/${GITHUB_REF_NAME}/g" \
+              -e "s/__VERSION__/${VERSION}/g" \
+              -e "s/__SHA256__/${SHA}/g" \
+              packaging/vindu.rb.tmpl > tap/Formula/vindu.rb
+          ruby -c tap/Formula/vindu.rb
+          cd tap
+          brew style --only-cops FormulaAudit Formula/vindu.rb
+
+      - name: Revalidate release target
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          EXISTING_RELEASE_ID="$(
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq '.[] | select(.tag_name == env.GITHUB_REF_NAME) | .id'
+          )"
+          if [[ -n "$EXISTING_RELEASE_ID" ]]; then
+            echo "release $GITHUB_REF_NAME already exists" >&2
+            exit 1
+          fi
+
+          REMOTE_TAG_COMMIT="$(
+            git ls-remote origin \
+              "refs/tags/${GITHUB_REF_NAME}" \
+              "refs/tags/${GITHUB_REF_NAME}^{}" \
+              | awk '
+                  $2 ~ /\^\{\}$/ { peeled = $1 }
+                  $2 !~ /\^\{\}$/ { direct = $1 }
+                  END { if (peeled != "") print peeled; else print direct }
+                '
+          )"
+          if [[ "$REMOTE_TAG_COMMIT" != "$GITHUB_SHA" ]]; then
+            echo "remote tag does not point at workflow commit $GITHUB_SHA" >&2
+            exit 1
+          fi
 
       # Cryptographic link between the ZIP and this exact workflow run;
       # verifiable with `gh attestation verify`.
@@ -133,27 +169,32 @@ jobs:
         with:
           subject-path: vindu-*.zip
 
-      - name: Write release notes
-        run: |
-          set -euo pipefail
-          if [[ "${{ steps.signing.outputs.enabled }}" == "true" ]]; then
-            printf '%s\n' \
-              "Developer ID signed, hardened-runtime enabled, and notarized macOS universal binaries." \
-              > release-notes.md
-          else
-            printf '%s\n' \
-              "Ad-hoc signed fallback artifact. This release was not Developer ID notarized because signing secrets were unavailable." \
-              > release-notes.md
-          fi
-
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          REMOTE_TAG_COMMIT="$(
+            git ls-remote origin \
+              "refs/tags/${GITHUB_REF_NAME}" \
+              "refs/tags/${GITHUB_REF_NAME}^{}" \
+              | awk '
+                  $2 ~ /\^\{\}$/ { peeled = $1 }
+                  $2 !~ /\^\{\}$/ { direct = $1 }
+                  END { if (peeled != "") print peeled; else print direct }
+                '
+          )"
+          if [[ "$REMOTE_TAG_COMMIT" != "$GITHUB_SHA" ]]; then
+            echo "remote tag does not point at workflow commit $GITHUB_SHA" >&2
+            exit 1
+          fi
+
           gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --fail-on-no-commits \
             --title "vindu $GITHUB_REF_NAME" \
-            --notes-file release-notes.md \
+            --generate-notes \
+            --notes "Ad-hoc signed macOS universal binaries." \
             vindu-*.zip checksums.txt
 
       # The published asset must round-trip before the formula points at it:
@@ -162,61 +203,36 @@ jobs:
         run: |
           set -euo pipefail
           mkdir verify && cd verify
-          curl -sSL -o release.zip \
+          curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
+            --retry-max-time 60 -o release.zip \
             "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/vindu-${GITHUB_REF_NAME}-macos-universal.zip"
           echo "$(awk '{print $1}' ../checksums.txt)  release.zip" | shasum -a 256 -c -
           unzip -q release.zip
-          codesign --verify --strict --verbose=2 vindu/vindud
-          codesign --verify --strict --verbose=2 vindu/vinductl
-          if [[ "${{ steps.signing.outputs.enabled }}" == "true" ]]; then
-            codesign -dv --verbose=4 vindu/vindud 2>&1 | grep -q "Authority=Developer ID Application"
-            codesign -dv --verbose=4 vindu/vindud 2>&1 | grep -q "Runtime Version"
-            spctl -a -vv -t execute vindu/vindud
-          fi
-          vindu/vindud --version
-          vindu/vinductl --version
-          lipo -archs vindu/vindud | grep -q "x86_64 arm64"
 
-      - name: Detect Homebrew tap token
-        id: tap
-        env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [[ -n "$HOMEBREW_TAP_TOKEN" ]]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # actions/checkout v6
-      - name: Checkout Homebrew tap
-        if: steps.signing.outputs.enabled == 'true' && steps.tap.outputs.enabled == 'true'
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
-        with:
-          repository: yarlson/homebrew-tap
-          path: tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          persist-credentials: false
+          VERSION="${GITHUB_REF_NAME#v}"
+          VINDUD_VERSION="$(vindu/vindud --version)"
+          VINDUCTL_VERSION="$(vindu/vinductl --version)"
+          for bin in vindud vinductl; do
+            lipo -archs "vindu/$bin" | grep -q "x86_64 arm64"
+            codesign --verify --strict --verbose=2 "vindu/$bin"
+          done
+          printf '%s\n' "$VINDUD_VERSION" "$VINDUCTL_VERSION"
+          test "$VINDUD_VERSION" = "vindu $VERSION"
+          test "$VINDUCTL_VERSION" = "vinductl $VERSION"
 
       - name: Update Homebrew tap
-        if: steps.signing.outputs.enabled == 'true' && steps.tap.outputs.enabled == 'true'
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           set -euo pipefail
-          SHA="$(awk '{print $1}' checksums.txt)"
-          VERSION="${GITHUB_REF_NAME#v}"
-          sed -e "s/__TAG__/${GITHUB_REF_NAME}/g" \
-              -e "s/__VERSION__/${VERSION}/g" \
-              -e "s/__SHA256__/${SHA}/g" \
-              packaging/vindu.rb.tmpl > tap/Formula/vindu.rb
-          ruby -c tap/Formula/vindu.rb
-
           cd tap
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/vindu.rb
+          if git diff --cached --quiet; then
+            echo "Homebrew formula already matches $GITHUB_REF_NAME"
+            exit 0
+          fi
           git commit -m "vindu ${GITHUB_REF_NAME}"
 
           AUTH="$(printf 'x-access-token:%s' "$HOMEBREW_TAP_TOKEN" | base64 | tr -d '\n')"
@@ -226,7 +242,7 @@ jobs:
           git push https://github.com/yarlson/homebrew-tap.git HEAD:main
           unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 AUTH
 
-          if grep -q "$HOMEBREW_TAP_TOKEN" .git/config; then
+          if grep -Fq -- "$HOMEBREW_TAP_TOKEN" .git/config; then
             echo "tap token persisted in git config" >&2
             exit 1
           fi

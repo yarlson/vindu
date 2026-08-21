@@ -23,13 +23,13 @@ Build-and-test matrix on the oldest and newest macOS runner images (both Apple S
 
 Pushing a `v*` tag drives the entire release:
 
-1. Per-triple release builds are lipo'd into universal (arm64 + x86_64) binaries. Per-triple because `swift build` with multiple `--arch` flags requires Xcode's xcbuild.
-2. When Developer ID and notary secrets are present, the binaries are Developer ID signed with hardened runtime and timestamp, packaged as a ZIP, submitted to Apple notarization, and verified with `codesign`, `spctl`, checksum, and binary smoke checks. If secrets are absent, CI publishes an explicitly labeled ad-hoc fallback ZIP and does not update Homebrew.
+1. The tag must use `vX.Y.Z`, resolve to the workflow commit, match the version reported by both binaries, and have no existing GitHub release. The workflow also requires access to the Homebrew tap before it publishes anything.
+2. Per-triple release builds are lipo'd into universal (arm64 + x86_64) binaries and ad-hoc signed. Per-triple because `swift build` with multiple `--arch` flags requires Xcode's xcbuild.
 3. The ZIP ships the binaries, README, and the example config; sha256 checksums and a build-provenance attestation accompany it (verifiable with `gh attestation verify`).
-4. A GitHub release is created with notes that state whether the artifact is notarized.
-5. The published asset is round-tripped — downloaded from the release URL, checksum-verified, executed, architecture-checked, and Developer ID/hardened-runtime checked when applicable — before anything points at it.
-6. The Homebrew formula is rendered from `packaging/vindu.rb.tmpl` (tag, version, sha substitution), syntax-checked, and pushed to `yarlson/homebrew-tap` only for notarized artifacts. Release actions are pinned to immutable SHAs, and the tap checkout uses a scoped token without embedding it in the clone URL or persisting it in `.git/config`. The template in this repo is the formula's source of truth.
+4. The Homebrew formula is rendered from `packaging/vindu.rb.tmpl` (tag, version, sha substitution) and passes Ruby syntax and Homebrew style checks before the GitHub release is created.
+5. The published asset is round-tripped — downloaded from the release URL, checksum-verified, executed, architecture-checked, and signature-checked — before anything points at it.
+6. The prepared formula is pushed to `yarlson/homebrew-tap`. Release actions are pinned to immutable SHAs, and the tap checkout uses a scoped token without embedding it in the clone URL or persisting it in `.git/config`. The template in this repo is the formula's source of truth.
 
-Notarization and hardened runtime are distribution-integrity checks, not sandboxing; `vindud` remains an unsandboxed Accessibility/event-tap daemon.
+If any step fails after GitHub publication, leave the tag and release assets unchanged. Verify the published ZIP against `checksums.txt`, then check both binaries' versions, architectures, and signatures. Render the formula from the tagged template and published checksum, validate it, and update only the tap.
 
 The version constant (`VinduVersion`) and the git tag are kept in step by the release decision; nothing derives the version from anything else.

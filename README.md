@@ -316,10 +316,10 @@ Two dev-loop gotchas: a rebuilt binary is a new code identity, so re-toggle
 And don't run the brew service and a dev-build service at the same time —
 two window managers fight over the same windows.
 
-Releasing: push a `v*` tag. CI builds the universal (arm64 + x86_64) ZIP,
-publishes the GitHub release with checksums and provenance, and bumps the
-Homebrew formula in `yarlson/homebrew-tap` automatically only when the
-artifact is Developer ID signed and notarized. The formula source of truth is
+Releasing: push a `v*` tag that matches `VinduVersion`. CI builds and
+ad-hoc signs the universal (arm64 + x86_64) ZIP, publishes it with checksums
+and provenance, verifies the public artifact, and bumps the Homebrew formula
+in `yarlson/homebrew-tap`. The formula source of truth is
 `packaging/vindu.rb.tmpl` in this repo.
 
 Layout logic, the config parser, and rule matching live in `VinduCore` and
