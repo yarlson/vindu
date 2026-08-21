@@ -11,6 +11,7 @@ struct DesktopBarWeatherTests {
         """.utf8))
         let completion = DispatchSemaphore(value: 0)
         let service = makeService()
+        defer { service.stop() }
         service.onChange = { completion.signal() }
 
         service.sync(location: WeatherLocation(latitude: 56.9496, longitude: 24.1052),
@@ -29,6 +30,7 @@ struct DesktopBarWeatherTests {
             logs.append($0)
             completion.signal()
         }
+        defer { service.stop() }
 
         service.sync(location: WeatherLocation(latitude: 56.9496, longitude: 24.1052),
                      refreshMinutes: 5,
@@ -51,6 +53,7 @@ struct DesktopBarWeatherTests {
             logs.append($0)
             completion.signal()
         }
+        defer { service.stop() }
 
         service.sync(location: WeatherLocation(latitude: 56.9496, longitude: 24.1052),
                      refreshMinutes: 5,
@@ -68,6 +71,7 @@ struct DesktopBarWeatherTests {
         WeatherURLProtocol.response = .success(status: 200, data: data)
         let completion = DispatchSemaphore(value: 0)
         let service = makeService()
+        defer { service.stop() }
         service.onChange = { completion.signal() }
 
         service.sync(location: WeatherLocation(latitude: 56.9496, longitude: 24.1052),
@@ -94,6 +98,7 @@ struct DesktopBarWeatherTests {
             logs.append($0)
             completion.signal()
         }
+        defer { service.stop() }
 
         service.sync(location: WeatherLocation(latitude: 56.9496, longitude: 24.1052),
                      refreshMinutes: 5,
@@ -117,6 +122,7 @@ struct DesktopBarWeatherTests {
             logs.append($0)
             completion.signal()
         }
+        defer { service.stop() }
 
         service.sync(location: WeatherLocation(latitude: 56.9496, longitude: 24.1052),
                      refreshMinutes: 5,
@@ -135,6 +141,7 @@ struct DesktopBarWeatherTests {
         )
         let completion = DispatchSemaphore(value: 0)
         let service = makeService()
+        defer { service.stop() }
         service.onChange = { completion.signal() }
 
         service.sync(location: WeatherLocation(latitude: 56.9496, longitude: 24.1052),
@@ -156,6 +163,7 @@ struct DesktopBarWeatherTests {
             logs.append($0)
             completion.signal()
         }
+        defer { service.stop() }
 
         service.sync(location: WeatherLocation(latitude: 56.9496, longitude: 24.1052),
                      refreshMinutes: 5,
@@ -180,8 +188,6 @@ struct DesktopBarWeatherTests {
         WeatherURLProtocol.resetTracking()
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [WeatherURLProtocol.self]
-        configuration.timeoutIntervalForRequest = 0.2
-        configuration.timeoutIntervalForResource = 0.2
         return URLSession(configuration: configuration)
     }
 }
@@ -199,6 +205,7 @@ private final class WeatherURLProtocol: URLProtocol {
     private static var stopped = false
     private static var chunkCount = 0
     private static var stopSemaphore: DispatchSemaphore?
+    private let deliveryQueue = DispatchQueue(label: "vindu.weather-test.protocol-delivery")
     private var workItems: [DispatchWorkItem] = []
 
     static var wasStopped: Bool {
@@ -244,7 +251,7 @@ private final class WeatherURLProtocol: URLProtocol {
                 self?.finish(status: status, data: data)
             }
             workItems = [work]
-            DispatchQueue.global().asyncAfter(deadline: .now() + delay, execute: work)
+            deliveryQueue.asyncAfter(deadline: .now() + delay, execute: work)
         case .chunked(let status, let chunks):
             sendResponse(status: status)
             for chunk in chunks {
@@ -256,8 +263,8 @@ private final class WeatherURLProtocol: URLProtocol {
                 }
                 reference.item = work
                 workItems.append(work)
-                DispatchQueue.global().asyncAfter(deadline: .now() + chunk.delay,
-                                                  execute: work)
+                deliveryQueue.asyncAfter(deadline: .now() + chunk.delay,
+                                         execute: work)
             }
             let finishReference = WeakDispatchWorkItem()
             let finishWork = DispatchWorkItem { [weak self] in
@@ -267,8 +274,8 @@ private final class WeatherURLProtocol: URLProtocol {
             finishReference.item = finishWork
             workItems.append(finishWork)
             let finishDelay = (chunks.map(\.delay).max() ?? 0) + 0.05
-            DispatchQueue.global().asyncAfter(deadline: .now() + finishDelay,
-                                              execute: finishWork)
+            deliveryQueue.asyncAfter(deadline: .now() + finishDelay,
+                                     execute: finishWork)
         case .failure(let error):
             client?.urlProtocol(self, didFailWithError: error)
         }
