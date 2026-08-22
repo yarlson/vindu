@@ -1,11 +1,14 @@
 :root {
   color-scheme: light;
-  --canvas: #f6f8f9;
+  --canvas: #ffffff;
   --surface: #ffffff;
-  --ink: #111315;
-  --muted: #59636b;
-  --line: #d5dce0;
-  --interactive: #006b73;
+  --ink: #000000;
+  --muted: rgb(0 0 0 / 64%);
+  --quiet: rgb(0 0 0 / 56%);
+  --line: rgb(0 0 0 / 10%);
+  --strong-line: rgb(0 0 0 / 18%);
+  --hover: rgb(0 0 0 / 5%);
+  --interactive: #000000;
   --focus-blue: #33ccff;
   --focus-green: #00ff99;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -24,13 +27,14 @@ body {
   margin: 0;
   background: var(--canvas);
   color: var(--ink);
-  font-size: 1rem;
-  line-height: 1.6;
+  font-size: 1.0625rem;
+  line-height: 1.58;
   text-rendering: optimizeLegibility;
 }
 
 a {
   color: var(--interactive);
+  text-decoration-thickness: 1px;
   text-underline-offset: 0.2em;
 }
 
@@ -64,17 +68,17 @@ button {
 }
 
 .shell {
-  width: min(1180px, calc(100% - 48px));
+  width: min(1180px, calc(100% - 64px));
   margin-inline: auto;
 }
 
 .site-header {
   border-bottom: 1px solid var(--line);
-  background: rgb(246 248 249 / 94%);
+  background: var(--surface);
 }
 
 .nav {
-  min-height: 76px;
+  min-height: 72px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -86,8 +90,8 @@ button {
   align-items: center;
   gap: 0.7rem;
   color: var(--ink);
-  font-size: 1.05rem;
-  font-weight: 750;
+  font-size: 1rem;
+  font-weight: 600;
   letter-spacing: -0.02em;
   text-decoration: none;
 }
@@ -127,22 +131,22 @@ button {
 .nav-links a,
 .footer-links a {
   color: var(--muted);
-  font-size: 0.92rem;
-  font-weight: 650;
+  font-size: 0.875rem;
+  font-weight: 500;
   text-decoration: none;
 }
 
 .nav-links a:hover,
 .footer-links a:hover {
-  color: var(--interactive);
+  color: var(--ink);
 }
 
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
-  gap: clamp(3rem, 7vw, 7rem);
+  gap: clamp(4rem, 8vw, 8rem);
   align-items: center;
-  padding-block: clamp(4rem, 7vw, 6rem);
+  padding-block: clamp(5rem, 8vw, 7rem);
 }
 
 h1,
@@ -154,33 +158,34 @@ p {
 
 h1,
 h2 {
-  max-width: 13ch;
+  max-width: 16ch;
   margin-bottom: 1.5rem;
-  font-weight: 760;
-  letter-spacing: -0.04em;
-  line-height: 1.04;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
 }
 
 h1 {
-  max-width: 17ch;
-  font-size: clamp(2.3rem, 3.2vw, 3.2rem);
+  max-width: 19ch;
+  font-size: clamp(2.5rem, 3.2vw, 3rem);
 }
 
 h2 {
-  font-size: clamp(2rem, 3vw, 2.8rem);
+  font-size: clamp(2rem, 2.6vw, 2.4rem);
 }
 
 h3 {
-  margin-bottom: 0.45rem;
+  margin-bottom: 0.55rem;
   font-size: 1rem;
+  font-weight: 600;
   line-height: 1.35;
 }
 
 .hero-lede {
-  max-width: 58ch;
+  max-width: 60ch;
   margin-bottom: 2rem;
   color: var(--muted);
-  font-size: clamp(1.08rem, 1.7vw, 1.24rem);
+  font-size: clamp(1.0625rem, 1.5vw, 1.1875rem);
 }
 
 .quick-start {
@@ -191,10 +196,10 @@ h3 {
 .config-sample {
   margin: 0;
   overflow-x: auto;
-  border: 1px solid #2b3034;
-  border-radius: 4px;
+  border: 0;
+  border-radius: 6px;
   background: var(--ink);
-  color: #edf3f4;
+  color: #ffffff;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.84rem;
   line-height: 1.8;
@@ -218,9 +223,9 @@ h3 {
   justify-content: center;
   padding: 0.72rem 1rem;
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: 6px;
   font-size: 0.91rem;
-  font-weight: 720;
+  font-weight: 600;
   line-height: 1.2;
   text-decoration: none;
   cursor: pointer;
@@ -228,25 +233,25 @@ h3 {
 }
 
 .button-primary {
-  border-color: var(--interactive);
-  background: var(--interactive);
+  border-color: var(--ink);
+  background: var(--ink);
   color: var(--surface);
 }
 
 .button-primary:hover {
-  border-color: #004e54;
-  background: #004e54;
+  border-color: rgb(0 0 0 / 78%);
+  background: rgb(0 0 0 / 78%);
 }
 
 .button-secondary {
-  border-color: var(--line);
+  border-color: var(--strong-line);
   background: transparent;
   color: var(--ink);
 }
 
 .button-secondary:hover {
-  border-color: var(--ink);
-  background: var(--surface);
+  border-color: var(--strong-line);
+  background: var(--hover);
 }
 
 .copy-status {
@@ -257,37 +262,34 @@ h3 {
 }
 
 .hero-specs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2.75rem 3rem;
   margin: 0;
-  border-top: 1px solid var(--line);
 }
 
 .hero-specs > div {
-  display: grid;
-  grid-template-columns: 0.75fr 1.25fr;
-  gap: 1.5rem;
-  padding: 1.15rem 0;
-  border-bottom: 1px solid var(--line);
+  padding: 0;
 }
 
 .hero-specs dt {
-  color: var(--muted);
-  font-size: 0.82rem;
+  margin-bottom: 0.45rem;
+  color: var(--quiet);
+  font-size: 0.8rem;
 }
 
 .hero-specs dd {
   margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.82rem;
+  font-size: 0.875rem;
 }
 
 .story {
-  min-height: 520px;
   display: grid;
   grid-template-columns: minmax(0, 0.78fr) minmax(400px, 1.22fr);
   gap: clamp(3rem, 8vw, 8rem);
   align-items: center;
-  border-top: 1px solid var(--line);
-  padding-block: clamp(4rem, 7vw, 6rem);
+  padding-block: clamp(3.5rem, 5vw, 4.5rem);
 }
 
 .story-reverse .story-copy {
@@ -295,15 +297,14 @@ h3 {
 }
 
 .story-copy > p {
-  max-width: 52ch;
+  max-width: 55ch;
   margin-bottom: 1.5rem;
   color: var(--muted);
-  font-size: 1.08rem;
+  font-size: 1.0625rem;
 }
 
 .text-link {
-  font-weight: 720;
-  text-decoration-thickness: 1px;
+  font-weight: 600;
 }
 
 .tile-diagram {
@@ -313,7 +314,7 @@ h3 {
   grid-template-rows: 1fr 1fr;
   gap: 8px;
   padding: 8px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--strong-line);
   background: var(--surface);
 }
 
@@ -322,51 +323,52 @@ h3 {
   display: flex;
   align-items: flex-end;
   overflow: hidden;
-  border: 1px solid #bbc4c9;
-  background: #e8edef;
+  border: 1px solid var(--strong-line);
+  background: rgb(0 0 0 / 4%);
 }
 
 .tile::before {
   position: absolute;
   inset: 0 0 auto;
   height: 25px;
-  border-bottom: 1px solid #c8d0d4;
+  border-bottom: 1px solid var(--line);
   background: var(--surface);
   content: "";
 }
 
 .tile span {
   margin: 0.9rem;
-  color: var(--muted);
+  color: var(--quiet);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.72rem;
 }
 
 .tile-main {
   grid-row: 1 / 3;
-  border-color: var(--interactive);
-  box-shadow: inset 0 0 0 2px var(--focus-blue);
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
 }
 
 .key-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem 3rem;
   margin: 0;
   padding: 0;
-  border-top: 1px solid var(--line);
   list-style: none;
 }
 
 .key-list > li {
-  min-height: 82px;
+  min-height: 48px;
   display: flex;
   align-items: center;
   gap: 0.48rem;
-  border-bottom: 1px solid var(--line);
 }
 
 .key-list span:last-child {
   margin-left: auto;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 kbd,
@@ -376,14 +378,13 @@ kbd,
   align-items: center;
   justify-content: center;
   padding: 0.45rem 0.65rem;
-  border: 1px solid #bbc4c9;
-  border-bottom-width: 3px;
-  border-radius: 5px;
+  border: 1px solid var(--strong-line);
+  border-radius: 6px;
   background: var(--surface);
   color: var(--ink);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.84rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -397,27 +398,25 @@ kbd,
 }
 
 .config-sample span {
-  color: var(--focus-green);
+  color: var(--surface);
+  font-weight: 600;
 }
 
 .macos {
   display: grid;
   grid-template-columns: 0.7fr 1.3fr;
   gap: clamp(3rem, 8vw, 8rem);
-  border-top: 1px solid var(--line);
-  padding-block: clamp(4rem, 7vw, 6rem);
+  padding-block: clamp(3.5rem, 5vw, 4.5rem);
 }
 
 .macos-points {
-  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3rem 4rem;
 }
 
 .macos-points > div {
-  display: grid;
-  grid-template-columns: minmax(150px, 0.55fr) 1fr;
-  gap: 2rem;
-  padding: 1.5rem 0;
-  border-bottom: 1px solid var(--line);
+  padding: 0;
 }
 
 .macos-points p {
@@ -427,29 +426,31 @@ kbd,
 }
 
 .install {
-  margin-bottom: clamp(4rem, 8vw, 7rem);
-  padding: clamp(3rem, 7vw, 6rem);
-  border: 1px solid var(--line);
-  background: var(--surface);
+  display: grid;
+  grid-template-columns: 0.7fr 1.3fr;
+  column-gap: clamp(3rem, 8vw, 8rem);
+  align-items: start;
+  margin-bottom: clamp(3rem, 6vw, 5rem);
+  padding-block: clamp(3.5rem, 5vw, 4.5rem);
 }
 
 .install-heading {
-  border-bottom: 1px solid var(--line);
+  grid-row: 1 / 3;
 }
 
 .install-heading h2 {
-  margin-bottom: 2.5rem;
+  margin-bottom: 0;
 }
 
 .install-steps {
+  grid-column: 2;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .install-steps li {
-  padding: 1.6rem 0;
-  border-bottom: 1px solid var(--line);
+  margin-bottom: 2rem;
 }
 
 .install-steps p {
@@ -458,7 +459,9 @@ kbd,
 }
 
 .install-action {
-  margin-top: 1.8rem;
+  grid-column: 2;
+  justify-self: start;
+  margin-top: 0;
 }
 
 .site-footer {
@@ -507,7 +510,8 @@ kbd,
 @media (max-width: 960px) {
   .hero,
   .story,
-  .macos {
+  .macos,
+  .install {
     grid-template-columns: 1fr;
   }
 
@@ -516,7 +520,6 @@ kbd,
   }
 
   .story {
-    min-height: auto;
     gap: 3rem;
   }
 
@@ -524,16 +527,20 @@ kbd,
     order: initial;
   }
 
-  .macos-points > div {
-    padding: 1.4rem 0;
-    border-top: 1px solid var(--line);
-    border-left: 0;
+  .install-heading {
+    grid-row: auto;
+    margin-bottom: 2.5rem;
+  }
+
+  .install-steps,
+  .install-action {
+    grid-column: auto;
   }
 }
 
 @media (max-width: 680px) {
   .shell {
-    width: min(100% - 32px, 1180px);
+    width: min(100% - 48px, 1180px);
   }
 
   .nav {
@@ -554,23 +561,32 @@ kbd,
   }
 
   .hero {
-    padding-top: 4.5rem;
+    gap: 3.5rem;
+    padding-block: 4rem;
   }
 
   h1 {
-    font-size: clamp(2.3rem, 11vw, 3rem);
+    font-size: clamp(2.25rem, 10vw, 2.75rem);
   }
 
   .hero-actions .button {
     flex: 1 1 100%;
   }
 
+  .hero-specs,
+  .key-list,
+  .macos-points {
+    grid-template-columns: 1fr;
+  }
+
   .tile-diagram {
     aspect-ratio: 4 / 3;
   }
 
+  .story,
+  .macos,
   .install {
-    padding: 2rem 1.25rem;
+    padding-block: 3.5rem;
   }
 
   .footer-inner,
