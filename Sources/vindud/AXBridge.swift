@@ -24,6 +24,10 @@ enum WindowResizeCapability {
     case unknown
 }
 
+func shouldRefreshSystemFocus(registeredPID: pid_t, frontmostPID: pid_t?) -> Bool {
+    registeredPID == frontmostPID
+}
+
 struct WindowSnapshot {
     let id: WindowID
     let pid: pid_t
@@ -194,6 +198,7 @@ final class AXBridge {
         for element in list {
             register(element: element, app: handle)
         }
+        refreshSystemFocusIfFrontmost(handle)
     }
 
     @discardableResult
@@ -268,8 +273,9 @@ final class AXBridge {
                 app.pendingRegistrationIDs.remove(id)
                 return
             }
-            if self.register(element: element, app: app) == nil,
-               app.pendingRegistrationIDs.contains(id) {
+            if self.register(element: element, app: app) != nil {
+                self.refreshSystemFocusIfFrontmost(app)
+            } else if app.pendingRegistrationIDs.contains(id) {
                 self.scheduleRegistrationRetry(element: element, id: id, app: app,
                                                attempt: attempt + 1)
             }
@@ -279,7 +285,9 @@ final class AXBridge {
     fileprivate func handle(notification: String, element: AXUIElement, app: AppHandle) {
         switch notification {
         case kAXWindowCreatedNotification:
-            register(element: element, app: app)
+            if register(element: element, app: app) != nil {
+                refreshSystemFocusIfFrontmost(app)
+            }
         case kAXFocusedWindowChangedNotification:
             reportFocused(element: element, app: app)
         case kAXUIElementDestroyedNotification:
@@ -421,6 +429,15 @@ final class AXBridge {
             return
         }
         reportFocused(element: element, app: app)
+    }
+
+    private func refreshSystemFocusIfFrontmost(_ app: AppHandle) {
+        guard apps[app.pid] === app,
+              shouldRefreshSystemFocus(
+                  registeredPID: app.pid,
+                  frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier
+              ) else { return }
+        reportFocusedWindow(of: app)
     }
 
     private func reportFocused(element: AXUIElement, app: AppHandle) {

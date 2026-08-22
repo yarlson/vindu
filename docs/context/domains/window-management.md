@@ -7,7 +7,7 @@
 Reliability measures, all load-bearing:
 
 - AX destroy notifications are unreliable (destroyed elements lose CFEqual identity; some apps never send one), so a periodic reconcile pass reaps tracked windows absent from the window-server list on two consecutive passes. Notification destruction, app detach, and reconcile all remove windows through the same path and clear the window's reconcile state.
-- Apps register with the AX server asynchronously after launch, so window discovery retries on a short schedule after each app launch. A newly reported window whose geometry is temporarily invalid gets one bounded retry chain tied to the same live app, AX element, and window id.
+- Apps register with the AX server asynchronously after launch, so window discovery retries on a short schedule after each app launch. A newly reported window whose geometry is temporarily invalid gets one bounded retry chain tied to the same live app, AX element, and window id. After registration, AXBridge refreshes system focus only when that app is still frontmost. This covers activation arriving before window discovery without letting background discovery replace focus.
 - `setFrame` runs position–size–position because apps clamp size against the current position, which lands off-target when crossing displays.
 
 AX frame coordinates must be finite and integer-representable; width and height must also be positive. Invalid snapshots and move or resize updates are ignored, and invalid outgoing frames do not reach Accessibility. Layout arrangement validates every candidate before it changes window state, so one invalid frame leaves the whole workspace at its previous geometry. Floating move and resize dispatchers return an error instead of applying an invalid frame. IPC omits invalid client or monitor snapshots and reports an invalid cursor position instead of converting it to an integer.
@@ -36,7 +36,7 @@ Every AXWindow is classified before management:
 
 ## Tiled frame enforcement
 
-Tiled windows stick to their assigned tile: drift beyond a few pixels is re-asserted under a cooldown (prevents fight loops with apps that resist), and a debounced settle snaps the exact frame once the event burst quiets. If an app refuses the tile's full size, the accepted smaller frame is centered inside the assigned tile instead of being pinned to the tile origin. Floating windows simply track the OS frame.
+Tiled windows stick to their assigned tile. Vindu reasserts drift beyond a few pixels under a cooldown to avoid fighting apps that resist, and a debounced settle restores the exact frame after the event burst ends. A visible tiled window gets one initial settle after a short startup grace so an app that ignores its first resize receives the final assigned frame. Ordinary move and resize debounce cannot replace that pending startup settle. The initial settle clears the earlier reassert cooldown so a window that still refuses the full tile can return to its centered constrained frame. The settle stops when the window is floating, minimized, hidden, native-fullscreen, being dragged, outside the visible workspace, or when tiling is paused. If an app refuses the tile's full size, Vindu centers the accepted smaller frame inside the assigned tile instead of pinning it to the tile origin. Floating windows simply track the OS frame.
 
 ## Native fullscreen
 
