@@ -9,9 +9,9 @@ import VinduCore
 func _AXUIElementGetWindow(_ element: AXUIElement, _ wid: inout CGWindowID) -> AXError
 
 /// What kind of surface an AXWindow is: standard windows use their resize
-/// capability for default placement, dialogs default to floating, and
-/// chromeless auxiliary surfaces (autocomplete dropdowns, tooltips) are never
-/// managed, so window-manager focus stays with their parent window.
+/// capability and WindowServer level for default placement, dialogs default to
+/// floating, and chromeless auxiliary surfaces (autocomplete dropdowns,
+/// tooltips) are never managed, so window-manager focus stays with their parent.
 enum WindowKind {
     case standard
     case dialog
@@ -33,11 +33,16 @@ struct WindowSnapshot {
     let frame: CGRect
     let kind: WindowKind
     let resizeCapability: WindowResizeCapability
+    let windowLevel: Int?
     let isMinimized: Bool
 
     var defaultFloating: Bool {
         switch kind {
-        case .standard: return resizeCapability == .fixed
+        case .standard:
+            let isElevated = windowLevel.map {
+                $0 > Int(CGWindowLevelForKey(.normalWindow))
+            } ?? false
+            return resizeCapability == .fixed || isElevated
         case .dialog: return true
         case .auxiliary: return false
         }
@@ -352,8 +357,18 @@ final class AXBridge {
             frame: frame,
             kind: kind,
             resizeCapability: resizeCapability(element),
+            windowLevel: windowLevel(id),
             isMinimized: (axValue(element, kAXMinimizedAttribute) as Bool?) ?? false
         )
+    }
+
+    private func windowLevel(_ id: WindowID) -> Int? {
+        guard let info = (CGWindowListCopyWindowInfo(.optionIncludingWindow, id)
+                          as? [[String: Any]])?.first,
+              (info[kCGWindowNumber as String] as? UInt32) == id else {
+            return nil
+        }
+        return info[kCGWindowLayer as String] as? Int
     }
 
     private func resizeCapability(_ element: AXUIElement) -> WindowResizeCapability {
