@@ -8,6 +8,16 @@ import VinduCore
 @discardableResult
 func _AXUIElementGetWindow(_ element: AXUIElement, _ wid: inout CGWindowID) -> AXError
 
+func windowGeometryAccessError(from error: AXError) -> WindowGeometryAccessError? {
+    switch error {
+    case .success: return nil
+    case .invalidUIElement: return .elementUnavailable
+    case .attributeUnsupported, .notImplemented: return .attributeUnsupported
+    case .cannotComplete: return .cannotComplete
+    default: return .apiFailure(Int32(error.rawValue))
+    }
+}
+
 /// What kind of surface an AXWindow is: standard windows use their resize
 /// capability and WindowServer level for default placement, dialogs default to
 /// floating, and chromeless auxiliary surfaces (autocomplete dropdowns,
@@ -59,6 +69,7 @@ struct WindowSnapshot {
 
 protocol AXBridgeDelegate: AnyObject {
     func windowAppeared(_ snap: WindowSnapshot)
+    func windowElementReplaced(_ id: WindowID, frame: CGRect)
     func windowDestroyed(_ id: WindowID)
     func windowFocused(_ id: WindowID)
     func systemFocusedSurfaceChanged(_ id: WindowID?)
@@ -99,6 +110,14 @@ final class AXBridge {
     }
 
     private static let registrationRetryDelays: [TimeInterval] = [0.1, 0.5, 1.5]
+    private static let windowNotifications = [
+        kAXUIElementDestroyedNotification,
+        kAXWindowMovedNotification,
+        kAXWindowResizedNotification,
+        kAXTitleChangedNotification,
+        kAXWindowMiniaturizedNotification,
+        kAXWindowDeminiaturizedNotification,
+    ]
     private var apps: [pid_t: AppHandle] = [:]
     /// Consecutive reconcile passes a tracked window was absent from the
     /// window server's list. Two misses = really gone.
@@ -187,6 +206,7 @@ final class AXBridge {
     @discardableResult
     private func removeTrackedWindow(_ id: WindowID, from app: AppHandle) -> Bool {
         guard let index = app.windows.firstIndex(where: { $0.id == id }) else { return false }
+        removeWindowNotifications(app.windows[index].element, from: app)
         app.windows.remove(at: index)
         missCounts.removeValue(forKey: id)
         delegate?.windowDestroyed(id)
@@ -206,8 +226,19 @@ final class AXBridge {
         guard (axValue(element, kAXRoleAttribute) as String?) == kAXWindowRole else { return nil }
         var wid: CGWindowID = 0
         guard _AXUIElementGetWindow(element, &wid) == .success, wid != 0 else { return nil }
-        if app.windows.contains(where: { $0.id == wid }) {
+        if let index = app.windows.firstIndex(where: { $0.id == wid }) {
             app.pendingRegistrationIDs.remove(wid)
+            guard !CFEqual(app.windows[index].element, element) else { return wid }
+            let kind = classify(element)
+            guard kind != .auxiliary else { return wid }
+            guard let snapshot = snapshot(element: element, id: wid, app: app, kind: kind) else {
+                scheduleRegistrationRetry(element: element, id: wid, app: app, attempt: 0)
+                return wid
+            }
+            removeWindowNotifications(app.windows[index].element, from: app)
+            app.windows[index].element = element
+            addWindowNotifications(element, to: app)
+            delegate?.windowElementReplaced(wid, frame: snapshot.frame)
             return wid
         }
         let kind = classify(element)
@@ -220,16 +251,11 @@ final class AXBridge {
             return nil
         }
 
-        guard let observer = app.observer else {
+        guard app.observer != nil else {
             app.pendingRegistrationIDs.remove(wid)
             return nil
         }
-        let refcon = Unmanaged.passUnretained(app).toOpaque()
-        for note in [kAXUIElementDestroyedNotification, kAXWindowMovedNotification,
-                     kAXWindowResizedNotification, kAXTitleChangedNotification,
-                     kAXWindowMiniaturizedNotification, kAXWindowDeminiaturizedNotification] {
-            AXObserverAddNotification(observer, element, note as CFString, refcon)
-        }
+        addWindowNotifications(element, to: app)
         app.pendingRegistrationIDs.remove(wid)
         app.windows.append((element: element, id: wid))
         delegate?.windowAppeared(snapshot)
@@ -298,7 +324,9 @@ final class AXBridge {
                 // usually still resolves.
                 var wid: CGWindowID = 0
                 if _AXUIElementGetWindow(element, &wid) == .success, wid != 0,
-                   app.windows.contains(where: { $0.id == wid }) {
+                   let entry = app.windows.first(where: { $0.id == wid }),
+                   Unmanaged.passUnretained(entry.element).toOpaque()
+                       == Unmanaged.passUnretained(element).toOpaque() {
                     removeTrackedWindow(wid, from: app)
                 }
             }
@@ -321,6 +349,21 @@ final class AXBridge {
             }
         default:
             break
+        }
+    }
+
+    private func addWindowNotifications(_ element: AXUIElement, to app: AppHandle) {
+        guard let observer = app.observer else { return }
+        let refcon = Unmanaged.passUnretained(app).toOpaque()
+        for note in Self.windowNotifications {
+            AXObserverAddNotification(observer, element, note as CFString, refcon)
+        }
+    }
+
+    private func removeWindowNotifications(_ element: AXUIElement, from app: AppHandle) {
+        guard let observer = app.observer else { return }
+        for note in Self.windowNotifications {
+            AXObserverRemoveNotification(observer, element, note as CFString)
         }
     }
 
@@ -465,43 +508,45 @@ final class AXBridge {
     // MARK: - Window operations (top-left-origin global coordinates)
 
     func frame(of element: AXUIElement) -> CGRect? {
-        guard let posValue: AXValue = axValue(element, kAXPositionAttribute),
-              let sizeValue: AXValue = axValue(element, kAXSizeAttribute) else { return nil }
+        try? checkedFrame(of: element).get()
+    }
+
+    private func checkedFrame(
+        of element: AXUIElement
+    ) -> Result<CGRect, WindowGeometryAccessError> {
+        let posValue: AXValue
+        switch geometryValue(element, kAXPositionAttribute) {
+        case .success(let value): posValue = value
+        case .failure(let error): return .failure(error)
+        }
+        let sizeValue: AXValue
+        switch geometryValue(element, kAXSizeAttribute) {
+        case .success(let value): sizeValue = value
+        case .failure(let error): return .failure(error)
+        }
         var p = CGPoint.zero
         var s = CGSize.zero
         guard AXValueGetValue(posValue, .cgPoint, &p),
-              AXValueGetValue(sizeValue, .cgSize, &s) else { return nil }
+              AXValueGetValue(sizeValue, .cgSize, &s) else {
+            return .failure(.invalidGeometry)
+        }
         let frame = CGRect(origin: p, size: s)
-        return isValidWindowFrame(frame) ? frame : nil
+        return isValidWindowFrame(frame) ? .success(frame) : .failure(.invalidGeometry)
     }
 
-    func frame(of id: WindowID) -> CGRect? {
-        element(for: id).flatMap { frame(of: $0.element) }
-    }
-
-    func setFrame(_ id: WindowID, _ rect: CGRect) {
-        guard isValidWindowFrame(rect), let (el, _) = element(for: id) else { return }
-        // Position-size-position: apps clamp size against the current position,
-        // so a single pass can land off-target when crossing displays.
-        setPosition(el, rect.origin)
-        var size = rect.size
-        if let v = AXValueCreate(.cgSize, &size) {
-            AXUIElementSetAttributeValue(el, kAXSizeAttribute as CFString, v)
+    private func geometryValue(
+        _ element: AXUIElement,
+        _ attribute: String
+    ) -> Result<AXValue, WindowGeometryAccessError> {
+        var ref: CFTypeRef?
+        let error = AXUIElementCopyAttributeValue(element, attribute as CFString, &ref)
+        if let error = windowGeometryAccessError(from: error) {
+            return .failure(error)
         }
-        setPosition(el, rect.origin)
-    }
-
-    func setPosition(_ id: WindowID, _ point: CGPoint) {
-        guard isValidWindowPoint(point), let (el, _) = element(for: id) else { return }
-        setPosition(el, point)
-    }
-
-    private func setPosition(_ el: AXUIElement, _ point: CGPoint) {
-        guard isValidWindowPoint(point) else { return }
-        var p = point
-        if let v = AXValueCreate(.cgPoint, &p) {
-            AXUIElementSetAttributeValue(el, kAXPositionAttribute as CFString, v)
+        guard let ref, CFGetTypeID(ref) == AXValueGetTypeID() else {
+            return .failure(.invalidGeometry)
         }
+        return .success(unsafeBitCast(ref, to: AXValue.self))
     }
 
     func focus(_ id: WindowID) {
@@ -560,6 +605,52 @@ final class AXBridge {
             return num
         }
         return nil
+    }
+}
+
+extension AXBridge: WindowGeometryBackend {
+    func readFrame(_ id: WindowID) -> Result<CGRect, WindowGeometryAccessError> {
+        guard let (element, _) = element(for: id) else { return .failure(.elementUnavailable) }
+        return checkedFrame(of: element)
+    }
+
+    func writeSize(_ size: CGSize,
+                   to id: WindowID) -> Result<Void, WindowGeometryAccessError> {
+        guard size.width.isFinite, size.height.isFinite,
+              size.width > 0, size.height > 0 else { return .failure(.invalidGeometry) }
+        guard let (element, _) = element(for: id) else { return .failure(.elementUnavailable) }
+        var value = size
+        guard let axValue = AXValueCreate(.cgSize, &value) else {
+            return .failure(.invalidGeometry)
+        }
+        let error = AXUIElementSetAttributeValue(
+            element,
+            kAXSizeAttribute as CFString,
+            axValue
+        )
+        if let error = windowGeometryAccessError(from: error) {
+            return .failure(error)
+        }
+        return .success(())
+    }
+
+    func writePosition(_ position: CGPoint,
+                       to id: WindowID) -> Result<Void, WindowGeometryAccessError> {
+        guard isValidWindowPoint(position) else { return .failure(.invalidGeometry) }
+        guard let (element, _) = element(for: id) else { return .failure(.elementUnavailable) }
+        var value = position
+        guard let axValue = AXValueCreate(.cgPoint, &value) else {
+            return .failure(.invalidGeometry)
+        }
+        let error = AXUIElementSetAttributeValue(
+            element,
+            kAXPositionAttribute as CFString,
+            axValue
+        )
+        if let error = windowGeometryAccessError(from: error) {
+            return .failure(error)
+        }
+        return .success(())
     }
 }
 

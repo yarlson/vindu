@@ -55,45 +55,6 @@ struct WindowPlacementPolicyTests {
         #expect(!snapshot.borderEligible)
     }
 
-    @Test func visibleTiledWindowSchedulesInitialSettle() {
-        #expect(shouldScheduleInitialTileSettle(
-            floating: false,
-            minimized: false,
-            visible: true
-        ))
-    }
-
-    @Test func floatingWindowDoesNotScheduleInitialSettle() {
-        #expect(!shouldScheduleInitialTileSettle(
-            floating: true,
-            minimized: false,
-            visible: true
-        ))
-    }
-
-    @Test func minimizedTiledWindowDoesNotScheduleInitialSettle() {
-        #expect(!shouldScheduleInitialTileSettle(
-            floating: false,
-            minimized: true,
-            visible: true
-        ))
-    }
-
-    @Test func hiddenWorkspaceWindowDoesNotScheduleInitialSettle() {
-        #expect(!shouldScheduleInitialTileSettle(
-            floating: false,
-            minimized: false,
-            visible: false
-        ))
-    }
-
-    @Test func startupDriftDoesNotReplacePendingInitialSettle() {
-        #expect(!shouldReplaceScheduledTileSettle(
-            initialPending: true,
-            requestingInitial: false
-        ))
-    }
-
     @Test @MainActor func minimizedFixedWindowKeepsFloatingMembershipAndSpawnFrame() throws {
         let manager = try manager()
         let frame = CGRect(x: 10, y: 20, width: 400, height: 300)
@@ -130,6 +91,20 @@ struct WindowPlacementPolicyTests {
         #expect(manager.windows[42]?.floatFrame == frame)
         #expect(workspace.floating == [42])
         #expect(!workspace.master.contains(42))
+    }
+
+    @Test @MainActor func clientInfoReportsObservedFrame() throws {
+        let manager = try manager()
+        manager.windowAppeared(snapshot(kind: .standard, resizeCapability: .fixed))
+        let target = CGRect(x: 870, y: 45, width: 845, height: 1059)
+        let observed = CGRect(x: 948, y: 307, width: 689, height: 535)
+        manager.windows[42]?.targetFrame = target
+        manager.windows[42]?.observedFrame = observed
+
+        let info = try #require(manager.clientInfo(42))
+
+        #expect(info.at == [948, 307])
+        #expect(info.size == [689, 535])
     }
 
     private func snapshot(kind: WindowKind,

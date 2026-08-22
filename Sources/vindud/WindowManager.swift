@@ -26,14 +26,6 @@ func isValidWindowFrame(_ frame: CGRect) -> Bool {
     windowFrameValues(frame) != nil
 }
 
-func shouldScheduleInitialTileSettle(floating: Bool, minimized: Bool, visible: Bool) -> Bool {
-    !floating && !minimized && visible
-}
-
-func shouldReplaceScheduledTileSettle(initialPending: Bool, requestingInitial: Bool) -> Bool {
-    requestingInitial || !initialPending
-}
-
 func nextAvailableWorkspaceID(preferred: Int, activeIDs: Set<Int>) -> Int? {
     if preferred > 0, preferred <= 1000, !activeIDs.contains(preferred) {
         return preferred
@@ -66,8 +58,8 @@ final class WindowState {
     var clazz: String
     var title: String
     var workspace: Int
-    /// Desired frame for tiled windows; live frame for floating ones.
-    var frame: CGRect
+    var targetFrame: CGRect
+    var observedFrame: CGRect
     var floating = false
     var pinned = false
     var fakeFullscreen = false
@@ -90,16 +82,24 @@ final class WindowState {
         self.initialTitle = title
         self.borderEligible = borderEligible
         self.workspace = workspace
-        self.frame = frame
+        self.targetFrame = frame
+        self.observedFrame = frame
     }
 }
 
 /// The window manager. Single-threaded on the main queue: AX events, hotkey
 /// dispatch, and IPC requests all funnel here.
 final class WindowManager {
-    private static let initialTileSettleDelay: TimeInterval = 0.75
-
     let bridge = AXBridge()
+    lazy var geometry = WindowGeometryController(
+        backend: bridge,
+        onObservedFrame: { [weak self] id, frame in
+            self?.windows[id]?.observedFrame = frame
+        },
+        onOutcome: { [weak self] id, outcome in
+            self?.reportGeometryOutcome(id, outcome)
+        }
+    )
     let monitorMgr = MonitorManager()
     let tap = HotkeyTap()
     let border = BorderController()
@@ -132,10 +132,7 @@ final class WindowManager {
 
     var drag: DragSession?
     var lastDragApply = 0.0
-    private var lastReassert: [WindowID: Double] = [:]
     private var lastFullscreenPoll: [WindowID: Double] = [:]
-    private var settleWork: [WindowID: DispatchWorkItem] = [:]
-    private var initialSettleIDs: Set<WindowID> = []
     var desktopBarRefreshQueued = false
     private var didReportInvalidGeometry = false
     /// Last explicit switch gesture (⌘Tab, Dock click). Activations that
@@ -303,7 +300,8 @@ final class WindowManager {
 
         workspace.monitor = monitor.id
         for id in workspace.allWindows where windows[id]?.hidden == true {
-            bridge.setPosition(id, CGPoint(x: monitor.frame.maxX - 2, y: monitor.frame.maxY - 2))
+            geometry.submitStashPosition(CGPoint(x: monitor.frame.maxX - 2,
+                                                 y: monitor.frame.maxY - 2), for: id)
         }
     }
 
@@ -406,9 +404,9 @@ final class WindowManager {
         }
 
         for (state, frame) in frames {
-            state.frame = frame
+            state.targetFrame = frame
             state.hidden = false
-            bridge.setFrame(state.id, frame)
+            geometry.submitFrame(frame, for: state.id)
         }
 
         if let fs = ws.fullscreen {
@@ -463,7 +461,10 @@ final class WindowManager {
                 ?? monitorMgr.primary else { return }
         state.hidden = true
         if focusedWindow == id { syncBorder() }
-        bridge.setPosition(id, CGPoint(x: monitor.frame.maxX - 2, y: monitor.frame.maxY - 2))
+        geometry.submitStashPosition(
+            CGPoint(x: monitor.frame.maxX - 2, y: monitor.frame.maxY - 2),
+            for: id
+        )
     }
 
     func hideWorkspace(_ ws: WorkspaceState) {
@@ -669,9 +670,9 @@ final class WindowManager {
             reportInvalidGeometry()
             return false
         }
-        state.frame = frame
+        state.targetFrame = frame
         state.floatFrame = frame
-        bridge.setFrame(state.id, frame)
+        geometry.submitFrame(frame, for: state.id)
         return true
     }
 
@@ -679,6 +680,15 @@ final class WindowManager {
         guard !didReportInvalidGeometry else { return }
         didReportInvalidGeometry = true
         log("invalid window geometry ignored; check numeric configuration values")
+    }
+
+    private func reportGeometryOutcome(_ id: WindowID, _ outcome: WindowGeometryOutcome) {
+        guard case .failed(let actual, let error) = outcome else { return }
+        let actualText = actual.map {
+            "actual \(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))x\(Int($0.height))"
+        } ?? "actual frame unavailable"
+        let errorText = error.map { "; \($0.description)" } ?? ""
+        log("window \(id) did not reach its requested frame; \(actualText)\(errorText)")
     }
 
     func followMouse(_ point: CGPoint) {
@@ -747,6 +757,9 @@ final class WindowManager {
         statusItem.update(paused: on)
         broadcast(.pause(on))
         if on {
+            for id in windows.keys {
+                geometry.cancel(id)
+            }
             syncBorder()
             log("tiling paused")
         } else {
@@ -813,6 +826,7 @@ extension WindowManager: AXBridgeDelegate {
             reportInvalidGeometry()
         }
         windows[snap.id] = state
+        geometry.register(snap.id, observedFrame: snap.frame)
 
         if state.floating {
             ws.floating.append(snap.id)
@@ -841,29 +855,30 @@ extension WindowManager: AXBridgeDelegate {
         } else {
             stash(snap.id)
         }
-        if shouldScheduleInitialTileSettle(
-            floating: state.floating,
-            minimized: state.minimized,
-            visible: isVisible(ws)
-        ) {
-            scheduleSettle(
-                snap.id,
-                after: Self.initialTileSettleDelay,
-                initial: true
-            )
+    }
+
+    func windowElementReplaced(_ id: WindowID, frame: CGRect) {
+        guard let state = windows[id], isValidWindowFrame(frame) else { return }
+        geometry.replaceElement(id, observedFrame: frame)
+        guard !paused, !state.minimized, !state.nativeFullscreen else { return }
+        if state.hidden {
+            guard let monitor = monitorMgr.byID(workspace(forID: state.workspace).monitor)
+                    ?? monitorMgr.primary else { return }
+            geometry.submitStashPosition(CGPoint(x: monitor.frame.maxX - 2,
+                                                 y: monitor.frame.maxY - 2), for: id)
+        } else {
+            geometry.submitFrame(state.targetFrame, for: id)
         }
     }
 
     func windowDestroyed(_ id: WindowID) {
         guard let state = windows.removeValue(forKey: id) else { return }
+        geometry.unregister(id)
         if focusedWindow == id { syncBorder() }
         let ws = workspace(forID: state.workspace)
         ws.removeWindow(id)
         focusHistory.removeAll { $0 == id }
-        lastReassert.removeValue(forKey: id)
         lastFullscreenPoll.removeValue(forKey: id)
-        settleWork.removeValue(forKey: id)?.cancel()
-        initialSettleIDs.remove(id)
         broadcast(.closewindow(id))
         if isVisible(ws) {
             arrange(ws)
@@ -898,20 +913,27 @@ extension WindowManager: AXBridgeDelegate {
 
     func windowMovedOrResized(_ id: WindowID, frame: CGRect) {
         guard let state = windows[id], isValidWindowFrame(frame) else { return }
-        if handleFullscreenTransition(state, frame) { return }
-        if state.nativeFullscreen { return } // the system owns its frame
+        let observation = geometry.observe(frame, for: id)
+        if handleFullscreenTransition(state, frame) {
+            geometry.cancel(id)
+            return
+        }
+        if state.nativeFullscreen {
+            geometry.cancel(id)
+            return
+        }
         if paused {
-            // Track floating frames so they stay where the user left them;
-            // tiled frames keep their tile assignment for the resume snap.
             if state.floating { trackFloatingFrame(state, frame) }
             return
         }
         if handleDragEcho(state, frame) { return }
         guard !state.hidden else { return }
         if state.floating {
-            trackFloatingFrame(state, frame)
-        } else {
-            holdTile(state, frame)
+            if observation == .external {
+                trackFloatingFrame(state, frame)
+            }
+        } else if observation == .external {
+            geometry.submitFrame(state.targetFrame, for: id)
         }
     }
 
@@ -943,6 +965,7 @@ extension WindowManager: AXBridgeDelegate {
         state.nativeFullscreen = native
         let ws = workspace(forID: state.workspace)
         if native {
+            geometry.cancel(state.id)
             if !state.floating { ws.removeTiled(state.id) }
             if isVisible(ws) { arrange(ws) }
             syncBorder()
@@ -988,92 +1011,17 @@ extension WindowManager: AXBridgeDelegate {
         }
         drag = session
         if session.engaged {
-            state.frame = frame
+            geometry.cancel(state.id)
+            state.targetFrame = frame
+            state.observedFrame = frame
         }
         return true
     }
 
     private func trackFloatingFrame(_ state: WindowState, _ frame: CGRect) {
-        state.frame = frame
+        state.targetFrame = frame
+        state.observedFrame = frame
         state.floatFrame = frame
-    }
-
-    /// Tiled windows stick to their tile. Re-assert promptly (cooldown
-    /// prevents fight loops with stubborn apps), and always settle back to
-    /// the exact tile once the event burst quiets down.
-    private func holdTile(_ state: WindowState, _ frame: CGRect) {
-        let desired = state.frame
-        if let centered = centeredConstrainedFrame(frame, in: desired) {
-            if frameDistance(frame, centered) > 4 {
-                reassertFrame(centered, for: state.id)
-            }
-            return
-        }
-
-        let drift = frameDistance(frame, desired)
-        guard drift > 4 else { return }
-        reassertFrame(desired, for: state.id)
-        scheduleSettle(state.id)
-    }
-
-    private func frameDistance(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
-        abs(lhs.minX - rhs.minX) + abs(lhs.minY - rhs.minY)
-            + abs(lhs.width - rhs.width) + abs(lhs.height - rhs.height)
-    }
-
-    private func centeredConstrainedFrame(_ actual: CGRect, in desired: CGRect) -> CGRect? {
-        let tolerance: CGFloat = 4
-        let constrainedWidth = actual.width < desired.width - tolerance
-        let constrainedHeight = actual.height < desired.height - tolerance
-        guard constrainedWidth || constrainedHeight else { return nil }
-
-        var frame = desired
-        if constrainedWidth {
-            frame.origin.x = desired.midX - actual.width / 2
-            frame.size.width = actual.width
-        }
-        if constrainedHeight {
-            frame.origin.y = desired.midY - actual.height / 2
-            frame.size.height = actual.height
-        }
-        return frame
-    }
-
-    private func reassertFrame(_ frame: CGRect, for id: WindowID) {
-        let now = CFAbsoluteTimeGetCurrent()
-        guard now - (lastReassert[id] ?? 0) > 0.4 else { return }
-        lastReassert[id] = now
-        bridge.setFrame(id, frame)
-    }
-
-    /// Debounced snap-back: after any external move/resize burst, a tiled
-    /// window returns to its assigned tile (exact coordinates and size).
-    private func scheduleSettle(_ id: WindowID,
-                                after delay: TimeInterval = 0.15,
-                                initial: Bool = false) {
-        guard shouldReplaceScheduledTileSettle(
-            initialPending: initialSettleIDs.contains(id),
-            requestingInitial: initial
-        ) else { return }
-        settleWork[id]?.cancel()
-        if initial {
-            initialSettleIDs.insert(id)
-        }
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.settleWork.removeValue(forKey: id)
-            self.initialSettleIDs.remove(id)
-            guard !self.paused, self.drag?.id != id,
-                  let state = self.windows[id],
-                  !state.floating, !state.hidden, !state.minimized, !state.nativeFullscreen,
-                  self.isVisible(self.workspace(forID: state.workspace)) else { return }
-            if initial {
-                self.lastReassert.removeValue(forKey: id)
-            }
-            self.bridge.setFrame(id, state.frame)
-        }
-        settleWork[id] = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     func windowTitleChanged(_ id: WindowID, title: String) {
@@ -1087,6 +1035,7 @@ extension WindowManager: AXBridgeDelegate {
 
     func windowMinimized(_ id: WindowID) {
         guard let state = windows[id] else { return }
+        geometry.cancel(id)
         state.minimized = true
         if focusedWindow == id { syncBorder() }
         let ws = workspace(forID: state.workspace)
