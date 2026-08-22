@@ -6,6 +6,28 @@ import VinduCore
 
 struct WindowPlacementPolicyTests {
     @Test func resizableStandardWindowTilesAndCanReceiveBorder() {
+        let snapshot = snapshot(
+            kind: .standard,
+            resizeCapability: .resizable,
+            windowLevel: Int(CGWindowLevelForKey(.normalWindow))
+        )
+
+        #expect(!snapshot.defaultFloating)
+        #expect(snapshot.borderEligible)
+    }
+
+    @Test func elevatedResizableStandardWindowFloatsAndCanReceiveBorder() {
+        let snapshot = snapshot(
+            kind: .standard,
+            resizeCapability: .resizable,
+            windowLevel: Int(CGWindowLevelForKey(.floatingWindow))
+        )
+
+        #expect(snapshot.defaultFloating)
+        #expect(snapshot.borderEligible)
+    }
+
+    @Test func resizableStandardWindowWithUnknownLevelTilesAndCanReceiveBorder() {
         let snapshot = snapshot(kind: .standard, resizeCapability: .resizable)
 
         #expect(!snapshot.defaultFloating)
@@ -53,8 +75,27 @@ struct WindowPlacementPolicyTests {
         #expect(workspace.floating == [42])
     }
 
+    @Test @MainActor func elevatedResizableWindowUsesFloatingMembershipAndSpawnFrame() throws {
+        let manager = try manager()
+        let frame = CGRect(x: 10, y: 20, width: 400, height: 300)
+        let snapshot = snapshot(
+            kind: .standard,
+            resizeCapability: .resizable,
+            windowLevel: Int(CGWindowLevelForKey(.floatingWindow)),
+            frame: frame
+        )
+
+        manager.windowAppeared(snapshot)
+
+        let workspace = manager.workspace(forID: 1)
+        #expect(manager.windows[42]?.floatFrame == frame)
+        #expect(workspace.floating == [42])
+        #expect(!workspace.master.contains(42))
+    }
+
     private func snapshot(kind: WindowKind,
                           resizeCapability: WindowResizeCapability,
+                          windowLevel: Int? = nil,
                           frame: CGRect = CGRect(x: 10, y: 20, width: 400, height: 300),
                           isMinimized: Bool = false) -> WindowSnapshot {
         WindowSnapshot(id: 42,
@@ -65,6 +106,7 @@ struct WindowPlacementPolicyTests {
                        frame: frame,
                        kind: kind,
                        resizeCapability: resizeCapability,
+                       windowLevel: windowLevel,
                        isMinimized: isMinimized)
     }
 
