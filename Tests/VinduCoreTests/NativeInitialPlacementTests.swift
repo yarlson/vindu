@@ -72,6 +72,23 @@ import Testing
         #expect(placement.pinned)
     }
 
+    @Test func explicitRuleCanTileWindowThatFloatsByDefault() {
+        let placement = NativeInitialPlacement.evaluate(
+            rules: [NativeWindowRule(
+                match: NativeWindowMatcher(appName: "Panel"),
+                floating: false
+            )],
+            bundleID: nil,
+            appName: "Panel",
+            title: "Preferences",
+            defaultFloating: true,
+            windowFrame: CGRect(x: 10, y: 10, width: 400, height: 300),
+            usable: CGRect(x: 0, y: 0, width: 1000, height: 800)
+        )
+
+        #expect(!placement.floating)
+    }
+
     @Test func explicitGeometryIsKeptWhenItMatchesTheSpawnFrame() {
         let frame = CGRect(x: 10, y: 20, width: 200, height: 100)
         let placement = NativeInitialPlacement.evaluate(
