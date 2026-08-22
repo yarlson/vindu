@@ -8,3 +8,6 @@ DerivedData/
 
 # macOS
 .DS_Store
+
+website/node_modules/
+website/.wrangler/

@@ -4,6 +4,8 @@
 
 A dynamic tiling window manager for macOS.
 
+[Visit getvindu.app](https://getvindu.app/)
+
 ![Vindu, a dynamic tiling window manager for macOS](assets/vindu-hero.png)
 
 The name is Norwegian for "window", from Old Norse _vindauga_ ("wind-eye"),
