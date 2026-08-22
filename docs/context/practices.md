@@ -7,6 +7,9 @@
   and `cursorpos` reply boundaries.
 - The window manager is single-threaded on the main queue. Tap callbacks, IPC
   reads, watcher callbacks, and timers hop to main before touching runtime state.
+- `WindowGeometryController` is the only path that writes managed-window
+  position or size. It keeps the logical target separate from AX observations,
+  cancels superseded work, and accepts a result only after readback.
 - Tiled membership changes only through
   `WorkspaceState.insertTiled/removeTiled/removeWindow/swapTiled`, which keeps
   master order and the dwindle tree in lockstep. Layout ratios and orientation do

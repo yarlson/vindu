@@ -24,8 +24,9 @@ extension WindowManager {
         case .began:
             guard let id = bridge.windowID(at: point), let state = windows[id] else { return }
             let dragKind: DragKind = kind == .resize ? .resize : .move
+            geometry.cancel(id)
             drag = DragSession(id: id, kind: dragKind, source: .binding, startPoint: point,
-                               startFrame: state.frame, engaged: true, lastPoint: point)
+                               startFrame: state.targetFrame, engaged: true, lastPoint: point)
             focusWindow(id)
         case .moved:
             guard var session = drag, session.source == .binding,
@@ -51,8 +52,8 @@ extension WindowManager {
                 frame.origin.x += dx
                 frame.origin.y += dy
                 guard isValidWindowFrame(frame) else { return }
-                state.frame = frame
-                bridge.setFrame(session.id, frame)
+                state.targetFrame = frame
+                geometry.submitFrame(frame, for: session.id)
                 liveSwapDuringDrag(at: point)
             } else {
                 let ddx = point.x - session.lastPoint.x
@@ -77,7 +78,7 @@ extension WindowManager {
                   let state = windows[id], !state.floating, !state.hidden,
                   !state.minimized else { return }
             drag = DragSession(id: id, kind: .move, source: .native, startPoint: point,
-                               startFrame: state.frame, engaged: false, lastPoint: point)
+                               startFrame: state.targetFrame, engaged: false, lastPoint: point)
         case .moved:
             guard let session = drag, session.source == .native,
                   session.engaged, !session.sawResize else { return }
@@ -98,7 +99,7 @@ extension WindowManager {
         guard var session = drag, let state = windows[session.id], !state.floating else { return }
         let ws = workspace(forID: state.workspace)
         if let last = session.lastSwapTarget,
-           !(windows[last]?.frame.contains(point) ?? false) {
+           !(windows[last]?.targetFrame.contains(point) ?? false) {
             session.lastSwapTarget = nil
             drag = session
         }
@@ -107,7 +108,7 @@ extension WindowManager {
                 && other != session.lastSwapTarget
                 && windows[other]?.minimized != true
                 && windows[other]?.hidden != true
-                && (windows[other]?.frame.contains(point) ?? false)
+                && (windows[other]?.targetFrame.contains(point) ?? false)
         }
         guard let target else { return }
         ws.swapTiled(session.id, target)
@@ -123,13 +124,13 @@ extension WindowManager {
             return
         }
         if state.floating {
-            state.floatFrame = state.frame
+            state.floatFrame = state.targetFrame
             return
         }
         if session.sawResize {
             // Native edge-resize of a tiled window: adopt the user's size
             // intent into the split ratios, then snap everything to the grid.
-            let current = bridge.frame(of: session.id) ?? state.frame
+            let current = state.observedFrame
             resizeTiledBy(session.id,
                           dx: current.width - session.startFrame.width,
                           dy: current.height - session.startFrame.height)

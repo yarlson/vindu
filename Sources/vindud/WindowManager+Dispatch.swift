@@ -262,7 +262,7 @@ extension WindowManager {
         if floating {
             ws.removeTiled(id)
             ws.floating.append(id)
-            state.floatFrame = keepFrame ? state.frame
+            state.floatFrame = keepFrame ? state.targetFrame
                 : (state.floatFrame ?? defaultFloatFrame(for: ws))
         } else {
             ws.floating.removeAll { $0 == id }
@@ -304,7 +304,7 @@ extension WindowManager {
     func centerActive() {
         guard let id = focusedWindow, let state = windows[id], state.floating else { return }
         let usable = containerRect(for: workspace(forID: state.workspace))
-        var f = state.frame
+        var f = state.targetFrame
         f.origin = CGPoint(x: usable.midX - f.width / 2, y: usable.midY - f.height / 2)
         applyFloatingFrame(state, f)
     }
@@ -315,7 +315,7 @@ extension WindowManager {
         let candidates = candidateFrames(excluding: focusedWindow)
         let source: CGRect
         if let id = focusedWindow, let state = windows[id] {
-            source = state.frame
+            source = state.targetFrame
         } else if let m = monitorMgr.byID(focusedMonitorID) {
             source = CGRect(x: m.usable.midX, y: m.usable.midY, width: 1, height: 1)
         } else {
@@ -335,7 +335,7 @@ extension WindowManager {
     private func candidateFrames(excluding: WindowID?) -> [(id: WindowID, rect: CGRect)] {
         visibleWindows(on: focusedMonitorID).compactMap { id in
             guard id != excluding, let state = windows[id], !state.hidden else { return nil }
-            return (id, state.frame)
+            return (id, state.targetFrame)
         }
     }
 
@@ -393,14 +393,14 @@ extension WindowManager {
         let tiled = candidateFrames(excluding: id).filter {
             windows[$0.id]?.floating == false && windows[$0.id]?.workspace == state.workspace
         }
-        return LayoutMath.neighbor(of: state.frame, in: dir, candidates: tiled)
+        return LayoutMath.neighbor(of: state.targetFrame, in: dir, candidates: tiled)
     }
 
     private func snapFloating(_ id: WindowID, _ dir: Direction) {
         guard let state = windows[id] else { return }
         let usable = containerRect(for: workspace(forID: state.workspace))
         let g = configuration.layout.outerGap
-        var f = state.frame
+        var f = state.targetFrame
         switch dir {
         case .left: f.origin.x = usable.minX + g
         case .right: f.origin.x = usable.maxX - f.width - g
@@ -448,7 +448,7 @@ extension WindowManager {
         guard let id = focusedWindow, let state = windows[id] else { return "ok" }
         let workspace = workspace(forID: state.workspace)
         if state.floating {
-            var frame = state.frame
+            var frame = state.targetFrame
             frame.size.width = max(120, frame.width + x)
             frame.size.height = max(90, frame.height + y)
             return applyFloatingFrame(state, frame) ? "ok" : "err: invalid geometry"
@@ -462,7 +462,7 @@ extension WindowManager {
         guard let id = focusedWindow, let state = windows[id], state.floating else {
             return "err: move_floating applies to floating windows"
         }
-        var frame = state.frame
+        var frame = state.targetFrame
         frame.origin.x += x
         frame.origin.y += y
         return applyFloatingFrame(state, frame) ? "ok" : "err: invalid geometry"
@@ -524,7 +524,7 @@ extension WindowManager {
             let dy = dh.resolved(against: usable.height)
             guard dx.isFinite, dy.isFinite else { return "err: invalid geometry" }
             if state.floating {
-                var f = state.frame
+                var f = state.targetFrame
                 f.size.width = max(120, f.width + dx)
                 f.size.height = max(90, f.height + dy)
                 guard applyFloatingFrame(state, f) else { return "err: invalid geometry" }
@@ -536,7 +536,7 @@ extension WindowManager {
             guard state.floating else {
                 return "err: resizeactive exact applies to floating windows"
             }
-            var f = state.frame
+            var f = state.targetFrame
             f.size = CGSize(width: max(120, w.resolved(against: usable.width)),
                             height: max(90, h.resolved(against: usable.height)))
             guard applyFloatingFrame(state, f) else { return "err: invalid geometry" }
@@ -549,7 +549,7 @@ extension WindowManager {
             return "err: moveactive applies to floating windows"
         }
         let usable = containerRect(for: workspace(forID: state.workspace))
-        var f = state.frame
+        var f = state.targetFrame
         switch param {
         case .relative(let dx, let dy):
             f.origin.x += dx.resolved(against: usable.width)
@@ -730,7 +730,10 @@ extension WindowManager {
         for (id, state) in windows where state.hidden {
             let ws = workspace(forID: state.workspace)
             let container = containerRect(for: ws)
-            bridge.setPosition(id, CGPoint(x: container.minX + 40, y: container.minY + 40))
+            _ = geometry.applyPositionBeforeShutdown(
+                CGPoint(x: container.minX + 40, y: container.minY + 40),
+                for: id
+            )
         }
         border.shutdown()
         desktopBar.hide()

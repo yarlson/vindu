@@ -8,7 +8,9 @@ Reliability measures, all load-bearing:
 
 - AX destroy notifications are unreliable (destroyed elements lose CFEqual identity; some apps never send one), so a periodic reconcile pass reaps tracked windows absent from the window-server list on two consecutive passes. Notification destruction, app detach, and reconcile all remove windows through the same path and clear the window's reconcile state.
 - Apps register with the AX server asynchronously after launch, so window discovery retries on a short schedule after each app launch. A newly reported window whose geometry is temporarily invalid gets one bounded retry chain tied to the same live app, AX element, and window id. After registration, AXBridge refreshes system focus only when that app is still frontmost. This covers activation arriving before window discovery without letting background discovery replace focus.
-- `setFrame` runs position–size–position because apps clamp size against the current position, which lands off-target when crossing displays.
+- `AXBridge` exposes checked frame reads and individual size and position writes.
+  `WindowGeometryController` owns the complete operation and applies
+  size–position–size before it verifies the resulting frame.
 
 AX frame coordinates must be finite and integer-representable; width and height must also be positive. Invalid snapshots and move or resize updates are ignored, and invalid outgoing frames do not reach Accessibility. Layout arrangement validates every candidate before it changes window state, so one invalid frame leaves the whole workspace at its previous geometry. Floating move and resize dispatchers return an error instead of applying an invalid frame. IPC omits invalid client or monitor snapshots and reports an invalid cursor position instead of converting it to an integer.
 
@@ -24,7 +26,15 @@ Every AXWindow is classified before management:
 
 ## Per-window state
 
-`WindowState` is daemon-side truth: `frame` is the desired tile frame for tiled windows and the live frame for floating ones; flags cover floating, pinned, minimized, hidden (stashed), nativeFullscreen, fakeFullscreen; `floatFrame` remembers floating geometry across tile/float toggles.
+`WindowState` keeps `targetFrame`, the logical tiled or floating destination,
+separate from `observedFrame`, the last valid AX notification or readback.
+Workspace stashing changes only the observed position. A horizontal match makes
+the stash complete because macOS can clamp the requested vertical position to
+keep an app-specific title-bar strip on screen. Floating user movement promotes
+the observed frame to the target. Flags cover floating, pinned,
+minimized, hidden (stashed), nativeFullscreen, and fakeFullscreen;
+`floatFrame` remembers floating geometry across tile/float toggles. Public client
+information reports the observed frame.
 
 ## Focus
 
@@ -36,7 +46,19 @@ Every AXWindow is classified before management:
 
 ## Tiled frame enforcement
 
-Tiled windows stick to their assigned tile. Vindu reasserts drift beyond a few pixels under a cooldown to avoid fighting apps that resist, and a debounced settle restores the exact frame after the event burst ends. A visible tiled window gets one initial settle after a short startup grace so an app that ignores its first resize receives the final assigned frame. Ordinary move and resize debounce cannot replace that pending startup settle. The initial settle clears the earlier reassert cooldown so a window that still refuses the full tile can return to its centered constrained frame. The settle stops when the window is floating, minimized, hidden, native-fullscreen, being dragged, outside the visible workspace, or when tiling is paused. If an app refuses the tile's full size, Vindu centers the accepted smaller frame inside the assigned tile instead of pinning it to the tile origin. Floating windows simply track the OS frame.
+Tiled windows keep their assigned target. Each new target supersedes pending work
+for that window. Vindu applies size–position–size, reads the AX frame after 150
+ms, and establishes the target position when the result still differs by more
+than four points. At 750 ms, a remaining mismatch gets one complete
+size–position–size retry followed by a final readback after 150 ms. Move and
+resize notifications during that operation update observed state but cannot
+complete it. A failed operation keeps the tile target, reports the actual frame,
+and suppresses repeated notifications for that unchanged result instead of
+starting an unbounded loop. It does not center the rejected frame or change the
+window to floating. A later layout, workspace, display, or user action can
+submit a new intent. Destroy, minimize, native fullscreen, drag, and pause cancel
+pending work. Floating windows promote external AX movement into their target
+and observed frames.
 
 ## Native fullscreen
 

@@ -97,7 +97,7 @@ extension WindowManager {
     // MARK: Info builders
 
     func clientInfo(_ id: WindowID) -> ClientInfo? {
-        guard let s = windows[id], let frame = windowFrameValues(s.frame) else { return nil }
+        guard let s = windows[id], let frame = windowFrameValues(s.observedFrame) else { return nil }
         let ws = workspace(forID: s.workspace)
         let monitorIndex = monitorMgr.byID(ws.monitor)?.index ?? 0
         let fullscreen = ws.fullscreen == id ? (ws.fullscreenMode == 0 ? 2 : 1) : 0

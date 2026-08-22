@@ -15,7 +15,7 @@ Request/response using Vindu's established public wire contract: one plain-text 
 
 ## JSON shapes
 
-Information payloads retain Vindu's published JSON shapes (`ClientInfo`, `WorkspaceInfo`, `MonitorInfo`, `BindInfo`, `VersionInfo`, and `ConfigStatus` in VinduCore). The window `address` is the hexadecimal CGWindowID. The client `fullscreen` field encodes 0 = none, 1 = maximize, 2 = fullscreen. Output is pretty-printed with sorted keys.
+Information payloads retain Vindu's published JSON shapes (`ClientInfo`, `WorkspaceInfo`, `MonitorInfo`, `BindInfo`, `VersionInfo`, and `ConfigStatus` in VinduCore). The window `address` is the hexadecimal CGWindowID. Client `at` and `size` fields report the last observed AX frame, including the stash position of a hidden workspace window. The client `fullscreen` field encodes 0 = none, 1 = maximize, 2 = fullscreen. Output is pretty-printed with sorted keys.
 
 ## Event socket
 
