@@ -26,6 +26,14 @@ func isValidWindowFrame(_ frame: CGRect) -> Bool {
     windowFrameValues(frame) != nil
 }
 
+func shouldScheduleInitialTileSettle(floating: Bool, minimized: Bool, visible: Bool) -> Bool {
+    !floating && !minimized && visible
+}
+
+func shouldReplaceScheduledTileSettle(initialPending: Bool, requestingInitial: Bool) -> Bool {
+    requestingInitial || !initialPending
+}
+
 func nextAvailableWorkspaceID(preferred: Int, activeIDs: Set<Int>) -> Int? {
     if preferred > 0, preferred <= 1000, !activeIDs.contains(preferred) {
         return preferred
@@ -89,6 +97,8 @@ final class WindowState {
 /// The window manager. Single-threaded on the main queue: AX events, hotkey
 /// dispatch, and IPC requests all funnel here.
 final class WindowManager {
+    private static let initialTileSettleDelay: TimeInterval = 0.75
+
     let bridge = AXBridge()
     let monitorMgr = MonitorManager()
     let tap = HotkeyTap()
@@ -125,6 +135,7 @@ final class WindowManager {
     private var lastReassert: [WindowID: Double] = [:]
     private var lastFullscreenPoll: [WindowID: Double] = [:]
     private var settleWork: [WindowID: DispatchWorkItem] = [:]
+    private var initialSettleIDs: Set<WindowID> = []
     var desktopBarRefreshQueued = false
     private var didReportInvalidGeometry = false
     /// Last explicit switch gesture (⌘Tab, Dock click). Activations that
@@ -830,6 +841,17 @@ extension WindowManager: AXBridgeDelegate {
         } else {
             stash(snap.id)
         }
+        if shouldScheduleInitialTileSettle(
+            floating: state.floating,
+            minimized: state.minimized,
+            visible: isVisible(ws)
+        ) {
+            scheduleSettle(
+                snap.id,
+                after: Self.initialTileSettleDelay,
+                initial: true
+            )
+        }
     }
 
     func windowDestroyed(_ id: WindowID) {
@@ -841,6 +863,7 @@ extension WindowManager: AXBridgeDelegate {
         lastReassert.removeValue(forKey: id)
         lastFullscreenPoll.removeValue(forKey: id)
         settleWork.removeValue(forKey: id)?.cancel()
+        initialSettleIDs.remove(id)
         broadcast(.closewindow(id))
         if isVisible(ws) {
             arrange(ws)
@@ -1025,19 +1048,32 @@ extension WindowManager: AXBridgeDelegate {
 
     /// Debounced snap-back: after any external move/resize burst, a tiled
     /// window returns to its assigned tile (exact coordinates and size).
-    private func scheduleSettle(_ id: WindowID) {
+    private func scheduleSettle(_ id: WindowID,
+                                after delay: TimeInterval = 0.15,
+                                initial: Bool = false) {
+        guard shouldReplaceScheduledTileSettle(
+            initialPending: initialSettleIDs.contains(id),
+            requestingInitial: initial
+        ) else { return }
         settleWork[id]?.cancel()
+        if initial {
+            initialSettleIDs.insert(id)
+        }
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.settleWork.removeValue(forKey: id)
-            guard self.drag?.id != id,
+            self.initialSettleIDs.remove(id)
+            guard !self.paused, self.drag?.id != id,
                   let state = self.windows[id],
-                  !state.floating, !state.hidden, !state.minimized,
+                  !state.floating, !state.hidden, !state.minimized, !state.nativeFullscreen,
                   self.isVisible(self.workspace(forID: state.workspace)) else { return }
+            if initial {
+                self.lastReassert.removeValue(forKey: id)
+            }
             self.bridge.setFrame(id, state.frame)
         }
         settleWork[id] = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     func windowTitleChanged(_ id: WindowID, title: String) {

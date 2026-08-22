@@ -55,6 +55,45 @@ struct WindowPlacementPolicyTests {
         #expect(!snapshot.borderEligible)
     }
 
+    @Test func visibleTiledWindowSchedulesInitialSettle() {
+        #expect(shouldScheduleInitialTileSettle(
+            floating: false,
+            minimized: false,
+            visible: true
+        ))
+    }
+
+    @Test func floatingWindowDoesNotScheduleInitialSettle() {
+        #expect(!shouldScheduleInitialTileSettle(
+            floating: true,
+            minimized: false,
+            visible: true
+        ))
+    }
+
+    @Test func minimizedTiledWindowDoesNotScheduleInitialSettle() {
+        #expect(!shouldScheduleInitialTileSettle(
+            floating: false,
+            minimized: true,
+            visible: true
+        ))
+    }
+
+    @Test func hiddenWorkspaceWindowDoesNotScheduleInitialSettle() {
+        #expect(!shouldScheduleInitialTileSettle(
+            floating: false,
+            minimized: false,
+            visible: false
+        ))
+    }
+
+    @Test func startupDriftDoesNotReplacePendingInitialSettle() {
+        #expect(!shouldReplaceScheduledTileSettle(
+            initialPending: true,
+            requestingInitial: false
+        ))
+    }
+
     @Test @MainActor func minimizedFixedWindowKeepsFloatingMembershipAndSpawnFrame() throws {
         let manager = try manager()
         let frame = CGRect(x: 10, y: 20, width: 400, height: 300)
