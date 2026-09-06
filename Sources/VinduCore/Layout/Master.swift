@@ -37,6 +37,11 @@ public final class MasterLayout {
         windows.swapAt(ia, ib)
     }
 
+    func replaceOrder(with order: [WindowID]) {
+        windows = order
+        masterCount = min(masterCount, max(1, windows.count))
+    }
+
     public func swapWithMaster(_ focused: WindowID, mode: String) {
         guard let idx = windows.firstIndex(of: focused), windows.count > 1 else { return }
         let isMaster = idx < masterCount

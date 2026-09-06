@@ -65,6 +65,15 @@ struct DispatcherTests {
         #expect(parse("exec") == nil)
     }
 
+    @Test func columnDispatcher() {
+        #expect(parse("column", "consume") == .column(.consume))
+        #expect(parse("column", "width-next") == .column(.widthNext))
+        #expect(parse("column", "full-width") == .column(.fullWidth))
+        #expect(parse("column", "unknown") == nil)
+        #expect(Dispatcher.column(.center).name == "column")
+        #expect(Dispatcher.column(.widthPrevious).argText == "width-previous")
+    }
+
     @Test func pauseDispatcher() {
         #expect(parse("pause") == .pause(.toggle))
         #expect(parse("pause", "toggle") == .pause(.toggle))

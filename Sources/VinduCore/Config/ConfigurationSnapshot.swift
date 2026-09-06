@@ -35,6 +35,15 @@ public struct LayoutConfiguration: Equatable {
     public let outerGap: Double
     public let dwindle: DwindleConfiguration
     public let master: MasterConfiguration
+    public let scrolling: ScrollingConfiguration
+}
+
+public struct ScrollingConfiguration: Equatable {
+    public let defaultColumnWidth: Double
+
+    public init(defaultColumnWidth: Double) {
+        self.defaultColumnWidth = defaultColumnWidth
+    }
 }
 
 public struct DwindleConfiguration: Equatable {
@@ -254,6 +263,7 @@ public enum WindowAction: Equatable {
     case moveFloating(x: Double, y: Double)
     case split(SplitAction)
     case primary(PrimaryAction)
+    case column(ColumnAction)
     case monitor(MonitorTarget)
     case enterMode(String)
     case raise
@@ -277,6 +287,15 @@ public enum PrimaryAction: String, Equatable {
     case swap
     case add
     case remove
+}
+
+public enum ColumnAction: String, Equatable {
+    case consume
+    case expel
+    case widthNext = "width-next"
+    case widthPrevious = "width-previous"
+    case fullWidth = "full-width"
+    case center
 }
 
 public struct CommandSpec: Equatable {

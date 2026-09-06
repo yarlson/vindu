@@ -12,10 +12,11 @@
   cancels superseded work, and accepts a result only after readback.
 - Tiled membership changes only through
   `WorkspaceState.insertTiled/removeTiled/removeWindow/swapTiled`, which keeps
-  master order and the dwindle tree in lockstep. Layout ratios and orientation do
+  master order, the dwindle tree, and scrolling columns in lockstep. Layout ratios and orientation do
   not change membership.
-- Master order is the canonical window order. The dwindle tree is rebuilt from it
-  when the active layout changes.
+- Master order is the canonical window order. Other layout models are rebuilt from
+  it when the active layout changes. Leaving scrolling flattens its columns and
+  discards their grouping; entering scrolling creates one column per window.
 - The runtime consumes one immutable `ConfigurationSnapshot`. A candidate replaces
   it only after the whole file decodes and passes semantic validation. A failed
   reload preserves the active snapshot and exposes the rejected diagnostics.
@@ -63,6 +64,8 @@
   Vindu-owned WindowServer surface.
 - Workspace hiding is frame-stashing, not Space membership. Code that repositions
   windows must respect `hidden` and `nativeFullscreen`.
+- Scrolling also parks fully off-viewport columns. The logical target frame stays
+  separate from the parked AX position, and shutdown restores parked windows.
 - The daemon uses Swift language mode 5 under tools 6.0 because its AX and event
   tap callbacks cross C APIs that strict Swift 6 concurrency cannot model well.
 - The Accessibility grant is tied to code identity. Release and install builds

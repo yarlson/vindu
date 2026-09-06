@@ -71,6 +71,7 @@ public enum Dispatcher: Equatable {
     case togglesplit
     case swapsplit
     case layoutmsg(String)
+    case column(ColumnAction)
     case togglespecialworkspace(String)
     case pin
     case cyclenext(prev: Bool)
@@ -185,6 +186,11 @@ public enum Dispatcher: Equatable {
             return .success(.swapsplit)
         case "layoutmsg":
             return a.isEmpty ? .failure("layoutmsg needs a message") : .success(.layoutmsg(a))
+        case "column":
+            guard let action = ColumnAction(rawValue: a) else {
+                return .failure("column takes: consume, expel, width-next, width-previous, full-width, or center")
+            }
+            return .success(.column(action))
         case "togglespecialworkspace":
             return .success(.togglespecialworkspace(a.isEmpty ? "special" : a))
         case "pin":
@@ -260,6 +266,7 @@ public enum Dispatcher: Equatable {
         case .togglesplit: return "togglesplit"
         case .swapsplit: return "swapsplit"
         case .layoutmsg: return "layoutmsg"
+        case .column: return "column"
         case .togglespecialworkspace: return "togglespecialworkspace"
         case .pin: return "pin"
         case .cyclenext: return "cyclenext"
@@ -298,6 +305,7 @@ public enum Dispatcher: Equatable {
         case .resizeactive(let p), .moveactive(let p): return p.text
         case .splitratio(let a): return a.text
         case .layoutmsg(let m): return m
+        case .column(let action): return action.rawValue
         case .togglespecialworkspace(let s): return s == "special" ? "" : s
         case .cyclenext(let prev), .swapnext(let prev): return prev ? "prev" : ""
         case .alterzorder(let a): return a

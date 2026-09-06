@@ -9,7 +9,7 @@
 ## Domains
 
 - [config](domains/config.md) — strict TOML, selection, snapshots, reload
-- [layout](domains/layout.md) — dwindle, master, gap math, arrange pipeline
+- [layout](domains/layout.md) — dwindle, master, scrolling columns, gap math, arrange pipeline
 - [workspaces](domains/workspaces.md) — registry, visibility, off-screen stashing, multi-monitor
 - [window-management](domains/window-management.md) — AX bridge, classification, focus, fullscreen
 - [input](domains/input.md) — event tap, typed bindings, modes, drag engine

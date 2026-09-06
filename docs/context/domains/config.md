@@ -43,7 +43,8 @@ partly changes runtime state.
 ## Snapshot sections
 
 - `layout`: kind, inner and outer gaps, dwindle new-window fraction and position,
-  and master primary fraction, position, and new-window position.
+  master primary fraction, position, and new-window position, and scrolling's
+  default column width.
 - `focus`: pointer-following and whether off-workspace app activation may switch
   the visible workspace.
 - `workspaces`: back-and-forth switching and display assignments.

@@ -99,6 +99,9 @@ primary_fraction = 0.55
 primary_position = "left"
 new_window_position = "stack-end"
 
+[layout.scrolling]
+default_column_width = 0.5
+
 [focus]
 follows_pointer = false
 allow_app_activation = false
@@ -175,6 +178,34 @@ monitor = "Studio Display"
 Vindu first tries a case-insensitive exact display name, then a unique partial
 match. Missing or ambiguous displays produce a runtime warning and leave the
 workspace where it is. Vindu retries after display changes.
+
+## Scrolling layout
+
+Set `layout.kind = "scrolling"` to arrange windows as horizontal columns. Each
+new window opens in a column after the focused column. Columns can hold vertical
+stacks, remember their focused window, preserve their width, and scroll beyond
+the display edge. The default width is one half of the usable display; available
+presets are one third, one half, two thirds, and full width.
+
+Option-scroll controls a scrolling workspace. Horizontal movement pans with
+native trackpad momentum. Vertical movement switches one workspace per gesture.
+Keyboard focus reveals a hidden column with a short animation. Pointer-follow
+focus pauses while the viewport moves.
+
+Bind column actions with `column = "consume"`, `"expel"`, `"width-next"`,
+`"width-previous"`, `"full-width"`, or `"center"`. Scripts can use the same
+operations:
+
+```sh
+vinductl dispatch column consume
+vinductl dispatch column width-next
+vinductl dispatch column center
+```
+
+Special workspaces keep the dwindle layout. On more than one display, scrolling
+requires Displays have separate Spaces in macOS settings. If it is off, Vindu
+keeps the configuration, restores parked windows, uses dwindle, and reports the
+fallback through `config status` and the desktop bar.
 
 ## Desktop bar
 

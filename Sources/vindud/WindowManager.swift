@@ -69,6 +69,7 @@ final class WindowState {
     var nativeFullscreen = false
     /// Stashed off-screen because its workspace is not visible.
     var hidden = false
+    var viewportHidden = false
     var floatFrame: CGRect?
 
     init(id: WindowID, pid: pid_t, bundleID: String?, clazz: String, title: String, workspace: Int,
@@ -90,6 +91,11 @@ final class WindowState {
 /// The window manager. Single-threaded on the main queue: AX events, hotkey
 /// dispatch, and IPC requests all funnel here.
 final class WindowManager {
+    enum ScrollingMotionPhase: Equatable {
+        case begin
+        case update
+        case finish
+    }
     let bridge = AXBridge()
     lazy var geometry = WindowGeometryController(
         backend: bridge,
@@ -129,6 +135,13 @@ final class WindowManager {
     var systemFocusedSurface: WindowID?
     var focusedMonitorID: CGDirectDisplayID = 0
     var focusHistory: [WindowID] = []
+    var scrollingGesture: ScrollingGestureSession?
+    var scrollingGestureMotionStarted = false
+    var scrollingGestureEnd: DispatchWorkItem?
+    var scrollingMotionTimer: Timer?
+    var scrollingMotionNeedsFrame = false
+    var viewportAnimation: Timer?
+    var viewportAnimationWorkspaceID: Int?
 
     var drag: DragSession?
     var lastDragApply = 0.0
@@ -175,6 +188,9 @@ final class WindowManager {
         }
         tap.onUserGesture = { [weak self] in self?.lastUserGesture = CFAbsoluteTimeGetCurrent() }
         tap.onMouseMoved = { [weak self] point in self?.followMouse(point) }
+        tap.onScrollShouldCapture = { [weak self] point in self?.canCaptureScroll(at: point) ?? false }
+        tap.onScroll = { [weak self] input in _ = self?.handleScroll(input) }
+        tap.onScrollCancelled = { [weak self] in self?.finishScrollingGesture() }
         if !tap.start() {
             log("event tap unavailable — check Accessibility permission; binds disabled")
         }
@@ -343,6 +359,13 @@ final class WindowManager {
         return activeWS[ws.monitor] == ws.id
     }
 
+    func effectiveLayoutKind(for workspace: WorkspaceState) -> LayoutKind {
+        resolvedLayoutKind(configured: configuration.layout.kind,
+                           specialWorkspace: workspace.isSpecial,
+                           monitorCount: monitorMgr.monitors.count,
+                           screensHaveSeparateSpaces: NSScreen.screensHaveSeparateSpaces)
+    }
+
     func garbageCollect(_ ws: WorkspaceState) {
         let isBound = configuration.workspaces.assignments.contains { $0.id == ws.id }
         registry.destroyIfEmpty(ws, isVisible: isVisible(ws), isBound: isBound)
@@ -363,23 +386,35 @@ final class WindowManager {
 
     /// `excluding` skips one window's frame (a tile mid-drag follows the mouse
     /// while the rest of the workspace re-flows around it).
-    func arrange(_ ws: WorkspaceState, excluding: WindowID? = nil) {
+    func arrange(_ ws: WorkspaceState, excluding: WindowID? = nil,
+                 scrollingMotion: ScrollingMotionPhase? = nil) {
         guard isVisible(ws), !paused else { return }
         let container = containerRect(for: ws)
         let g = configuration.layout
 
         let raw: [WindowID: CGRect]
-        switch g.kind {
+        switch effectiveLayoutKind(for: ws) {
         case .dwindle:
             raw = ws.dwindle.frames(in: container)
         case .master:
             raw = ws.master.frames(in: container, configuration: g.master)
+        case .scrolling:
+            raw = ws.scrolling.frames(in: container)
+        }
+        let gapContainer: CGRect
+        if effectiveLayoutKind(for: ws) == .scrolling,
+           let minimumX = raw.values.map(\.minX).min(),
+           let maximumX = raw.values.map(\.maxX).max() {
+            gapContainer = CGRect(x: minimumX, y: container.minY,
+                                  width: maximumX - minimumX, height: container.height)
+        } else {
+            gapContainer = container
         }
 
         var frames: [(state: WindowState, frame: CGRect)] = []
         for (id, rect) in raw {
             guard id != excluding, let state = windows[id], !state.minimized else { continue }
-            var frame = LayoutMath.applyGaps(to: rect, within: container,
+            var frame = LayoutMath.applyGaps(to: rect, within: gapContainer,
                                              gapsIn: g.innerGap, gapsOut: g.outerGap)
             frame = frame.insetBy(dx: configuration.ui.focusBorder.width,
                                   dy: configuration.ui.focusBorder.width)
@@ -404,18 +439,51 @@ final class WindowManager {
         }
 
         for (state, frame) in frames {
+            if scrollingMotion != nil, state.floating { continue }
             state.targetFrame = frame
             state.hidden = false
-            geometry.submitFrame(frame, for: state.id)
+            let isOutsideViewport = !state.floating
+                && effectiveLayoutKind(for: ws) == .scrolling
+                && ws.fullscreen != state.id
+                && (frame.maxX <= container.minX || frame.minX >= container.maxX)
+            state.viewportHidden = isOutsideViewport
+            let appliedFrame: CGRect
+            if isOutsideViewport,
+               let monitor = monitorMgr.byID(ws.monitor) ?? monitorMgr.primary {
+                appliedFrame = CGRect(origin: CGPoint(x: monitor.frame.maxX - 2,
+                                                      y: monitor.frame.maxY - 2),
+                                      size: frame.size)
+            } else {
+                appliedFrame = frame
+            }
+            switch scrollingMotion {
+            case .begin:
+                geometry.beginMotion(appliedFrame, for: state.id)
+            case .update:
+                geometry.updateMotionPosition(appliedFrame.origin, for: state.id)
+            case .finish:
+                if isOutsideViewport {
+                    geometry.cancel(state.id)
+                    geometry.submitStashPosition(appliedFrame.origin, for: state.id)
+                } else {
+                    geometry.finishMotion(appliedFrame, for: state.id)
+                }
+            case nil:
+                if isOutsideViewport {
+                    geometry.submitStashPosition(appliedFrame.origin, for: state.id)
+                } else {
+                    geometry.submitFrame(appliedFrame, for: state.id)
+                }
+            }
         }
 
-        if let fs = ws.fullscreen {
+        if scrollingMotion == nil, let fs = ws.fullscreen {
             bridge.raise(fs)
         }
-        if ws.isSpecial {
+        if scrollingMotion == nil, ws.isSpecial {
             for id in ws.allWindows { bridge.raise(id) }
         }
-        syncBorder()
+        if scrollingMotion == nil || scrollingMotion == .finish { syncBorder() }
     }
 
     func arrangeAllVisible() {
@@ -468,6 +536,7 @@ final class WindowManager {
     }
 
     func hideWorkspace(_ ws: WorkspaceState) {
+        if viewportAnimationWorkspaceID == ws.id { cancelViewportAnimation() }
         for id in ws.allWindows where windows[id]?.pinned != true {
             stash(id)
         }
@@ -567,7 +636,9 @@ final class WindowManager {
     func insertTiled(_ id: WindowID, into ws: WorkspaceState) {
         ws.insertTiled(id, near: ws.lastFocused, container: containerRect(for: ws),
                        dwindleConfiguration: configuration.layout.dwindle,
-                       masterConfiguration: configuration.layout.master)
+                       masterConfiguration: configuration.layout.master,
+                       scrollingConfiguration: configuration.layout.scrolling,
+                       layoutKind: effectiveLayoutKind(for: ws))
     }
 
     /// Windows visible on a monitor right now: active workspace + overlaid
@@ -582,7 +653,7 @@ final class WindowManager {
         }
         return out.filter {
             guard let state = windows[$0] else { return false }
-            return !state.minimized && !state.nativeFullscreen
+            return !state.minimized && !state.nativeFullscreen && !state.viewportHidden
         }
     }
 
@@ -590,6 +661,14 @@ final class WindowManager {
 
     func focusWindow(_ id: WindowID) {
         guard let state = windows[id] else { return }
+        let workspace = workspace(forID: state.workspace)
+        if !state.floating, viewportAnimation == nil,
+           effectiveLayoutKind(for: workspace) == .scrolling {
+            let start = workspace.scrolling.viewportOffset
+            _ = workspace.scrolling.reveal(id, in: containerRect(for: workspace))
+            let end = workspace.scrolling.viewportOffset
+            if end != start { animateScrollingViewport(workspace, from: start, to: end) }
+        }
         bridge.focus(id)
         noteFocus(state)
     }
@@ -600,6 +679,7 @@ final class WindowManager {
         focusedWindow = state.id
         let ws = workspace(forID: state.workspace)
         ws.lastFocused = state.id
+        ws.scrolling.noteFocus(state.id)
         focusedMonitorID = ws.monitor
         pushFocusHistory(state.id)
         syncBorder()
@@ -692,7 +772,8 @@ final class WindowManager {
     }
 
     func followMouse(_ point: CGPoint) {
-        guard configuration.focus.followsPointer, !paused else { return }
+        guard configuration.focus.followsPointer, !paused,
+              scrollingGesture == nil, viewportAnimation == nil else { return }
         if let m = monitorMgr.containing(point) {
             focusedMonitorID = m.id
         }
@@ -704,6 +785,8 @@ final class WindowManager {
     // MARK: - Monitors changed
 
     func monitorsChanged(_ change: MonitorChange) {
+        finishScrollingGesture()
+        cancelViewportAnimation()
         let alive = Set(monitorMgr.monitors.map(\.id))
         let fallback = monitorMgr.primary?.id ?? 0
         let orphanedVisible = workspaceIDsVisibleOnlyOnRemovedMonitors(
@@ -723,7 +806,7 @@ final class WindowManager {
             focusedMonitorID = fallback
         }
         ensureWorkspacesForMonitors()
-        let warnings = reconcileWorkspaceAssignments()
+        let warnings = reconcileWorkspaceAssignments() + scrollingLayoutWarnings()
         prevWS = prevWS.filter {
             alive.contains($0.key) && registry.existing($0.value)?.monitor == $0.key
         }
@@ -757,6 +840,8 @@ final class WindowManager {
         statusItem.update(paused: on)
         broadcast(.pause(on))
         if on {
+            finishScrollingGesture()
+            cancelViewportAnimation()
             for id in windows.keys {
                 geometry.cancel(id)
             }
@@ -861,7 +946,7 @@ extension WindowManager: AXBridgeDelegate {
         guard let state = windows[id], isValidWindowFrame(frame) else { return }
         geometry.replaceElement(id, observedFrame: frame)
         guard !paused, !state.minimized, !state.nativeFullscreen else { return }
-        if state.hidden {
+        if state.hidden || state.viewportHidden {
             guard let monitor = monitorMgr.byID(workspace(forID: state.workspace).monitor)
                     ?? monitorMgr.primary else { return }
             geometry.submitStashPosition(CGPoint(x: monitor.frame.maxX - 2,
@@ -902,6 +987,11 @@ extension WindowManager: AXBridgeDelegate {
             _ = switchWorkspace(to: ws.isSpecial
                 ? .special(registry.specialName(forID: ws.id) ?? "special")
                 : .id(ws.id))
+        }
+        if state.viewportHidden, effectiveLayoutKind(for: ws) == .scrolling {
+            let start = ws.scrolling.viewportOffset
+            _ = ws.scrolling.reveal(id, in: containerRect(for: ws))
+            animateScrollingViewport(ws, from: start, to: ws.scrolling.viewportOffset)
         }
         noteFocus(state)
     }

@@ -10,9 +10,21 @@ private let tapCallback: CGEventTapCallBack = { _, type, event, refcon in
 final class HotkeyTap {
     enum DragPhase { case began, moved, ended }
 
+    struct ScrollInput {
+        let deltaX: Double
+        let deltaY: Double
+        let phase: Int64
+        let momentumPhase: Int64
+        let optionPressed: Bool
+        let location: CGPoint
+    }
+
     var onAction: ((ConfiguredAction) -> Void)?
     var onMouseDrag: ((PointerDrag, CGPoint, DragPhase) -> Void)?
     var onMouseMoved: ((CGPoint) -> Void)?
+    var onScrollShouldCapture: ((CGPoint) -> Bool)?
+    var onScroll: ((ScrollInput) -> Void)?
+    var onScrollCancelled: (() -> Void)?
     /// Unbound left-button press/drag/release, observed (never consumed) so the
     /// WM can track native title-bar drags of tiled windows.
     var onRawLeftMouse: ((CGPoint, DragPhase) -> Void)?
@@ -27,7 +39,12 @@ final class HotkeyTap {
     /// While paused, only `pause` binds match — everything else passes through
     /// to apps untouched, including mouse binds and raw drag tracking.
     var paused = false {
-        didSet { if paused { activeDrag = nil } }
+        didSet {
+            if paused {
+                activeDrag = nil
+                onScrollCancelled?()
+            }
+        }
     }
 
     private struct KeyChord: Hashable {
@@ -50,6 +67,7 @@ final class HotkeyTap {
     private var lastRawDrag = 0.0
     /// True while the system app switcher is likely up (⌘Tab seen, ⌘ still held).
     private var switcherActive = false
+    private var scrollCaptured = false
 
     func rebuild(configuration: KeyboardConfiguration) {
         keyBinds.removeAll()
@@ -75,13 +93,17 @@ final class HotkeyTap {
         activeMode = name
     }
 
+    func releaseScrollCapture() {
+        scrollCaptured = false
+    }
+
     func start() -> Bool {
         let interesting: [CGEventType] = [
             .keyDown, .keyUp, .flagsChanged,
             .leftMouseDown, .leftMouseUp, .leftMouseDragged,
             .rightMouseDown, .rightMouseUp, .rightMouseDragged,
             .otherMouseDown, .otherMouseUp, .otherMouseDragged,
-            .mouseMoved,
+            .mouseMoved, .scrollWheel,
         ]
         var mask: CGEventMask = 0
         for t in interesting {
@@ -107,6 +129,8 @@ final class HotkeyTap {
     func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
+            scrollCaptured = false
+            DispatchQueue.main.async { [weak self] in self?.onScrollCancelled?() }
             if let tap {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
@@ -147,6 +171,24 @@ final class HotkeyTap {
                 DispatchQueue.main.async { [weak self] in self?.onMouseMoved?(point) }
             }
             return Unmanaged.passUnretained(event)
+        case .scrollWheel:
+            let input = ScrollInput(
+                deltaX: event.getDoubleValueField(.scrollWheelEventPointDeltaAxis2),
+                deltaY: event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1),
+                phase: event.getIntegerValueField(.scrollWheelEventScrollPhase),
+                momentumPhase: event.getIntegerValueField(.scrollWheelEventMomentumPhase),
+                optionPressed: event.flags.contains(.maskAlternate),
+                location: event.location
+            )
+            if !scrollCaptured {
+                guard !paused, input.optionPressed,
+                      onScrollShouldCapture?(input.location) == true else {
+                    return Unmanaged.passUnretained(event)
+                }
+                scrollCaptured = true
+            }
+            DispatchQueue.main.async { [weak self] in self?.onScroll?(input) }
+            return nil
         default:
             return Unmanaged.passUnretained(event)
         }

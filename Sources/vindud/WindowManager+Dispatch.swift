@@ -80,6 +80,8 @@ extension WindowManager {
             applySplit(action)
         case .primary(let action):
             applyPrimary(action)
+        case .column(let action):
+            return applyColumn(action)
         case .monitor(let target):
             return focusMonitor(target)
         case .enterMode(let mode):
@@ -168,6 +170,8 @@ extension WindowManager {
             }
         case .layoutmsg(let msg):
             return layoutMsg(msg)
+        case .column(let action):
+            return applyColumn(action)
         case .togglespecialworkspace(let name):
             return toggleSpecial(name: name)
         case .pin:
@@ -312,6 +316,27 @@ extension WindowManager {
     // MARK: Focus movement
 
     func moveFocus(_ dir: Direction) {
+        if let id = focusedWindow, let state = windows[id], !state.floating {
+            let workspace = workspace(forID: state.workspace)
+            if effectiveLayoutKind(for: workspace) == .scrolling {
+                if let target = workspace.scrolling.focusTarget(from: id, direction: dir) {
+                    let start = workspace.scrolling.viewportOffset
+                    _ = workspace.scrolling.reveal(target, in: containerRect(for: workspace))
+                    let end = workspace.scrolling.viewportOffset
+                    if end == start {
+                        arrange(workspace)
+                    } else {
+                        animateScrollingViewport(workspace, from: start, to: end)
+                    }
+                    focusWindow(target)
+                } else if (dir == .left || dir == .right),
+                          let current = monitorMgr.byID(focusedMonitorID),
+                          let monitor = monitorMgr.neighbor(of: current, direction: dir) {
+                    _ = dispatch(.focusmonitor(.id(monitor.index)))
+                }
+                return
+            }
+        }
         let candidates = candidateFrames(excluding: focusedWindow)
         let source: CGRect
         if let id = focusedWindow, let state = windows[id] {
@@ -373,6 +398,27 @@ extension WindowManager {
                 return "ok"
             }
             let ws = workspace(forID: state.workspace)
+            let scrollingStart = ws.scrolling.viewportOffset
+            if effectiveLayoutKind(for: ws) == .scrolling {
+                if ws.scrollingMove(id, direction: dir, container: containerRect(for: ws),
+                                    dwindleConfiguration: configuration.layout.dwindle) {
+                    _ = ws.scrolling.reveal(id, in: containerRect(for: ws))
+                    let scrollingEnd = ws.scrolling.viewportOffset
+                    if scrollingEnd == scrollingStart {
+                        arrange(ws)
+                    } else {
+                        animateScrollingViewport(ws, from: scrollingStart, to: scrollingEnd)
+                    }
+                    broadcast(.movewindow(id, workspace: ws.name))
+                    return "ok"
+                }
+                if (dir == .left || dir == .right),
+                   let current = monitorMgr.byID(focusedMonitorID),
+                   let monitor = monitorMgr.neighbor(of: current, direction: dir) {
+                    return moveWindow(.monitor(.id(monitor.index)))
+                }
+                return "ok"
+            }
             if let other = tiledNeighbor(of: id, in: dir) {
                 ws.swapTiled(id, other)
                 arrange(ws)
@@ -412,8 +458,14 @@ extension WindowManager {
 
     func swapWindow(_ dir: Direction) {
         guard let id = focusedWindow, let state = windows[id], !state.floating else { return }
-        guard let other = tiledNeighbor(of: id, in: dir) else { return }
         let ws = workspace(forID: state.workspace)
+        if effectiveLayoutKind(for: ws) == .scrolling {
+            guard ws.scrollingSwap(id, direction: dir, container: containerRect(for: ws),
+                                   dwindleConfiguration: configuration.layout.dwindle) else { return }
+            arrange(ws)
+            return
+        }
+        guard let other = tiledNeighbor(of: id, in: dir) else { return }
         ws.swapTiled(id, other)
         arrange(ws)
     }
@@ -433,7 +485,7 @@ extension WindowManager {
     func resizeTiledBy(_ id: WindowID, dx: Double, dy: Double) {
         guard let state = windows[id], !state.floating else { return }
         let ws = workspace(forID: state.workspace)
-        switch configuration.layout.kind {
+        switch effectiveLayoutKind(for: ws) {
         case .dwindle:
             ws.dwindle.resize(id, dx: dx, dy: dy)
         case .master:
@@ -441,6 +493,11 @@ extension WindowManager {
             guard usable.width > 1 else { return }
             ws.master.setPrimaryFraction(.delta(dx / usable.width),
                                          configuration: configuration.layout.master)
+        case .scrolling:
+            let usable = containerRect(for: ws)
+            guard usable.width > 1, usable.height > 1 else { return }
+            _ = ws.scrolling.resizeColumn(containing: id, by: dx / usable.width)
+            _ = ws.scrolling.resizeWindow(id, by: dy / usable.height)
         }
     }
 
@@ -486,16 +543,57 @@ extension WindowManager {
             if let primary = workspace.master.windows.first { focusWindow(primary) }
             return
         case .swap:
-            workspace.master.swapWithMaster(id, mode: "auto")
+            workspace.swapWithMaster(id, mode: "auto", container: containerRect(for: workspace),
+                                     dwindleConfiguration: configuration.layout.dwindle)
         case .add:
             workspace.master.addMaster()
         case .remove:
             workspace.master.removeMaster()
         }
-        workspace.dwindle.rebuild(from: workspace.master.windows,
-                                  container: containerRect(for: workspace),
-                                  configuration: configuration.layout.dwindle)
+        if action != .swap {
+            workspace.dwindle.rebuild(from: workspace.master.windows,
+                                      container: containerRect(for: workspace),
+                                      configuration: configuration.layout.dwindle)
+        }
         arrange(workspace)
+    }
+
+    private func applyColumn(_ action: ColumnAction) -> String {
+        guard let id = focusedWindow, let state = windows[id], !state.floating else { return "ok" }
+        let workspace = workspace(forID: state.workspace)
+        guard effectiveLayoutKind(for: workspace) == .scrolling else {
+            return "err: column actions require the scrolling layout"
+        }
+        let container = containerRect(for: workspace)
+        let start = workspace.scrolling.viewportOffset
+        switch action {
+        case .consume:
+            guard workspace.scrollingConsume(
+                into: id, container: container,
+                dwindleConfiguration: configuration.layout.dwindle
+            ) != nil else { return "ok" }
+        case .expel:
+            _ = workspace.scrollingExpel(id, container: container,
+                                         dwindleConfiguration: configuration.layout.dwindle)
+        case .widthNext:
+            _ = workspace.scrolling.cycleWidth(of: id, previous: false)
+        case .widthPrevious:
+            _ = workspace.scrolling.cycleWidth(of: id, previous: true)
+        case .fullWidth:
+            _ = workspace.scrolling.toggleFullWidth(of: id)
+        case .center:
+            _ = workspace.scrolling.center(id, in: container)
+        }
+        if action != .center {
+            _ = workspace.scrolling.reveal(id, in: container)
+        }
+        let end = workspace.scrolling.viewportOffset
+        if end == start {
+            arrange(workspace)
+        } else {
+            animateScrollingViewport(workspace, from: start, to: end)
+        }
+        return "ok"
     }
 
     private func focusMonitor(_ target: MonitorTarget) -> String {
@@ -655,10 +753,9 @@ extension WindowManager {
         }
         switch cmd {
         case "swapwithmaster":
-            ws.master.swapWithMaster(id, mode: arg.isEmpty ? "auto" : arg)
-            ws.dwindle.rebuild(from: ws.master.windows,
-                               container: containerRect(for: ws),
-                               configuration: configuration.layout.dwindle)
+            ws.swapWithMaster(id, mode: arg.isEmpty ? "auto" : arg,
+                              container: containerRect(for: ws),
+                              dwindleConfiguration: configuration.layout.dwindle)
         case "focusmaster":
             if let master = ws.master.windows.first {
                 focusWindow(master)
@@ -726,8 +823,10 @@ extension WindowManager {
     func shutdownRuntime() {
         guard !shutdownRequested else { return }
         shutdownRequested = true
+        finishScrollingGesture()
+        cancelViewportAnimation()
         // Bring every stashed window back where a human can reach it.
-        for (id, state) in windows where state.hidden {
+        for (id, state) in windows where state.hidden || state.viewportHidden {
             let ws = workspace(forID: state.workspace)
             let container = containerRect(for: ws)
             _ = geometry.applyPositionBeforeShutdown(
