@@ -143,6 +143,31 @@ struct NativeConfigurationTests {
         expectFailure("schema = 1\n[ui.focus_border]\nactive_angle = inf", contains: "finite")
     }
 
+    @Test func compilesScrollingLayoutAndColumnActions() throws {
+        let snapshot = try compile("""
+        schema = 1
+        [layout]
+        kind = "scrolling"
+        [layout.scrolling]
+        default_column_width = 0.6666666666666666
+        [keyboard]
+        bindings = [{ chord = "option+c", column = "consume" }]
+        """)
+
+        #expect(snapshot.layout.kind == .scrolling)
+        #expect(snapshot.layout.scrolling.defaultColumnWidth == 2.0 / 3.0)
+        #expect(snapshot.keyboard.bindings[0].action == .window(.column(.consume)))
+    }
+
+    @Test func validatesScrollingLayoutAndColumnActions() {
+        expectFailure("schema = 1\n[layout.scrolling]\ndefault_column_width = 0",
+                      contains: "layout.scrolling.default_column_width must be greater than 0 and at most 1")
+        expectFailure("schema = 1\n[layout.scrolling]\ndefault_column_width = inf",
+                      contains: "layout.scrolling.default_column_width must be finite")
+        expectFailure("schema = 1\n[keyboard]\nbindings = [{ chord = \"c\", column = \"wide\" }]",
+                      contains: "invalid column action 'wide'")
+    }
+
     @Test func validatesBarZonesAndPluginReferences() {
         expectFailure("""
         schema = 1

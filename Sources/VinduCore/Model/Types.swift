@@ -34,7 +34,7 @@ public enum Orientation: String, Equatable {
 }
 
 public enum LayoutKind: String, Equatable {
-    case dwindle, master
+    case dwindle, master, scrolling
 }
 
 public enum MasterOrientation: String, Equatable {

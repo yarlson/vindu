@@ -20,7 +20,7 @@ enum ConfigurationSemanticCompiler {
     private static func compileLayout(_ file: LayoutFile?) throws -> LayoutConfiguration {
         let kindName = file?.kind ?? "dwindle"
         guard let kind = LayoutKind(rawValue: kindName) else {
-            throw invalid("layout.kind", "layout.kind must be 'dwindle' or 'master'")
+            throw invalid("layout.kind", "layout.kind must be 'dwindle', 'master', or 'scrolling'")
         }
         let innerGap = file?.innerGap?.double ?? 5
         let outerGap = file?.outerGap?.double ?? 12
@@ -47,6 +47,15 @@ enum ConfigurationSemanticCompiler {
             throw invalid("layout.master.new_window_position",
                           "layout.master.new_window_position must be primary, stack-start, or stack-end")
         }
+        let defaultColumnWidth = file?.scrolling?.defaultColumnWidth ?? 0.5
+        guard defaultColumnWidth.isFinite else {
+            throw invalid("layout.scrolling.default_column_width",
+                          "layout.scrolling.default_column_width must be finite")
+        }
+        guard defaultColumnWidth > 0, defaultColumnWidth <= 1 else {
+            throw invalid("layout.scrolling.default_column_width",
+                          "layout.scrolling.default_column_width must be greater than 0 and at most 1")
+        }
 
         return LayoutConfiguration(
             kind: kind,
@@ -56,7 +65,8 @@ enum ConfigurationSemanticCompiler {
                                            newWindowPosition: dwindlePosition),
             master: MasterConfiguration(primaryFraction: primaryFraction,
                                          primaryPosition: primaryPosition,
-                                         newWindowPosition: masterNewPosition)
+                                         newWindowPosition: masterNewPosition),
+            scrolling: ScrollingConfiguration(defaultColumnWidth: defaultColumnWidth)
         )
     }
 
@@ -392,6 +402,12 @@ enum ConfigurationSemanticCompiler {
         if let value = file.primary {
             guard let action = PrimaryAction(rawValue: value) else { throw invalid("\(path).primary", "invalid primary action '\(value)'") }
             actions.append(.window(.primary(action)))
+        }
+        if let value = file.column {
+            guard let action = ColumnAction(rawValue: value) else {
+                throw invalid("\(path).column", "invalid column action '\(value)'")
+            }
+            actions.append(.window(.column(action)))
         }
         if let value = file.monitor { actions.append(.window(.monitor(try monitor(value, path: "\(path).monitor")))) }
         if let value = file.enterMode {

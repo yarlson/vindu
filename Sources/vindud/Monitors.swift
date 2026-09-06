@@ -1,6 +1,13 @@
 import AppKit
 import VinduCore
 
+func resolvedLayoutKind(configured: LayoutKind, specialWorkspace: Bool,
+                        monitorCount: Int, screensHaveSeparateSpaces: Bool) -> LayoutKind {
+    if specialWorkspace { return .dwindle }
+    if configured == .scrolling, monitorCount > 1, !screensHaveSeparateSpaces { return .dwindle }
+    return configured
+}
+
 /// A display. All rects are top-left-origin global coordinates (CG space):
 /// `frame` is the full display, `usable` excludes the menu bar and Dock.
 struct Monitor {

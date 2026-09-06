@@ -23,10 +23,14 @@
   the leaf shape selects the split axis.
 - master — primary area plus stack layout, controlled by typed primary actions and
   the established runtime dispatcher surface.
+- scrolling — ordered horizontal columns with vertical window stacks and a
+  per-workspace horizontal viewport.
+- column — one scrolling-layout width shared by one or more vertically stacked windows.
+- viewport — the visible horizontal part of a scrolling workspace.
 - primary fraction — share of the workspace used by the master layout's primary
   area.
 - master order — canonical per-workspace window order, kept in sync with the
-  dwindle tree so layouts can switch at runtime.
+  dwindle tree and scrolling columns so layouts can switch at runtime.
 - floating — window outside the tiled structures with remembered `floatFrame`.
 - pinned — floating window that migrates to the workspace visible on its monitor.
 - stashed — window parked as a 2-pixel sliver because its workspace is hidden.

@@ -196,6 +196,52 @@ struct WindowGeometryControllerTests {
         #expect(outcomes == [.converged(backend.frame)])
         #expect(controller.observedFrame(for: 42) == backend.frame)
     }
+
+    @Test func motionSizesOnceAndVerifiesTheFinalPosition() {
+        let initial = CGRect(x: 0, y: 0, width: 300, height: 200)
+        let backend = GeometryBackendStub(frame: initial)
+        let scheduler = GeometrySchedulerStub()
+        var outcomes: [WindowGeometryOutcome] = []
+        let controller = WindowGeometryController(
+            backend: backend, schedule: scheduler.schedule,
+            onOutcome: { _, outcome in outcomes.append(outcome) }
+        )
+        let start = CGRect(x: 10, y: 20, width: 500, height: 400)
+        let end = CGRect(x: 90, y: 20, width: 500, height: 400)
+
+        controller.register(42, observedFrame: initial)
+        controller.beginMotion(start, for: 42)
+        controller.updateMotionPosition(CGPoint(x: 50, y: 20), for: 42)
+        controller.finishMotion(end, for: 42)
+        scheduler.run(delay: 0.15)
+
+        #expect(backend.writes == [
+            .size(start.size), .position(start.origin),
+            .position(CGPoint(x: 50, y: 20)), .position(end.origin),
+        ])
+        #expect(outcomes == [.converged(end)])
+    }
+
+    @Test func motionStopsIntermediateWritesAfterAnAmbiguousFailure() {
+        let initial = CGRect(x: 0, y: 0, width: 300, height: 200)
+        let backend = GeometryBackendStub(frame: initial)
+        let scheduler = GeometrySchedulerStub()
+        let controller = WindowGeometryController(backend: backend, schedule: scheduler.schedule)
+        let target = CGRect(x: 10, y: 20, width: 500, height: 400)
+
+        controller.register(42, observedFrame: initial)
+        controller.beginMotion(target, for: 42)
+        backend.writeError = .cannotComplete
+        controller.updateMotionPosition(CGPoint(x: 30, y: 20), for: 42)
+        backend.writeError = nil
+        controller.updateMotionPosition(CGPoint(x: 50, y: 20), for: 42)
+        controller.finishMotion(CGRect(x: 70, y: 20, width: 500, height: 400), for: 42)
+
+        #expect(backend.writes == [
+            .size(target.size), .position(target.origin),
+            .position(CGPoint(x: 30, y: 20)), .position(CGPoint(x: 70, y: 20)),
+        ])
+    }
 }
 
 private final class GeometryBackendStub: WindowGeometryBackend {

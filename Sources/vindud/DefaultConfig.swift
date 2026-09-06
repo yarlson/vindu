@@ -17,6 +17,9 @@ primary_fraction = 0.55
 primary_position = "left"
 new_window_position = "stack-end"
 
+[layout.scrolling]
+default_column_width = 0.5
+
 [focus]
 follows_pointer = false
 allow_app_activation = false

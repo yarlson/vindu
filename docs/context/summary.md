@@ -5,7 +5,7 @@ TOML decoding dependency.
 
 ## What
 
-- Tiles windows automatically with dwindle or master layouts, keyboard actions,
+- Tiles windows automatically with dwindle, master, or scrolling layouts, keyboard actions,
   workspaces, floating windows, fullscreen, and mouse-drag re-tiling.
 - Uses a strict, versioned TOML configuration that compiles into one immutable
   runtime snapshot. The configuration has native Vindu concepts and no legacy
@@ -49,7 +49,7 @@ flipped coordinates appear only at AppKit UI and cursor-position boundaries.
    can repair it without restart.
 4. `AXBridge` reports a window, which is classified as standard, dialog, or
    auxiliary. Ordered native rules produce its initial appearance and placement.
-5. The window joins its workspace's master order and dwindle tree. Visible
+5. The window joins its workspace's synchronized layout models. Visible
    workspaces arrange; hidden workspaces stash windows just off-screen because
    macOS offers no Space control with SIP on.
 6. Typed key bindings dispatch directly. The public command socket retains the
@@ -57,7 +57,7 @@ flipped coordinates appear only at AppKit UI and cursor-position boundaries.
 
 ## Capabilities
 
-- Layouts: dwindle and master, switchable at runtime with window order preserved.
+- Layouts: dwindle, master, and scrolling columns, switchable at runtime with window order preserved.
 - Workspaces: numbered, named, special, per-monitor visibility, dynamic lifecycle,
   and display-name assignments that retry after monitor changes.
 - Desktop bar: same-process AppKit bar with independent left, true-center, and

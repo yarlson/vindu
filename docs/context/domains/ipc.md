@@ -12,6 +12,7 @@ Request/response using Vindu's established public wire contract: one plain-text 
 - Verb families: `dispatch` (the established runtime dispatcher set), information verbs (`clients`, `workspaces`, `monitors`, `activewindow`, `activeworkspace`, `binds`, `cursorpos`, `version`), `config status`, `config reload`, `barplugin refresh <id>`, `notify`, and `splash`. Unsupported verbs return `unknown request`.
 - The socket and watcher remain available in configuration-only mode. Before a valid snapshot exists, only coordinator-owned config commands work; window-manager commands return `err: vindu has no active configuration`.
 - While tiling is paused, `dispatch` rejects everything except `pause`, `exit`, and `exec` with an error pointing at the resume path.
+- Scrolling column actions use `dispatch column consume|expel|width-next|width-previous|full-width|center`.
 
 ## JSON shapes
 

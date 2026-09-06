@@ -197,4 +197,71 @@ struct WorkspaceStateMembershipTests {
         #expect(workspace.tiled == [1, 2])
         #expect(workspace.dwindle.frames(in: container)[1]?.width == 750)
     }
+
+    @Test func scrollingMembershipKeepsAllLayoutsInTheSameOrder() {
+        let workspace = WorkspaceState(id: 1, name: "1", monitor: 0)
+        let scrolling = ScrollingConfiguration(defaultColumnWidth: 0.5)
+        for id: WindowID in [1, 2, 3] {
+            workspace.insertTiled(id, near: id == 1 ? nil : id - 1, container: container,
+                                  dwindleConfiguration: workspaceDwindleConfiguration,
+                                  masterConfiguration: workspaceMasterConfiguration,
+                                  scrollingConfiguration: scrolling, layoutKind: .scrolling)
+        }
+
+        #expect(workspace.scrollingConsume(into: 1, container: container,
+                                           dwindleConfiguration: workspaceDwindleConfiguration) == 2)
+        #expect(workspace.scrolling.columns.map(\.windows) == [[1, 2], [3]])
+        #expect(workspace.tiled == [1, 2, 3])
+        #expect(workspace.dwindle.windowsInOrder == [1, 2, 3])
+
+        #expect(workspace.scrollingMove(2, direction: .right, container: container,
+                                        dwindleConfiguration: workspaceDwindleConfiguration))
+        #expect(workspace.scrolling.columns.map(\.windows) == [[3], [1, 2]])
+        #expect(workspace.tiled == [3, 1, 2])
+        #expect(workspace.dwindle.windowsInOrder == [3, 1, 2])
+    }
+
+    @Test func layoutTransitionsDiscardGroupsAndRebuildSingletonColumns() {
+        let workspace = WorkspaceState(id: 1, name: "1", monitor: 0)
+        let scrolling = ScrollingConfiguration(defaultColumnWidth: 0.5)
+        for id: WindowID in [1, 2] {
+            workspace.insertTiled(id, near: id == 1 ? nil : 1, container: container,
+                                  dwindleConfiguration: workspaceDwindleConfiguration,
+                                  masterConfiguration: workspaceMasterConfiguration,
+                                  scrollingConfiguration: scrolling, layoutKind: .scrolling)
+        }
+        _ = workspace.scrollingConsume(into: 1, container: container,
+                                       dwindleConfiguration: workspaceDwindleConfiguration)
+
+        workspace.changeLayout(from: .scrolling, to: .master, container: container,
+                               dwindleConfiguration: workspaceDwindleConfiguration,
+                               scrollingConfiguration: scrolling)
+        #expect(workspace.scrolling.columns.map(\.windows) == [[1], [2]])
+
+        workspace.master.swap(1, 2)
+        workspace.changeLayout(from: .master, to: .scrolling, container: container,
+                               dwindleConfiguration: workspaceDwindleConfiguration,
+                               scrollingConfiguration: scrolling)
+        #expect(workspace.scrolling.columns.map(\.windows) == [[2], [1]])
+    }
+
+    @Test func swapWithMasterPreservesScrollingGroupsAndCanonicalOrder() {
+        let workspace = WorkspaceState(id: 1, name: "1", monitor: 0)
+        let scrolling = ScrollingConfiguration(defaultColumnWidth: 0.5)
+        for id: WindowID in [1, 2, 3] {
+            workspace.insertTiled(id, near: id == 1 ? nil : id - 1, container: container,
+                                  dwindleConfiguration: workspaceDwindleConfiguration,
+                                  masterConfiguration: workspaceMasterConfiguration,
+                                  scrollingConfiguration: scrolling, layoutKind: .scrolling)
+        }
+        _ = workspace.scrollingConsume(into: 1, container: container,
+                                       dwindleConfiguration: workspaceDwindleConfiguration)
+
+        workspace.swapWithMaster(3, mode: "auto", container: container,
+                                 dwindleConfiguration: workspaceDwindleConfiguration)
+
+        #expect(workspace.scrolling.columns.map(\.windows) == [[3, 2], [1]])
+        #expect(workspace.master.windows == [3, 2, 1])
+        #expect(workspace.dwindle.windowsInOrder == [3, 2, 1])
+    }
 }

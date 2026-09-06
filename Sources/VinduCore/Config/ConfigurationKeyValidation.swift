@@ -52,9 +52,10 @@ enum ConfigurationKeyValidation {
     private static func allowedKeys(at path: [String]) -> Set<String>? {
         switch normalized(path) {
         case "": return ["schema", "layout", "focus", "workspaces", "ui", "keyboard", "startup", "windows"]
-        case "layout": return ["kind", "inner_gap", "outer_gap", "dwindle", "master"]
+        case "layout": return ["kind", "inner_gap", "outer_gap", "dwindle", "master", "scrolling"]
         case "layout.dwindle": return ["new_window_fraction", "new_window_position"]
         case "layout.master": return ["primary_fraction", "primary_position", "new_window_position"]
+        case "layout.scrolling": return ["default_column_width"]
         case "focus": return ["follows_pointer", "allow_app_activation"]
         case "workspaces": return ["back_and_forth", "assignments"]
         case "workspaces.assignments.[]": return ["id", "monitor"]
@@ -82,7 +83,7 @@ enum ConfigurationKeyValidation {
         "mode", "chord", "on", "repeat", "run", "shell", "env", "close", "quit", "focus",
         "move", "swap", "workspace", "move_to_workspace", "move_to_workspace_silent",
         "toggle_special_workspace", "toggle_floating", "set_floating", "set_tiled", "fullscreen",
-        "maximize", "center", "pin", "resize", "move_floating", "split", "primary", "monitor",
+        "maximize", "center", "pin", "resize", "move_floating", "split", "primary", "column", "monitor",
         "enter_mode", "raise", "refresh", "pause",
     ]
 

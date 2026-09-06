@@ -17,12 +17,21 @@ struct LayoutFile: Decodable {
     let outerGap: NumberValue?
     let dwindle: DwindleFile?
     let master: MasterFile?
+    let scrolling: ScrollingFile?
 
     enum CodingKeys: String, CodingKey {
         case kind
         case innerGap = "inner_gap"
         case outerGap = "outer_gap"
-        case dwindle, master
+        case dwindle, master, scrolling
+    }
+}
+
+struct ScrollingFile: Decodable {
+    let defaultColumnWidth: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case defaultColumnWidth = "default_column_width"
     }
 }
 
@@ -188,6 +197,7 @@ struct KeyboardBindingFile: Decodable {
     let moveFloating: [NumberValue]?
     let split: String?
     let primary: String?
+    let column: String?
     let monitor: ScalarTarget?
     let enterMode: String?
     let raise: Bool?
@@ -205,7 +215,7 @@ struct KeyboardBindingFile: Decodable {
         case setTiled = "set_tiled"
         case fullscreen, maximize, center, pin, resize
         case moveFloating = "move_floating"
-        case split, primary, monitor
+        case split, primary, column, monitor
         case enterMode = "enter_mode"
         case raise, refresh, pause
     }

@@ -53,6 +53,7 @@ final class WindowGeometryController {
 
     private enum Target: Equatable {
         case frame(CGRect)
+        case motionFrame(CGRect)
         case stash(CGPoint)
     }
 
@@ -87,6 +88,8 @@ final class WindowGeometryController {
         var observedFrame: CGRect
         var failedObservedFrame: CGRect?
         var active: ActiveIntent?
+        var motionFrame: CGRect?
+        var motionStopped = false
     }
 
     private static let firstVerificationDelay: TimeInterval = 0.15
@@ -130,6 +133,8 @@ final class WindowGeometryController {
         record.observedFrame = observedFrame
         record.failedObservedFrame = nil
         record.active = nil
+        record.motionFrame = nil
+        record.motionStopped = false
         records[id] = record
         onObservedFrame(id, observedFrame)
     }
@@ -144,6 +149,8 @@ final class WindowGeometryController {
         supersede(record.active, for: id)
         record.active = nil
         record.failedObservedFrame = nil
+        record.motionFrame = nil
+        record.motionStopped = false
         records[id] = record
     }
 
@@ -163,6 +170,45 @@ final class WindowGeometryController {
         submit(.stash(position), for: id)
     }
 
+    func beginMotion(_ frame: CGRect, for id: WindowID) {
+        guard isValidWindowFrame(frame), var record = records[id] else {
+            onOutcome(id, .failed(records[id]?.observedFrame,
+                                  records[id] == nil ? .elementUnavailable : .invalidGeometry))
+            return
+        }
+        supersede(record.active, for: id)
+        record.active = nil
+        record.failedObservedFrame = nil
+        record.motionFrame = frame
+        record.motionStopped = false
+        if case .failure = backend.writeSize(frame.size, to: id) { record.motionStopped = true }
+        if !record.motionStopped, case .failure = backend.writePosition(frame.origin, to: id) {
+            record.motionStopped = true
+        }
+        records[id] = record
+    }
+
+    func updateMotionPosition(_ position: CGPoint, for id: WindowID) {
+        guard isValidWindowPoint(position), var record = records[id],
+              var frame = record.motionFrame, !record.motionStopped else { return }
+        frame.origin = position
+        record.motionFrame = frame
+        if case .failure = backend.writePosition(position, to: id) { record.motionStopped = true }
+        records[id] = record
+    }
+
+    func finishMotion(_ frame: CGRect, for id: WindowID) {
+        guard isValidWindowFrame(frame), var record = records[id] else {
+            onOutcome(id, .failed(records[id]?.observedFrame,
+                                  records[id] == nil ? .elementUnavailable : .invalidGeometry))
+            return
+        }
+        record.motionFrame = nil
+        record.motionStopped = false
+        records[id] = record
+        submit(.motionFrame(frame), for: id)
+    }
+
     @discardableResult
     func applyPositionBeforeShutdown(_ position: CGPoint,
                                      for id: WindowID) -> Result<Void, WindowGeometryAccessError> {
@@ -176,7 +222,7 @@ final class WindowGeometryController {
         record.observedFrame = frame
         records[id] = record
         onObservedFrame(id, frame)
-        if record.active != nil {
+        if record.active != nil || record.motionFrame != nil {
             return .inFlight
         }
         if let failed = record.failedObservedFrame, framesMatch(failed, frame) {
@@ -232,6 +278,8 @@ final class WindowGeometryController {
                 backend.writePosition(frame.origin, to: id),
                 backend.writeSize(frame.size, to: id),
             ]
+        case .motionFrame(let frame):
+            results = [backend.writePosition(frame.origin, to: id)]
         case .stash(let position):
             results = [backend.writePosition(position, to: id)]
         }
@@ -298,6 +346,13 @@ final class WindowGeometryController {
 
     private func retryOrFinish(_ id: WindowID, active: ActiveIntent, actual: CGRect) {
         guard case .frame = active.target else {
+            if case .motionFrame = active.target {
+                applyPosition(active, to: id)
+                let final = DispatchWorkItem { [weak self] in self?.verifyFinal(id, active: active) }
+                active.finalVerification = final
+                schedule(Self.finalVerificationDelay, final)
+                return
+            }
             finishFailure(id, active: active, actual: actual)
             return
         }
@@ -342,7 +397,7 @@ final class WindowGeometryController {
         active.lastError = nil
         let position: CGPoint
         switch active.target {
-        case .frame(let frame): position = frame.origin
+        case .frame(let frame), .motionFrame(let frame): position = frame.origin
         case .stash(let targetPosition): position = targetPosition
         }
         if case .failure(let error) = backend.writePosition(position, to: id) {
@@ -382,7 +437,7 @@ final class WindowGeometryController {
 
     private func targetMatches(_ target: Target, _ frame: CGRect) -> Bool {
         switch target {
-        case .frame(let targetFrame):
+        case .frame(let targetFrame), .motionFrame(let targetFrame):
             return framesMatch(targetFrame, frame)
         case .stash(let position):
             return abs(position.x - frame.minX) <= Self.tolerance

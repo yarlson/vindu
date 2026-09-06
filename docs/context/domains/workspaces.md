@@ -31,3 +31,4 @@ macOS exposes no per-Space window membership without disabling SIP, so invisible
 - `moveworkspacetomonitor` displaces the target monitor's visible workspace and backfills the old monitor: its previous workspace if still homed there, else the first id that is free or already homed on it.
 - Monitor hotplug re-homes orphaned workspaces to the primary display and prunes per-monitor state.
 - Monitor targets resolve by direction (shared neighbor scoring), index, `±n` cyclic, `current`, or name substring.
+- With multiple displays, scrolling uses a runtime dwindle fallback unless macOS Displays have separate Spaces. The configured value is unchanged, parked windows are restored, and the bar reports the effective layout.

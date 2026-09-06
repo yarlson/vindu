@@ -65,6 +65,8 @@ extension WindowManager {
         let active = focusedWindow.flatMap { windows[$0] }
         let frontmost = NSWorkspace.shared.frontmostApplication
         let requests = DesktopBarSystemInfoRequests(configuration: configuration.ui.bar)
+        let layoutWorkspace = active.flatMap { registry.existing($0.workspace) }
+            ?? registry.existing(shownSpecial[focusedMonitorID] ?? activeWS[focusedMonitorID] ?? 1)
         return DesktopBarSnapshot(
             monitors: monitorMgr.monitors,
             workspaces: workspaces,
@@ -72,7 +74,7 @@ extension WindowManager {
             appProcessIdentifier: active?.pid ?? frontmost?.processIdentifier,
             appName: active?.clazz ?? frontmost?.localizedName ?? "",
             windowTitle: active?.title ?? "",
-            layout: configuration.layout.kind,
+            layout: layoutWorkspace.map(effectiveLayoutKind(for:)) ?? configuration.layout.kind,
             submap: tap.activeMode == "default" ? "" : tap.activeMode,
             paused: paused,
             system: DesktopBarSystemInfo.current(requests: requests,

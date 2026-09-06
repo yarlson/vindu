@@ -138,6 +138,12 @@ public enum BindDisplay {
         case .primary(.swap): return "Swap with primary window"
         case .primary(.add): return "Add primary window"
         case .primary(.remove): return "Remove primary window"
+        case .column(.consume): return "Consume next column"
+        case .column(.expel): return "Expel window to a new column"
+        case .column(.widthNext): return "Use next column width"
+        case .column(.widthPrevious): return "Use previous column width"
+        case .column(.fullWidth): return "Toggle full-width column"
+        case .column(.center): return "Center column"
         case .monitor(let target): return "Focus monitor \(target.text)"
         case .enterMode(let mode): return mode == "default" ? "Exit mode" : "\(mode.capitalized) mode"
         case .raise: return "Raise window"
@@ -198,6 +204,7 @@ public enum BindDisplay {
         case .moveFloating(let x, let y): return ("move_floating", "\(plainNumber(x)) \(plainNumber(y))")
         case .split(let split): return ("split", split.rawValue)
         case .primary(let primary): return ("primary", primary.rawValue)
+        case .column(let column): return ("column", column.rawValue)
         case .monitor(let target): return ("monitor", target.text)
         case .enterMode(let mode): return ("enter_mode", mode)
         case .raise: return ("raise", "")
