@@ -194,7 +194,7 @@ struct KeyboardBindingFile: Decodable {
     let refresh: Bool?
     let pause: String?
 
-    enum CodingKeys: String, CodingKey {
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case mode, chord, on, run, shell, env, close, quit, focus, move, swap, workspace
         case repeatAction = "repeat"
         case moveToWorkspace = "move_to_workspace"
