@@ -95,7 +95,7 @@ struct DesktopBarPluginProcessTests {
 
         #expect(childPID != nil)
         guard let childPID else { return }
-        try await waitForPluginCondition {
+        try await waitUntil {
             Darwin.kill(childPID, 0) != 0 && errno == ESRCH
         }
         #expect(Darwin.kill(childPID, 0) != 0 && errno == ESRCH)
@@ -134,7 +134,7 @@ struct DesktopBarPluginProcessTests {
         )
         let processReference = WeakPluginProcessReference(process)
         try process?.start { resultWaiter.complete(with: $0) }
-        try await waitForPluginCondition {
+        try await waitUntil {
             (try? String(contentsOf: pidFile, encoding: .utf8)).flatMap(pid_t.init) != nil
         }
         let pid = try #require(pid_t(try String(contentsOf: pidFile, encoding: .utf8)))
@@ -150,7 +150,7 @@ struct DesktopBarPluginProcessTests {
         #expect(processReference.process != nil)
         let completed = try await resultWaiter.wait()
         #expect(completed.exitCode == -SIGKILL)
-        try await waitForPluginCondition { processReference.process == nil }
+        try await waitUntil { processReference.process == nil }
         #expect(processReference.process == nil)
     }
 
@@ -171,7 +171,7 @@ struct DesktopBarPluginProcessTests {
         let process = DesktopBarPluginProcess(request: request,
                                               completionQueue: resultWaiter.queue)
         try process.start { resultWaiter.complete(with: $0) }
-        try await waitForPluginCondition {
+        try await waitUntil {
             (try? String(contentsOf: pidFile, encoding: .utf8)).flatMap(pid_t.init) != nil
         }
         let pid = try #require(pid_t(try String(contentsOf: pidFile, encoding: .utf8)))
@@ -215,18 +215,9 @@ private final class PluginResultWaiter {
     }
 
     func wait() async throws -> DesktopBarPluginRunResult {
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(5))
-        while true {
-            if let result = lock.withLock({ result }) {
-                queue.sync {}
-                return result
-            }
-            guard clock.now < deadline else {
-                throw PluginTestError.resultTimedOut
-            }
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
+        try await waitUntil { lock.withLock { result } != nil }
+        queue.sync {}
+        return try #require(lock.withLock { result })
     }
 }
 
@@ -238,19 +229,3 @@ private final class WeakPluginProcessReference {
     }
 }
 
-private enum PluginTestError: Error {
-    case conditionTimedOut
-    case resultTimedOut
-}
-
-private func waitForPluginCondition(_ condition: @escaping () -> Bool) async throws {
-    let clock = ContinuousClock()
-    let deadline = clock.now.advanced(by: .seconds(5))
-    while true {
-        if condition() { return }
-        guard clock.now < deadline else {
-            throw PluginTestError.conditionTimedOut
-        }
-        try await Task.sleep(nanoseconds: 10_000_000)
-    }
-}

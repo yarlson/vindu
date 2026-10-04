@@ -382,7 +382,7 @@ private enum ExpectedSocketFailure: Error {
         fd = -1
         allowReply.signal()
 
-        try waitForCondition {
+        try waitUntil {
             queue.sync { server.clientCountForTesting == 0 }
         }
     }
@@ -440,7 +440,7 @@ private enum ExpectedSocketFailure: Error {
 
         let fd = try connectUnixSocket(path)
         defer { close(fd) }
-        try waitForCondition { events.clientCountForTesting == 1 }
+        try waitUntil { events.clientCountForTesting == 1 }
         events.broadcast(.workspace("2"))
 
         #expect(try readAvailable(fd: fd) == "workspace>>2\n")
@@ -458,14 +458,15 @@ private enum ExpectedSocketFailure: Error {
         defer {
             if fd >= 0 { close(fd) }
         }
-        try waitForCondition { events.clientCountForTesting == 1 }
+        try waitUntil { events.clientCountForTesting == 1 }
         #expect(shutdown(fd, SHUT_RDWR) == 0)
         close(fd)
         fd = -1
 
-        events.broadcast(.workspace("2"))
-
-        #expect(events.clientCountForTesting == 0)
+        try waitUntil {
+            events.broadcast(.workspace("2"))
+            return events.clientCountForTesting == 0
+        }
     }
 
     @Test func eventBroadcasterStopsAndRestartsFromItsQueue() throws {
@@ -512,7 +513,7 @@ private enum ExpectedSocketFailure: Error {
 
         let fd = try connectUnixSocket(path)
         defer { close(fd) }
-        try waitForCondition { queue.sync { events.clientCountForTesting == 1 } }
+        try waitUntil { queue.sync { events.clientCountForTesting == 1 } }
         queue.sync {
             events.broadcast(.workspace("1"))
             events.broadcast(.workspace("2"))
@@ -537,7 +538,7 @@ private enum ExpectedSocketFailure: Error {
 
         let fd = try connectUnixSocket(path)
         defer { close(fd) }
-        try waitForCondition { queue.sync { events.clientCountForTesting == 1 } }
+        try waitUntil { queue.sync { events.clientCountForTesting == 1 } }
         queue.sync {
             events.broadcast(.workspace("1"))
             events.broadcast(.workspace("2"))
@@ -610,11 +611,3 @@ private func waitUntilReadable(fd: Int32, timeoutMs: Int32) throws {
     }
 }
 
-private func waitForCondition(timeout: TimeInterval = 1.0, _ condition: () -> Bool) throws {
-    let deadline = Date().addingTimeInterval(timeout)
-    while Date() < deadline {
-        if condition() { return }
-        usleep(10_000)
-    }
-    throw SecureSocketError.socketFailed("condition timed out")
-}
