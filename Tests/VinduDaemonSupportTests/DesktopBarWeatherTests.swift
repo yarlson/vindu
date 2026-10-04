@@ -171,7 +171,7 @@ struct DesktopBarWeatherTests {
         let callbackQueue = DispatchQueue(label: "vindu.weather-test.callback")
         let changed = DispatchSemaphore(value: 0)
         let logged = DispatchSemaphore(value: 0)
-        let service = makeService(callbackQueue: callbackQueue, now: clock.read) { _ in logged.signal() }
+        let service = makeService(callbackQueue: callbackQueue, clock: clock) { _ in logged.signal() }
         defer { service.stop() }
         service.onChange = { changed.signal() }
         try loadWeather(into: service, changed: changed)
@@ -188,7 +188,7 @@ struct DesktopBarWeatherTests {
         let clock = WeatherTestClock()
         let callbackQueue = DispatchQueue(label: "vindu.weather-test.callback")
         let changed = DispatchSemaphore(value: 0)
-        let service = makeService(callbackQueue: callbackQueue, now: clock.read)
+        let service = makeService(callbackQueue: callbackQueue, clock: clock)
         defer { service.stop() }
         service.onChange = { changed.signal() }
         try loadWeather(into: service, changed: changed)
@@ -212,13 +212,13 @@ struct DesktopBarWeatherTests {
 
     private func makeService(
         callbackQueue: DispatchQueue = DispatchQueue(label: "vindu.weather-test.callback"),
-        now: @escaping () -> Date = Date.init,
+        clock: WeatherTestClock = WeatherTestClock(),
         log: @escaping DesktopBarWeatherService.Logger = { _ in }
     ) -> DesktopBarWeatherService {
         DesktopBarWeatherService(
             session: makeSession(),
             callbackQueue: callbackQueue,
-            now: now,
+            now: clock.read,
             log: log
         )
     }
