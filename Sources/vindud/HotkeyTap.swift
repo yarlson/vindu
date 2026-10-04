@@ -54,8 +54,7 @@ final class HotkeyTap {
     func rebuild(configuration: KeyboardConfiguration) {
         keyBinds.removeAll()
         mouseBinds.removeAll()
-        let modes = Set(configuration.bindings.map(\.mode))
-        if activeMode != "default", !modes.contains(activeMode) {
+        if !configuration.modes.contains(activeMode) {
             activeMode = "default"
         }
         for binding in configuration.bindings {

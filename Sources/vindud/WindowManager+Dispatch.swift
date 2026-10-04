@@ -220,7 +220,11 @@ extension WindowManager {
             ws.name = name
             broadcast(.renameworkspace(id, name))
         case .submap(let name):
-            tap.setMode(name.isEmpty ? "default" : name)
+            let mode = name.isEmpty ? "default" : name
+            guard configuration.keyboard.modes.contains(mode) else {
+                return "err: unknown mode: \(name)"
+            }
+            tap.setMode(mode)
             broadcast(.submap(name))
             syncBorder()
         case .focuscurrentorlast:
