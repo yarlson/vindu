@@ -7,6 +7,8 @@ Every file starts with `schema = 1`.
 ## Selection and startup
 
 - If the default native file exists, it wins even when `vindu.conf` also exists.
+- If the default native path is a symlink to a missing file, Vindu leaves the link
+  in place, enters configuration-only mode, and reports the missing target.
 - If neither file exists, Vindu creates the config directory and atomically writes
   the canonical native template.
 - If only `vindu.conf` exists, Vindu does not read, convert, rename, or delete it.

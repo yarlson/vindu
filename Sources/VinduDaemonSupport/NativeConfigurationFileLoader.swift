@@ -20,6 +20,7 @@ public enum NativeConfigurationSelection: Equatable {
 
 public enum NativeConfigurationLoadError: Error, Equatable, CustomStringConvertible {
     case missing(path: String)
+    case danglingSymlink(path: String, target: String)
     case readFailed(path: String, reason: String)
     case writeFailed(path: String, reason: String)
     case invalid(path: String, failure: ConfigurationFailure)
@@ -28,6 +29,8 @@ public enum NativeConfigurationLoadError: Error, Equatable, CustomStringConverti
         switch self {
         case .missing(let path):
             return "configuration does not exist: \(path)"
+        case .danglingSymlink(let path, let target):
+            return "configuration symlink \(path) points to missing \(target)"
         case .readFailed(let path, let reason):
             return "cannot read configuration \(path): \(reason)"
         case .writeFailed(let path, let reason):
@@ -55,6 +58,9 @@ public struct NativeConfigurationFileLoader {
                             canonicalDefault: Data) throws -> NativeConfigurationSelection {
         if fileManager.fileExists(atPath: nativePath) {
             return .loaded(try loadExisting(path: nativePath, wroteDefault: false))
+        }
+        if let target = try? fileManager.destinationOfSymbolicLink(atPath: nativePath) {
+            throw NativeConfigurationLoadError.danglingSymlink(path: nativePath, target: target)
         }
         if fileManager.fileExists(atPath: legacyPath) {
             return .legacyOnly(nativePath: nativePath, legacyPath: legacyPath)
