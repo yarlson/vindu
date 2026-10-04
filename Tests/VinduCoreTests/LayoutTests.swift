@@ -276,9 +276,9 @@ struct LayoutMathTests {
     @Test func gapsEdgeVsInterior() {
         let container = CGRect(x: 0, y: 0, width: 1000, height: 600)
         let left = LayoutMath.applyGaps(to: CGRect(x: 0, y: 0, width: 500, height: 600),
-                                        within: container, gapsIn: 5, gapsOut: 10)
+                                        within: container, innerGap: 5, outerGap: 10)
         let right = LayoutMath.applyGaps(to: CGRect(x: 500, y: 0, width: 500, height: 600),
-                                         within: container, gapsIn: 5, gapsOut: 10)
+                                         within: container, innerGap: 5, outerGap: 10)
         #expect(left == CGRect(x: 10, y: 10, width: 485, height: 580))
         #expect(right == CGRect(x: 505, y: 10, width: 485, height: 580))
         // Adjacent tiles each contribute an inner gap; outer edges use the outer gap.

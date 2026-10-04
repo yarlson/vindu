@@ -24,7 +24,7 @@ Binary split tree (`DwindleTree`):
 
 `LayoutMath` is pure and shared:
 
-- Gap semantics: a tile side flush with the container edge gets `gaps_out`; sides facing other tiles get `gaps_in`. Adjacent tiles both contribute, so the visual inner gap is 2 × gaps_in.
+- Gap semantics: a tile side flush with the container edge gets `layout.outer_gap`; sides facing other tiles get `layout.inner_gap`. Adjacent tiles both contribute, so the visual gap between two tiles is 2 × `inner_gap`.
 - `stackRects` splits an area into equal tiles along one axis.
 - Directional neighbor scoring: nearest candidate whose center lies beyond the source center in the given direction, with perpendicular offset penalized 2×. The same scoring serves focus movement, tile swaps, and monitor adjacency.
 

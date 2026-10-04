@@ -379,7 +379,7 @@ final class WindowManager {
         for (id, rect) in raw {
             guard id != excluding, let state = windows[id], !state.minimized else { continue }
             var frame = LayoutMath.applyGaps(to: rect, within: container,
-                                             gapsIn: g.innerGap, gapsOut: g.outerGap)
+                                             innerGap: g.innerGap, outerGap: g.outerGap)
             frame = frame.insetBy(dx: configuration.ui.focusBorder.width,
                                   dy: configuration.ui.focusBorder.width)
             if ws.fullscreen == id {

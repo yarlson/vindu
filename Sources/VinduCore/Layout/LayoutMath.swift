@@ -4,16 +4,16 @@ import CoreGraphics
 /// All rects are top-left-origin global coordinates (CGWindow/AX space),
 /// so `up` means decreasing y.
 public enum LayoutMath {
-    /// A tile side flush with the workspace edge gets gapsOut; sides facing
-    /// other tiles get gapsIn. Adjacent tiles both
-    /// contribute, so the visual gap between two tiles is 2 × gapsIn.
+    /// A tile side flush with the workspace edge gets outerGap; sides facing
+    /// other tiles get innerGap. Adjacent tiles both
+    /// contribute, so the visual gap between two tiles is 2 × innerGap.
     public static func applyGaps(to rect: CGRect, within container: CGRect,
-                                 gapsIn: Double, gapsOut: Double) -> CGRect {
+                                 innerGap: Double, outerGap: Double) -> CGRect {
         let eps = 0.5
-        let left = abs(rect.minX - container.minX) < eps ? gapsOut : gapsIn
-        let right = abs(rect.maxX - container.maxX) < eps ? gapsOut : gapsIn
-        let top = abs(rect.minY - container.minY) < eps ? gapsOut : gapsIn
-        let bottom = abs(rect.maxY - container.maxY) < eps ? gapsOut : gapsIn
+        let left = abs(rect.minX - container.minX) < eps ? outerGap : innerGap
+        let right = abs(rect.maxX - container.maxX) < eps ? outerGap : innerGap
+        let top = abs(rect.minY - container.minY) < eps ? outerGap : innerGap
+        let bottom = abs(rect.maxY - container.maxY) < eps ? outerGap : innerGap
         return CGRect(
             x: rect.minX + left,
             y: rect.minY + top,
