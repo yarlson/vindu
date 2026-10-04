@@ -46,15 +46,11 @@ release:
 
 install: release
 	install -d $(PREFIX)/bin
-	install -d $(PREFIX)/share/doc/vindu
 	install .build/release/vindud $(PREFIX)/bin/vindud
 	install .build/release/vinductl $(PREFIX)/bin/vinductl
-	install -m 644 THIRD_PARTY_NOTICES.md $(PREFIX)/share/doc/vindu/THIRD_PARTY_NOTICES.md
 
 uninstall:
 	rm -f $(PREFIX)/bin/vindud $(PREFIX)/bin/vinductl
-	rm -f $(PREFIX)/share/doc/vindu/THIRD_PARTY_NOTICES.md
-	-rmdir $(PREFIX)/share/doc/vindu
 
 clean:
 	swift package clean
