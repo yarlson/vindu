@@ -2,6 +2,11 @@ import Foundation
 import VinduCore
 import VinduDaemonSupport
 
+enum DaemonStartResult: Equatable {
+    case running
+    case failed(exitStatus: Int32)
+}
+
 final class DaemonCoordinator {
     private let controller: ConfigurationController
     private let usesDefaultPath: Bool
@@ -28,8 +33,7 @@ final class DaemonCoordinator {
 
     var configPath: String { controller.path }
 
-    @discardableResult
-    func start() -> Bool {
+    func start() -> DaemonStartResult {
         do {
             let eventBroadcaster = EventBroadcaster(path: VinduPaths.eventSocketPath)
             try eventBroadcaster.start()
@@ -43,7 +47,7 @@ final class DaemonCoordinator {
         } catch {
             log("\(error)")
             stopControlPlane()
-            return false
+            return .failed(exitStatus: Self.startupExitStatus(for: error))
         }
 
         let result = usesDefaultPath
@@ -59,7 +63,14 @@ final class DaemonCoordinator {
         watcher = configWatcher
 
         handleActivation(result)
-        return true
+        return .running
+    }
+
+    static func startupExitStatus(for error: Error) -> Int32 {
+        if case SecureSocketError.alreadyRunning = error {
+            return 0
+        }
+        return 1
     }
 
     func accessibilityDidBecomeAvailable() {

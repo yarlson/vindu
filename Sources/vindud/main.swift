@@ -83,8 +83,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installSignalHandlers()
-        if !coordinator.start() {
-            shutdown()
+        if case .failed(let exitStatus) = coordinator.start() {
+            exit(exitStatus)
         }
     }
 
