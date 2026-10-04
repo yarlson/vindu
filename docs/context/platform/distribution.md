@@ -24,11 +24,12 @@ Build-and-test matrix on the oldest and newest macOS runner images (both Apple S
 Pushing a `v*` tag drives the entire release:
 
 1. The tag must use `vX.Y.Z`, resolve to the workflow commit, match the version reported by both binaries, and have no existing GitHub release. The workflow also requires access to the Homebrew tap before it publishes anything.
-2. Per-triple release builds are lipo'd into universal (arm64 + x86_64) binaries and ad-hoc signed. Per-triple because `swift build` with multiple `--arch` flags requires Xcode's xcbuild.
-3. The ZIP ships the binaries, README, third-party notices, and `examples/vindu.toml`; sha256 checksums and a build-provenance attestation accompany it (verifiable with `gh attestation verify`).
-4. The Homebrew formula is rendered from `packaging/vindu.rb.tmpl` (tag, version, sha substitution) and passes Ruby syntax and Homebrew style checks before the GitHub release is created.
-5. The published asset is round-tripped — downloaded from the release URL, checksum-verified, executed, architecture-checked, and signature-checked — before anything points at it.
-6. The prepared formula is pushed to `yarlson/homebrew-tap`. Release actions are pinned to immutable SHAs, and the tap checkout uses a scoped token without embedding it in the clone URL or persisting it in `.git/config`. The template in this repo is the formula's source of truth.
+2. `make test` runs on the tagged commit in the release job, so a failing suite stops the release before anything is built or published.
+3. Per-triple release builds are lipo'd into universal (arm64 + x86_64) binaries and ad-hoc signed. Per-triple because `swift build` with multiple `--arch` flags requires Xcode's xcbuild.
+4. The ZIP ships the binaries, README, third-party notices, and `examples/vindu.toml`; sha256 checksums and a build-provenance attestation accompany it (verifiable with `gh attestation verify`).
+5. The Homebrew formula is rendered from `packaging/vindu.rb.tmpl` (tag, version, sha substitution) and passes Ruby syntax and Homebrew style checks before the GitHub release is created.
+6. The published asset is round-tripped — downloaded from the release URL, checksum-verified, executed, architecture-checked, and signature-checked — before anything points at it.
+7. The prepared formula is pushed to `yarlson/homebrew-tap`. Release actions are pinned to immutable SHAs, and the tap checkout uses a scoped token without embedding it in the clone URL or persisting it in `.git/config`. The template in this repo is the formula's source of truth.
 
 If any step fails after GitHub publication, leave the tag and release assets unchanged. Verify the published ZIP against `checksums.txt`, then check both binaries' versions, architectures, and signatures. Render the formula from the tagged template and published checksum, validate it, and update only the tap.
 
