@@ -181,6 +181,10 @@ public struct NativeBarPlugin: Equatable {
 public struct KeyboardConfiguration: Equatable {
     public let bindings: [KeyboardBinding]
     public let pointerBindings: [PointerBinding]
+
+    public var modes: Set<String> {
+        Set(bindings.map(\.mode)).union(["default"])
+    }
 }
 
 public struct KeyboardBinding: Equatable {
