@@ -976,6 +976,10 @@ void VBEEngineHide(VBEEngine *engine) {
     engine->targetBounds = CGRectZero;
 }
 
+bool VBEEngineIsAvailable(const VBEEngine *engine) {
+    return engine && engine->available;
+}
+
 void VBEEngineDestroy(VBEEngine *engine) {
     if (!engine) {
         return;

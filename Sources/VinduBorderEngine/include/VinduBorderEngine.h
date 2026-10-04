@@ -1,6 +1,7 @@
 #ifndef VINDU_BORDER_ENGINE_H
 #define VINDU_BORDER_ENGINE_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -26,6 +27,7 @@ void VBEEngineSetTarget(VBEEngine *engine,
                         double width,
                         double fallbackRadius);
 void VBEEngineHide(VBEEngine *engine);
+bool VBEEngineIsAvailable(const VBEEngine * _Nullable engine);
 void VBEEngineDestroy(VBEEngine *engine);
 
 #if __has_feature(nullability)

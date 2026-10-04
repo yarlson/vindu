@@ -269,6 +269,24 @@ static void testTransactionReturnValuesAreAdvisory(void) {
     assert(fake.releaseWindowCalls == 1);
 }
 
+static void testAvailabilityReportsDisabledEngine(void) {
+    resetFake();
+    assert(!VBEEngineIsAvailable(NULL));
+
+    VBEEngine *unloaded = VBEEngineCreate();
+    assert(unloaded != NULL);
+    assert(!VBEEngineIsAvailable(unloaded));
+    VBEEngineDestroy(unloaded);
+
+    VBEEngine engine = transactionEngine();
+    engine.available = true;
+    engine.failureReported = true;
+    assert(VBEEngineIsAvailable(&engine));
+    fake.alphaResult = kCGErrorFailure;
+    hideBorder(&engine);
+    assert(!VBEEngineIsAvailable(&engine));
+}
+
 static void testMoveTransactionReturnValuesAreAdvisory(void) {
     for (int failure = 0; failure < 2; failure++) {
         resetFake();
@@ -369,6 +387,7 @@ int main(void) {
     testRemovalRetry();
     testDestroyRetainsFailedCallbackContext();
     testTransactionReturnValuesAreAdvisory();
+    testAvailabilityReportsDisabledEngine();
     testMoveTransactionReturnValuesAreAdvisory();
     testTransactionCreationBoundsSurfaceActions();
     testGeometryRejectsInvalidDerivedBounds();
