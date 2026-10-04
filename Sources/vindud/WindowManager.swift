@@ -545,7 +545,9 @@ final class WindowManager {
 
     func toggleSpecial(name: String) -> String {
         let mon = focusedMonitorID
-        guard let wsID = resolveWorkspaceID(.special(name), create: true) else { return "err" }
+        guard let wsID = resolveWorkspaceID(.special(name), create: true) else {
+            return "err: no such special workspace: \(name)"
+        }
         let ws = workspace(forID: wsID)
         if shownSpecial[mon] == wsID {
             shownSpecial.removeValue(forKey: mon)
