@@ -167,6 +167,12 @@ struct NativeConfigurationTests {
         """, contains: "0 or between 5 and 3600")
     }
 
+    @Test func barPluginCountIsCappedAtSixteen() throws {
+        _ = try compile(barPluginsConfiguration(count: 16))
+        expectFailure(barPluginsConfiguration(count: 17),
+                      contains: "at most 16 bar plugins can be configured")
+    }
+
     @Test func validatesWorkspaceAssignments() {
         expectFailure("""
         schema = 1
@@ -328,6 +334,12 @@ struct NativeConfigurationTests {
         case .failure(let failure):
             Issue.record("unexpected diagnostics: \(failure.diagnostics)")
             throw failure
+        }
+    }
+
+    private func barPluginsConfiguration(count: Int) -> String {
+        (1...count).reduce("schema = 1\n") { text, index in
+            text + "[ui.bar.plugins.p\(index)]\nrun = [\"/bin/echo\"]\n"
         }
     }
 

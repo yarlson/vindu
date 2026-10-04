@@ -83,11 +83,11 @@ Built-ins are `workspaces`, `application`, `pause`, `mode`, `layout`, `windows`,
 `date`, `battery`, `network`, `keyboard`, `volume`, and `weather`. Weather needs
 validated coordinates and sends them to Open-Meteo when refreshed.
 
-Custom items use `plugin:<id>` and a matching `ui.bar.plugins.<id>` table. A
-plugin chooses either `run` or `shell`, plus optional environment, interval,
-event names, and timeout. The runner bounds output and time, owns one active
-process per plugin, drains both pipes, terminates the process group on timeout or
-shutdown, and caches the last valid value. Plugin processes receive a small
+Custom items use `plugin:<id>` and a matching `ui.bar.plugins.<id>` table. At
+most 16 plugins can be configured. A plugin chooses either `run` or `shell`, plus
+optional environment, interval, event names, and timeout. The runner bounds output
+and time, starts at most one run per plugin, drains both pipes, terminates the
+process group on timeout or shutdown, and caches the last valid value. Plugin processes receive a small
 allowlisted environment plus their own configured additions.
 
 ## Workspace assignments and window rules
