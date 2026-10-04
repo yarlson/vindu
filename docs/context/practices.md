@@ -28,6 +28,7 @@
 - Private WindowServer symbols belong only to `VinduBorderEngine`, load from the
   fixed system framework path, and never appear as direct imports or a SkyLight
   link. A missing symbol or reported failure disables the border and logs once.
+  A config reload creates a disabled engine again; nothing retries on its own.
 - WindowServer notification removal uses the same callback, event, and engine
   context as registration. The engine context and framework remain alive if
   removal fails.

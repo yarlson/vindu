@@ -28,6 +28,12 @@ final class BorderController {
         VBEEngineHide(engine)
     }
 
+    func recreateIfUnavailable() {
+        guard !VBEEngineIsAvailable(engine) else { return }
+        shutdown()
+        engine = VBEEngineCreate()
+    }
+
     func shutdown() {
         guard let engine else { return }
         VBEEngineDestroy(engine)

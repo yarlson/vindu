@@ -4,6 +4,7 @@ extension WindowManager {
     func applyConfiguration(_ snapshot: ConfigurationSnapshot, broadcastReload: Bool = true) {
         configuration = snapshot
         tap.rebuild(configuration: snapshot.keyboard)
+        border.recreateIfUnavailable()
         let warnings = reconcileWorkspaceAssignments()
         runtimeWarningsChanged(warnings)
         let restartedPlugins = applyDesktopUISettings()
