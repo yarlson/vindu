@@ -33,7 +33,9 @@ the runtime starts at once.
 4. Compile schema values into domain types and validate ranges, names, references,
    action cardinality, regular expressions, commands, colors, and cross-field
    constraints.
-5. Return one immutable `ConfigurationSnapshot` or ordered diagnostics.
+5. Return one immutable `ConfigurationSnapshot` or diagnostics. Unknown-key
+   validation reports every unknown key at once; every other stage stops at its
+   first error and reports one diagnostic.
 
 Keys are case-sensitive snake_case. There are no aliases, tolerated keys,
 variables, includes, CSV fields, unbind directives, source directives, inline
