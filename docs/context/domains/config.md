@@ -105,7 +105,9 @@ existing windows.
 
 ## Reload and diagnostics
 
-The file watcher follows atomic editor saves and debounces reloads. A successful
+The file watcher follows atomic editor saves and debounces reloads. After a
+delete or rename it reloads only once it can watch the file at the selected path
+again, so a save is never read while the file is briefly missing. A successful
 reload swaps the full snapshot on the main queue, rebuilds the input map, updates
 layout and UI policy, reconciles display assignments, restarts affected plugins,
 and broadcasts `configreloaded`. Layout runtime overrides survive a config reload.

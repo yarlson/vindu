@@ -69,6 +69,41 @@ struct ConfigWatcherTests {
         #expect(callback.wait(timeout: .now() + 3) == .success)
     }
 
+    @Test func deletedConfigurationReloadsOnlyAfterItIsRecreated() throws {
+        let directory = try DaemonSupportTemporaryDirectory()
+        let path = directory.path("vindu.toml")
+        try "schema = 1\n".write(toFile: path, atomically: true, encoding: .utf8)
+        let callback = DispatchSemaphore(value: 0)
+        let watcher = ConfigWatcher(path: path) {
+            callback.signal()
+        }
+        watcher.start()
+        defer { watcher.stop() }
+
+        try FileManager.default.removeItem(atPath: path)
+        #expect(callback.wait(timeout: .now() + 0.5) == .timedOut)
+        try "schema = 1\n[layout]\ninner_gap = 2\n".write(toFile: path, atomically: true, encoding: .utf8)
+
+        #expect(callback.wait(timeout: .now() + 3) == .success)
+    }
+
+    @Test func atomicSaveReloadsOnce() throws {
+        let directory = try DaemonSupportTemporaryDirectory()
+        let path = directory.path("vindu.toml")
+        try "schema = 1\n".write(toFile: path, atomically: true, encoding: .utf8)
+        let callback = DispatchSemaphore(value: 0)
+        let watcher = ConfigWatcher(path: path) {
+            callback.signal()
+        }
+        watcher.start()
+        defer { watcher.stop() }
+
+        try "schema = 1\n[layout]\ninner_gap = 2\n".write(toFile: path, atomically: true, encoding: .utf8)
+
+        #expect(callback.wait(timeout: .now() + 3) == .success)
+        #expect(callback.wait(timeout: .now() + 1) == .timedOut)
+    }
+
     @Test func stopPreventsPendingReloadAndRearm() throws {
         let directory = try DaemonSupportTemporaryDirectory()
         let path = directory.path("vindu.toml")

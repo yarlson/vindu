@@ -45,11 +45,13 @@ public final class ConfigWatcher {
         src.setEventHandler { [weak self, weak src] in
             guard let self, let src, self.running else { return }
             let flags = src.data
-            self.scheduleReload()
-            if flags.contains(.delete) || flags.contains(.rename) {
-                self.source = nil
-                src.cancel()
+            guard flags.contains(.delete) || flags.contains(.rename) else {
+                self.scheduleReload()
+                return
             }
+            self.reloadWhenArmed = true
+            self.source = nil
+            src.cancel()
         }
         src.setCancelHandler { [weak self] in
             close(fd)
