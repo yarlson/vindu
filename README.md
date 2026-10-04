@@ -336,3 +336,8 @@ rules for contributors and coding agents.
 Live Accessibility, AppKit, notch, and private border behavior still require a
 real logged-in macOS session. The repository tests do not simulate those
 platform boundaries.
+
+## License
+
+Vindu is released under the [MIT License](LICENSE). Third-party licenses are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
