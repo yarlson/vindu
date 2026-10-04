@@ -78,13 +78,7 @@ enum ConfigurationKeyValidation {
         }
     }
 
-    private static let bindingKeys: Set<String> = [
-        "mode", "chord", "on", "repeat", "run", "shell", "env", "close", "quit", "focus",
-        "move", "swap", "workspace", "move_to_workspace", "move_to_workspace_silent",
-        "toggle_special_workspace", "toggle_floating", "set_floating", "set_tiled", "fullscreen",
-        "maximize", "center", "pin", "resize", "move_floating", "split", "primary", "monitor",
-        "enter_mode", "raise", "refresh", "pause",
-    ]
+    private static let bindingKeys = Set(KeyboardBindingFile.CodingKeys.allCases.map(\.rawValue))
 
     private static func normalized(_ path: [String]) -> String {
         path.map { $0.first == "[" ? "[]" : $0 }.joined(separator: ".")
