@@ -456,7 +456,7 @@ final class WindowManager {
     func stash(_ id: WindowID) {
         // Repositioning a native-fullscreen window would rip it out of its
         // Space; it isn't on our screen anyway.
-        guard !paused, let state = windows[id], !state.hidden, !state.nativeFullscreen else { return }
+        guard !paused, let state = windows[id], !state.nativeFullscreen else { return }
         guard let monitor = monitorMgr.byID(workspace(forID: state.workspace).monitor)
                 ?? monitorMgr.primary else { return }
         state.hidden = true
@@ -927,12 +927,16 @@ extension WindowManager: AXBridgeDelegate {
             return
         }
         if handleDragEcho(state, frame) { return }
-        guard !state.hidden else { return }
-        if state.floating {
-            if observation == .external {
-                trackFloatingFrame(state, frame)
-            }
-        } else if observation == .external {
+        switch ManagedWindowMoveResponse(observation: observation,
+                                         hidden: state.hidden,
+                                         floating: state.floating) {
+        case .none:
+            break
+        case .restoreStash:
+            stash(id)
+        case .adoptFrame:
+            trackFloatingFrame(state, frame)
+        case .restoreTarget:
             geometry.submitFrame(state.targetFrame, for: id)
         }
     }

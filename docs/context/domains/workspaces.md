@@ -19,6 +19,7 @@ Per monitor, two slots: the active regular workspace and an optional special ove
 macOS exposes no per-Space window membership without disabling SIP, so invisible workspaces are simulated:
 
 - Hide = stash each window as a 2-pixel sliver at its monitor's bottom-right corner (pinned and native-fullscreen windows are skipped).
+- A stashed window that its app moves out of the stash position is stashed again. A position the app refuses is not retried until the window reports a different frame. Resume from pause stashes every hidden window again.
 - Show = re-arrange, which restores every frame, then focus the workspace's last-focused window.
 - Pinned floating windows migrate into the incoming workspace on every switch.
 - Daemon shutdown first restores all stashed windows to reachable positions, stops owned services once, waits for active bar-plugin processes to be killed, reaped, and drained, and asks AppKit to terminate on the next main-queue turn.

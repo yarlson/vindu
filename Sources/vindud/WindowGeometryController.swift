@@ -48,6 +48,27 @@ enum WindowGeometryObservation: Equatable {
     case suppressed
 }
 
+enum ManagedWindowMoveResponse: Equatable {
+    case none
+    case restoreStash
+    case adoptFrame
+    case restoreTarget
+
+    init(observation: WindowGeometryObservation, hidden: Bool, floating: Bool) {
+        guard observation == .external else {
+            self = .none
+            return
+        }
+        if hidden {
+            self = .restoreStash
+        } else if floating {
+            self = .adoptFrame
+        } else {
+            self = .restoreTarget
+        }
+    }
+}
+
 final class WindowGeometryController {
     typealias Schedule = (TimeInterval, DispatchWorkItem) -> Void
 
