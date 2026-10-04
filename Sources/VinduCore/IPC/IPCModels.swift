@@ -250,6 +250,10 @@ public func encodeJSON<T: Encodable>(_ value: T) -> String {
     return String(data: data, encoding: .utf8) ?? "{}"
 }
 
+public func ipcReplyIsFailure(_ reply: String) -> Bool {
+    reply == "err" || reply.hasPrefix("err:") || reply.hasPrefix("unknown")
+}
+
 /// Events broadcast on the public event socket as `EVENT>>DATA\n`.
 public enum WMEvent {
     case workspace(String)

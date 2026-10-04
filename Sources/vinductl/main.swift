@@ -49,7 +49,7 @@ func die(_ message: String) -> Never {
 func printReplyAndExit(_ line: String) -> Never {
     let reply = request(line).trimmingCharacters(in: .whitespacesAndNewlines)
     print(reply)
-    exit(reply.hasPrefix("err") || reply.hasPrefix("unknown") ? 1 : 0)
+    exit(ipcReplyIsFailure(reply) ? 1 : 0)
 }
 
 func offlineConfigCheck(path: String) -> Never {
