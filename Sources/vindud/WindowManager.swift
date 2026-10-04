@@ -300,8 +300,7 @@ final class WindowManager {
 
         workspace.monitor = monitor.id
         for id in workspace.allWindows where windows[id]?.hidden == true {
-            geometry.submitStashPosition(CGPoint(x: monitor.frame.maxX - 2,
-                                                 y: monitor.frame.maxY - 2), for: id)
+            stash(id)
         }
     }
 
