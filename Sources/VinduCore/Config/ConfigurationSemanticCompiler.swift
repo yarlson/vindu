@@ -182,6 +182,9 @@ enum ConfigurationSemanticCompiler {
     }
 
     private static func compilePlugins(_ files: [String: BarPluginFile]) throws -> [String: NativeBarPlugin] {
+        guard files.count <= maximumBarPlugins else {
+            throw invalid("ui.bar.plugins", "at most \(maximumBarPlugins) bar plugins can be configured")
+        }
         var plugins: [String: NativeBarPlugin] = [:]
         for (id, file) in files.sorted(by: { $0.key < $1.key }) {
             guard ConfigurationKeyValidation.isPluginID(id) else {
@@ -215,6 +218,8 @@ enum ConfigurationSemanticCompiler {
         }
         return plugins
     }
+
+    static let maximumBarPlugins = 16
 
     private static let allowedPluginEvents: Set<String> = [
         "workspace", "workspacev2", "focusedmon", "activewindow", "activewindowv2",
