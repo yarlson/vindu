@@ -106,6 +106,7 @@ final class HotkeyTap {
     func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
+            clearTrackedInput(cursor: CGEvent(source: nil)?.location ?? event.location)
             if let tap {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
@@ -229,6 +230,14 @@ final class HotkeyTap {
             DispatchQueue.main.async { [weak self] in self?.onRawLeftMouse?(point, .began) }
         }
         return Unmanaged.passUnretained(event)
+    }
+
+    private func clearTrackedInput(cursor: CGPoint) {
+        pressedKeyBindings.removeAll()
+        switcherActive = false
+        guard let drag = activeDrag else { return }
+        activeDrag = nil
+        DispatchQueue.main.async { [weak self] in self?.onMouseDrag?(drag.drag, cursor, .ended) }
     }
 
     private func fireUserGesture() {
