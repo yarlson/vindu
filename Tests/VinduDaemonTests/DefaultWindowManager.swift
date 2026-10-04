@@ -3,21 +3,29 @@ import Testing
 import VinduCore
 @testable import vindud
 
-func defaultConfiguration() throws -> ConfigurationSnapshot {
-    switch ConfigurationCompiler().compile(Data(defaultConfigTemplate.utf8)) {
+func compileConfiguration(_ text: String) throws -> ConfigurationSnapshot {
+    switch ConfigurationCompiler().compile(Data(text.utf8)) {
     case .success(let configuration):
         return configuration
     case .failure(let failure):
-        Issue.record("default configuration failed: \(failure.diagnostics)")
+        Issue.record("test configuration failed: \(failure.diagnostics)")
         throw failure
     }
 }
 
-func makeDefaultWindowManager() throws -> WindowManager {
-    WindowManager(configuration: try defaultConfiguration(),
+func defaultConfiguration() throws -> ConfigurationSnapshot {
+    try compileConfiguration(defaultConfigTemplate)
+}
+
+func makeDefaultWindowManager(configuration: ConfigurationSnapshot? = nil,
+                              monitors: [Monitor] = [],
+                              geometryBackend: WindowGeometryBackend? = nil) throws -> WindowManager {
+    WindowManager(configuration: try configuration ?? defaultConfiguration(),
                   configPath: "/tmp/vindu-test.toml",
                   wroteCanonicalDefault: false,
                   broadcastEvent: { _ in },
                   runtimeWarningsChanged: { _ in },
-                  quit: {})
+                  quit: {},
+                  monitorMgr: MonitorManager(monitors: monitors),
+                  geometryBackend: geometryBackend)
 }

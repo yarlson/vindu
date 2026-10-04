@@ -37,6 +37,11 @@ final class MonitorManager {
     /// bottom-left for NSWindow placement.
     private(set) var primaryHeight: Double = 0
 
+    init(monitors: [Monitor] = []) {
+        self.monitors = monitors
+        primaryHeight = Double(monitors.first?.frame.height ?? 0)
+    }
+
     func start() {
         _ = rebuild()
         NotificationCenter.default.addObserver(
