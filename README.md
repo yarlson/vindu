@@ -25,6 +25,9 @@ tiling continues without the border.
 
 ## Quick start
 
+Vindu needs macOS 13 or later. Release binaries are universal, so they run on
+Apple Silicon and Intel Macs.
+
 ```sh
 brew install yarlson/tap/vindu
 brew services start vindu
@@ -46,6 +49,22 @@ Try these actions:
 The first launch shows a keybinding sheet. The menu bar item can show it again,
 pause tiling, open the config, or quit. `alt + shift + p` also pauses tiling.
 Service logs are in `~/Library/Logs/vindu/vindud.log`.
+
+### Install without Homebrew
+
+Each release has a universal ZIP, a `checksums.txt` file, and a build
+provenance attestation. Download and verify them with the GitHub CLI:
+
+```sh
+gh release download --repo yarlson/vindu \
+  --pattern 'vindu-*-macos-universal.zip' --pattern checksums.txt
+shasum -a 256 -c checksums.txt
+gh attestation verify vindu-*-macos-universal.zip --repo yarlson/vindu
+unzip vindu-*-macos-universal.zip
+```
+
+Move `vindu/vindud` and `vindu/vinductl` to a directory on your `PATH`. Then run
+`vindud --install-service` to start Vindu at login.
 
 ## Configuration
 
@@ -197,7 +216,9 @@ longitude = 24.1052
 refresh_minutes = 15
 ```
 
-This sends the coordinates to Open-Meteo when Vindu refreshes the item.
+This sends the coordinates to Open-Meteo when Vindu refreshes the item. If a
+refresh fails and the last successful value is two refresh intervals old, Vindu
+hides the item.
 
 Script plugins use `plugin:<id>` in any zone and a matching plugin table:
 
@@ -209,6 +230,7 @@ events = ["workspace", "activewindow"]
 timeout_ms = 1000
 ```
 
+A configuration can define up to 16 plugins.
 Plugins run outside the render path with one active process per plugin, a
 timeout, and a small environment. They receive safe home, user, locale, temp,
 PATH, socket, and `VINDU_BAR_PLUGIN_*` context values plus their own `env`
@@ -274,6 +296,10 @@ schema.
   `vindu.conf` remains, then restart Vindu.
 - Stop the service with `brew services stop vindu`.
 
+To report a bug, open a [GitHub issue](https://github.com/yarlson/vindu/issues).
+Include your macOS version, the `vinductl --version` output, and the relevant
+lines from `~/Library/Logs/vindu/vindud.log`.
+
 ## Development
 
 ```sh
@@ -299,7 +325,14 @@ LaunchAgent boundaries. `vindud` owns AppKit, Accessibility, input, monitor, and
 runtime orchestration. `VinduBorderEngine` contains all private WindowServer
 calls and disables only the border when that boundary fails.
 
-Do not run a Homebrew service and a development service at the same time. Two
-window managers will fight over the same windows. Live Accessibility, AppKit,
-notch, and private border behavior still require a real logged-in macOS session;
-the repository tests do not simulate those platform boundaries.
+[`docs/context/`](docs/context/context-map.md) describes the architecture,
+invariants, and release pipeline. [`AGENTS.md`](AGENTS.md) lists the repository
+rules for contributors and coding agents.
+
+> [!WARNING]
+> Do not run a Homebrew service and a development service at the same time. Two
+> window managers will fight over the same windows.
+
+Live Accessibility, AppKit, notch, and private border behavior still require a
+real logged-in macOS session. The repository tests do not simulate those
+platform boundaries.
