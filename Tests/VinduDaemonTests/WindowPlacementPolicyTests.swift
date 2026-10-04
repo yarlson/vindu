@@ -56,7 +56,7 @@ struct WindowPlacementPolicyTests {
     }
 
     @Test @MainActor func minimizedFixedWindowKeepsFloatingMembershipAndSpawnFrame() throws {
-        let manager = try makeDefaultWindowManager()
+        let manager = try makeTestWindowManager()
         let frame = CGRect(x: 10, y: 20, width: 400, height: 300)
         let snapshot = snapshot(kind: .standard,
                                 resizeCapability: .fixed,
@@ -76,7 +76,7 @@ struct WindowPlacementPolicyTests {
     }
 
     @Test @MainActor func elevatedResizableWindowUsesFloatingMembershipAndSpawnFrame() throws {
-        let manager = try makeDefaultWindowManager()
+        let manager = try makeTestWindowManager()
         let frame = CGRect(x: 10, y: 20, width: 400, height: 300)
         let snapshot = snapshot(
             kind: .standard,
@@ -94,7 +94,7 @@ struct WindowPlacementPolicyTests {
     }
 
     @Test @MainActor func clientInfoReportsObservedFrame() throws {
-        let manager = try makeDefaultWindowManager()
+        let manager = try makeTestWindowManager()
         manager.windowAppeared(snapshot(kind: .standard, resizeCapability: .fixed))
         let target = CGRect(x: 870, y: 45, width: 845, height: 1059)
         let observed = CGRect(x: 948, y: 307, width: 689, height: 535)

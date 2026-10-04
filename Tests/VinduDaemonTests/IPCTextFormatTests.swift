@@ -4,7 +4,7 @@ import VinduCore
 
 struct IPCTextFormatTests {
     @Test @MainActor func clientTextKeepsPublishedLayout() throws {
-        let manager = try makeDefaultWindowManager()
+        let manager = try makeTestWindowManager()
         let client = ClientInfo(address: "0x2a", mapped: true, hidden: true,
                                 at: [10, 20], size: [800, 600],
                                 workspace: WorkspaceRef(id: 2, name: "web"),
@@ -28,7 +28,7 @@ struct IPCTextFormatTests {
     }
 
     @Test @MainActor func bindTextKeepsPublishedLayout() throws {
-        let manager = try makeDefaultWindowManager()
+        let manager = try makeTestWindowManager()
         let bind = BindInfo(locked: false, mouse: false, release: false, repeats: true,
                             modmask: (1 << 3) | (1 << 0), submap: "resize", key: "l",
                             dispatcher: "resizeactive", arg: "30 0", description: "Grow right")

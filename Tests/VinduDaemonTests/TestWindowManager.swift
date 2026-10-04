@@ -13,14 +13,10 @@ func compileConfiguration(_ text: String) throws -> ConfigurationSnapshot {
     }
 }
 
-func defaultConfiguration() throws -> ConfigurationSnapshot {
-    try compileConfiguration(defaultConfigTemplate)
-}
-
-func makeDefaultWindowManager(configuration: ConfigurationSnapshot? = nil,
-                              monitors: [Monitor] = [],
-                              geometryBackend: WindowGeometryBackend? = nil) throws -> WindowManager {
-    WindowManager(configuration: try configuration ?? defaultConfiguration(),
+func makeTestWindowManager(configuration: ConfigurationSnapshot? = nil,
+                           monitors: [Monitor] = [],
+                           geometryBackend: WindowGeometryBackend? = nil) throws -> WindowManager {
+    WindowManager(configuration: try configuration ?? compileConfiguration("schema = 1\n"),
                   configPath: "/tmp/vindu-test.toml",
                   wroteCanonicalDefault: false,
                   broadcastEvent: { _ in },

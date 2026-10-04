@@ -85,7 +85,7 @@ struct WorkspaceTransitionTests {
     private func started(configuration: String,
                          monitors: [Monitor],
                          backend: GeometryBackendStub) throws -> WindowManager {
-        let manager = try makeDefaultWindowManager(configuration: compileConfiguration(configuration),
+        let manager = try makeTestWindowManager(configuration: compileConfiguration(configuration),
                                                    monitors: monitors,
                                                    geometryBackend: backend)
         manager.ensureWorkspacesForMonitors()
