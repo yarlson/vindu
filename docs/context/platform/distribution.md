@@ -17,7 +17,13 @@ macOS ties the Accessibility grant to the binary's code identity. Release and in
 
 ## CI
 
-Build-and-test matrix on the oldest and newest macOS runner images (both Apple Silicon), with a SwiftPM cache keyed by source revision, manifest, and image. A release-configuration build plus `--version` smoke runs catch optimizer-only breakage and prove the binaries start. CI proves the macOS 13 deployment build, pure border policy, and fake-symbol lifecycle and failure paths, but private border capability, drawing, input transparency, and event timing require a real logged-in window session on each supported macOS version.
+Build-and-test matrix on the oldest and newest macOS runner images (both Apple Silicon), with a SwiftPM cache keyed by source revision, manifest, and image. A release-configuration build plus `--version` smoke runs catch optimizer-only breakage and prove the binaries start. An independent Ubuntu job installs the exact website development dependencies under `website` and runs its contract, HTML, and Cloudflare dry-run checks. CI proves the macOS 13 deployment build, pure border policy, and fake-symbol lifecycle and failure paths, but private border capability, drawing, input transparency, and event timing require a real logged-in window session on each supported macOS version.
+
+## Website
+
+The static product site lives under `website/public`. It has no application runtime, data store, analytics, or external fonts. All page resources are local, so an initial page load makes no third-party request. `website/wrangler.jsonc` is the deployment contract for Cloudflare Workers Static Assets at `getvindu.app`. `npm test` checks repository facts, HTML, local asset references, and the packaged Worker without deploying.
+
+When the repository is connected to Cloudflare Workers Builds, the Worker name is `getvindu-app`, `website` is the root directory, `main` is the production branch, `npm test` is the build command, and `npm run deploy` is the deploy command. Preview branches use public Cloudflare preview URLs. Use Cloudflare Access if previews must be private. The Cloudflare zone owns the separate `www` DNS record and permanent www-to-apex redirect; those settings are not stored in this repository.
 
 ## Release pipeline
 

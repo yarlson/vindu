@@ -58,3 +58,22 @@ jobs:
           swift build -c release
           .build/release/vindud --version
           .build/release/vinductl --version
+
+  website:
+    name: website
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - run: npm ci
+      - run: npm test
