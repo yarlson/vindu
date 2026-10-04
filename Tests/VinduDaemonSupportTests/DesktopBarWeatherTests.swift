@@ -166,12 +166,59 @@ struct DesktopBarWeatherTests {
         #expect(logs == ["weather: request failed"])
     }
 
+    @Test func failedRefreshKeepsWeatherYoungerThanTwoIntervals() throws {
+        let clock = WeatherTestClock()
+        let callbackQueue = DispatchQueue(label: "vindu.weather-test.callback")
+        let changed = DispatchSemaphore(value: 0)
+        let logged = DispatchSemaphore(value: 0)
+        let service = makeService(callbackQueue: callbackQueue, now: clock.read) { _ in logged.signal() }
+        defer { service.stop() }
+        service.onChange = { changed.signal() }
+        try loadWeather(into: service, changed: changed)
+
+        WeatherURLProtocol.response = .failure(URLError(.timedOut))
+        clock.advance(minutes: 9)
+        service.refreshDue()
+
+        try #require(logged.wait(timeout: .now() + .seconds(5)) == .success)
+        #expect(callbackQueue.sync { service.current } == DesktopBarWeatherInfo(temperatureC: 22.4, weatherCode: 0))
+    }
+
+    @Test func failedRefreshClearsWeatherTwoIntervalsOld() throws {
+        let clock = WeatherTestClock()
+        let callbackQueue = DispatchQueue(label: "vindu.weather-test.callback")
+        let changed = DispatchSemaphore(value: 0)
+        let service = makeService(callbackQueue: callbackQueue, now: clock.read)
+        defer { service.stop() }
+        service.onChange = { changed.signal() }
+        try loadWeather(into: service, changed: changed)
+
+        WeatherURLProtocol.response = .failure(URLError(.timedOut))
+        clock.advance(minutes: 10)
+        service.refreshDue()
+
+        try #require(changed.wait(timeout: .now() + .seconds(5)) == .success)
+        #expect(callbackQueue.sync { service.current } == nil)
+    }
+
+    private func loadWeather(into service: DesktopBarWeatherService,
+                             changed: DispatchSemaphore) throws {
+        WeatherURLProtocol.response = .success(status: 200, data: Data("""
+        {"current":{"temperature_2m":22.4,"weather_code":0}}
+        """.utf8))
+        service.sync(configuration: weather(), enabled: true)
+        try #require(changed.wait(timeout: .now() + .seconds(5)) == .success)
+    }
+
     private func makeService(
+        callbackQueue: DispatchQueue = DispatchQueue(label: "vindu.weather-test.callback"),
+        now: @escaping () -> Date = Date.init,
         log: @escaping DesktopBarWeatherService.Logger = { _ in }
     ) -> DesktopBarWeatherService {
         DesktopBarWeatherService(
             session: makeSession(),
-            callbackQueue: DispatchQueue(label: "vindu.weather-test.callback"),
+            callbackQueue: callbackQueue,
+            now: now,
             log: log
         )
     }
@@ -299,6 +346,19 @@ private final class WeatherURLProtocol: URLProtocol {
                                        httpVersion: nil,
                                        headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+    }
+}
+
+private final class WeatherTestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current = Date(timeIntervalSince1970: 1_000_000)
+
+    func read() -> Date {
+        lock.withLock { current }
+    }
+
+    func advance(minutes: Double) {
+        lock.withLock { current += minutes * 60 }
     }
 }
 

@@ -67,7 +67,9 @@ public final class DesktopBarWeatherService {
     private let decodeQueue: DispatchQueue
     private let callbackQueue: DispatchQueue
     private let log: Logger
+    private let now: () -> Date
     private var configuration: Configuration?
+    private var currentUpdatedAt: Date?
     private var refreshTimer: Timer?
     private var request: Task<Void, Never>?
     private var fetching = false
@@ -77,10 +79,12 @@ public final class DesktopBarWeatherService {
                 decodeQueue: DispatchQueue = DispatchQueue(label: "vindu.weather.decode",
                                                            qos: .utility),
                 callbackQueue: DispatchQueue = .main,
+                now: @escaping () -> Date = Date.init,
                 log: @escaping Logger = { _ in }) {
         self.session = session
         self.decodeQueue = decodeQueue
         self.callbackQueue = callbackQueue
+        self.now = now
         self.log = log
     }
 
@@ -108,6 +112,7 @@ public final class DesktopBarWeatherService {
         configuration = nil
         fetching = false
         current = nil
+        currentUpdatedAt = nil
         if hadWeather {
             onChange?()
         }
@@ -118,9 +123,13 @@ public final class DesktopBarWeatherService {
         guard let configuration else { return }
         let interval = TimeInterval(configuration.weather.refreshMinutes * 60)
         refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
-            self?.fetchNow()
-            self?.scheduleNextRefresh()
+            self?.refreshDue()
         }
+    }
+
+    func refreshDue() {
+        fetchNow()
+        scheduleNextRefresh()
     }
 
     private func fetchNow() {
@@ -162,15 +171,26 @@ public final class DesktopBarWeatherService {
                 self.request = nil
                 switch result {
                 case .success(let weather):
+                    self.currentUpdatedAt = self.now()
                     if self.current != weather {
                         self.current = weather
                         self.onChange?()
                     }
                 case .failure(let message):
                     self.log("weather: \(message)")
+                    self.expireStaleWeather(configuration.weather)
                 }
             }
         }
+    }
+
+    private func expireStaleWeather(_ weather: NativeBarWeather) {
+        let maximumAge = TimeInterval(weather.refreshMinutes * 60 * 2)
+        guard current != nil, let currentUpdatedAt,
+              now().timeIntervalSince(currentUpdatedAt) >= maximumAge else { return }
+        current = nil
+        self.currentUpdatedAt = nil
+        onChange?()
     }
 
     public static func defaultSession() -> URLSession {
