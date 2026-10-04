@@ -75,8 +75,9 @@
   live AX/AppKit window access belongs in `VinduDaemonSupport`. Deterministic
   daemon boundary helpers can be tested through the `vindud` module without
   starting the daemon.
-- Use `make test`, which supplies the Command Line Tools framework paths and also
-  runs the border sanitizer harness and template check.
+- Use `make test`, which supplies the Command Line Tools framework paths when the
+  CLT are the active developer directory and also runs the border sanitizer
+  harness and template check.
 - The daemon re-tiles real windows. Live runtime verification requires explicit
   user consent and a logged-in macOS session.
 

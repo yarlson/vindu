@@ -1,16 +1,20 @@
 # Command Line Tools ship Testing.framework outside the default search paths;
-# full Xcode wires it up automatically. `make test` injects the CLT paths when
-# Xcode is absent so `swift test` works either way.
-CLT_FRAMEWORKS := /Library/Developer/CommandLineTools/Library/Developer/Frameworks
-CLT_TESTING_LIBS := /Library/Developer/CommandLineTools/Library/Developer/usr/lib
+# full Xcode wires it up automatically. `make test` injects the CLT paths only
+# when the CLT are the active developer directory, so the compiler and
+# Testing.framework always come from the same toolchain.
+CLT_DIR := /Library/Developer/CommandLineTools
+CLT_FRAMEWORKS := $(CLT_DIR)/Library/Developer/Frameworks
+CLT_TESTING_LIBS := $(CLT_DIR)/Library/Developer/usr/lib
+ACTIVE_DEVELOPER_DIR := $(shell xcode-select -p 2>/dev/null)
 
-ifeq ($(wildcard $(CLT_FRAMEWORKS)/Testing.framework),)
 TEST_FLAGS :=
-else
+ifeq ($(ACTIVE_DEVELOPER_DIR),$(CLT_DIR))
+ifneq ($(wildcard $(CLT_FRAMEWORKS)/Testing.framework),)
 TEST_FLAGS := -Xswiftc -F -Xswiftc $(CLT_FRAMEWORKS) \
 	-Xlinker -F -Xlinker $(CLT_FRAMEWORKS) \
 	-Xlinker -rpath -Xlinker $(CLT_FRAMEWORKS) \
 	-Xlinker -rpath -Xlinker $(CLT_TESTING_LIBS)
+endif
 endif
 
 PREFIX ?= /usr/local

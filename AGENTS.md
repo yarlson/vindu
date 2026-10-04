@@ -19,8 +19,8 @@ These docs describe current state only. When a change affects something they cov
 ## Commands
 
 - `make build` — debug build
-- `make test` — run all tests (swift-testing). Always use this instead of bare `swift test`: on machines with Command Line Tools but no Xcode it injects the framework search paths Testing.framework needs. Without them, `swift test` exits 0 having run zero tests — a silent false green.
-- Single suite: `swift test --filter LayoutTests`, adding the same `-Xswiftc`/`-Xlinker` flags from the Makefile on a CLT-only machine.
+- `make test` — run all tests (swift-testing). Always use this instead of bare `swift test`: when the Command Line Tools are the active developer directory (`xcode-select -p`), it injects the framework search paths Testing.framework needs. With Xcode active it adds nothing, so the compiler and Testing.framework come from the same toolchain. Without them, `swift test` exits 0 having run zero tests — a silent false green.
+- Single suite: `swift test --filter LayoutTests`, adding the same `-Xswiftc`/`-Xlinker` flags from the Makefile when the Command Line Tools are active.
 - `make release` — release build + ad-hoc codesign (stable code identity keeps the user's Accessibility grant across rebuilds)
 - `make check-template` — verifies `examples/vindu.toml` is byte-identical to the template in `Sources/vindud/DefaultConfig.swift` (also runs as part of `make test`)
 
