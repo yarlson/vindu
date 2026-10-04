@@ -234,6 +234,42 @@ private enum ExpectedSocketFailure: Error {
         #expect(try readUntilEOF(fd: fd) == "reply:ping\n")
     }
 
+    @Test func commandReplyIsMissingWhenServerDropsTheRequest() throws {
+        let owner = try ShortTemporaryDirectory()
+        let path = owner.url.appendingPathComponent("vindu.sock").path
+        let queue = DispatchQueue(label: "vindu.ipc.dropped-reply.test")
+        let server = IPCServer(path: path, queue: queue, peerValidator: { _ in true }) { _ in
+            Issue.record("handler must not run for oversized requests")
+            return "unexpected"
+        }
+        try server.start()
+        defer { server.stop() }
+
+        let fd = try connectUnixSocket(path)
+        defer { close(fd) }
+        #expect(writeAll(fd, data: Array(repeating: UInt8(ascii: "x"),
+                                        count: SocketSecurity.requestLimit + 1)))
+        shutdown(fd, SHUT_WR)
+
+        #expect(readCommandReply(fd) == nil)
+    }
+
+    @Test func emptyCommandReplyIsStillAReply() throws {
+        let owner = try ShortTemporaryDirectory()
+        let path = owner.url.appendingPathComponent("vindu.sock").path
+        let queue = DispatchQueue(label: "vindu.ipc.empty-reply.test")
+        let server = IPCServer(path: path, queue: queue) { _ in "" }
+        try server.start()
+        defer { server.stop() }
+
+        let fd = try connectUnixSocket(path)
+        defer { close(fd) }
+        #expect(writeAll(fd, data: Array("clients".utf8)))
+        shutdown(fd, SHUT_WR)
+
+        #expect(readCommandReply(fd) == "\n")
+    }
+
     @Test func commandServerStopsAndRestartsFromItsQueue() throws {
         let owner = try ShortTemporaryDirectory()
         let path = owner.url.appendingPathComponent("vindu.sock").path
