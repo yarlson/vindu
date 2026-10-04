@@ -13,18 +13,32 @@ func requestedStateChange(_ action: ActionState, current: Bool) -> Bool? {
 
 // MARK: - Dispatchers
 
+extension ConfiguredAction {
+    var runsWhilePaused: Bool {
+        switch self {
+        case .command, .window(.pause), .window(.quit): return true
+        default: return false
+        }
+    }
+}
+
+extension Dispatcher {
+    var runsWhilePaused: Bool {
+        switch self {
+        case .exec, .pause, .exit: return true
+        default: return false
+        }
+    }
+}
+
 extension WindowManager {
+    private static let pausedReply =
+        "err: tiling is paused — resume from the menu bar or `vinductl dispatch pause off`"
+
     @discardableResult
     func dispatch(_ action: ConfiguredAction) -> String {
-        if paused {
-            switch action {
-            case .command:
-                break
-            case .window(.pause), .window(.quit):
-                break
-            default:
-                return "err: tiling is paused — resume from the menu bar or `vinductl dispatch pause off`"
-            }
+        if paused, !action.runsWhilePaused {
+            return Self.pausedReply
         }
         switch action {
         case .command(let command):
@@ -83,9 +97,7 @@ extension WindowManager {
         case .monitor(let target):
             return focusMonitor(target)
         case .enterMode(let mode):
-            tap.setMode(mode)
-            broadcast(.submap(mode == "default" ? "" : mode))
-            syncBorder()
+            return enterMode(mode)
         case .raise:
             if let id = focusedWindow { bridge.raise(id) }
         case .refresh:
@@ -104,14 +116,8 @@ extension WindowManager {
     /// Executes one dispatcher; returns "ok" or an error string (IPC reply).
     @discardableResult
     func dispatch(_ dispatcher: Dispatcher) -> String {
-        // While paused only pause itself, quitting, and launching apps work;
-        // everything else would silently fight the free-moving windows.
-        if paused {
-            switch dispatcher {
-            case .pause, .exit, .exec: break
-            default:
-                return "err: tiling is paused — resume from the menu bar or `vinductl dispatch pause off`"
-            }
+        if paused, !dispatcher.runsWhilePaused {
+            return Self.pausedReply
         }
         switch dispatcher {
         case .exec(let cmd):
@@ -194,18 +200,7 @@ extension WindowManager {
         case .alterzorder(let arg):
             if arg.hasPrefix("top"), let id = focusedWindow { bridge.raise(id) }
         case .focusmonitor(let target):
-            guard let m = monitorMgr.resolve(target, current: focusedMonitorID) else {
-                return "err: no such monitor"
-            }
-            focusedMonitorID = m.id
-            if let wsID = activeWS[m.id], let ws = registry.existing(wsID) {
-                if let last = ws.lastFocused ?? ws.allWindows.first {
-                    focusWindow(last)
-                } else {
-                    syncBorder()
-                }
-            }
-            broadcastFocusedMon()
+            return focusMonitor(target)
         case .movecurrentworkspacetomonitor(let target):
             return moveWorkspaceToMonitor(currentWorkspace(), target)
         case .moveworkspacetomonitor(let wsTarget, let monTarget):
@@ -220,13 +215,7 @@ extension WindowManager {
             ws.name = name
             broadcast(.renameworkspace(id, name))
         case .submap(let name):
-            let mode = name.isEmpty ? "default" : name
-            guard configuration.keyboard.modes.contains(mode) else {
-                return "err: unknown mode: \(name)"
-            }
-            tap.setMode(mode)
-            broadcast(.submap(name))
-            syncBorder()
+            return enterMode(name.isEmpty ? "default" : name)
         case .focuscurrentorlast:
             if let last = focusHistory.dropFirst().first(where: { windows[$0] != nil }) {
                 return dispatch(.focuswindow("address:\(windowAddress(last))"))
@@ -500,6 +489,16 @@ extension WindowManager {
                                   container: containerRect(for: workspace),
                                   configuration: configuration.layout.dwindle)
         arrange(workspace)
+    }
+
+    private func enterMode(_ mode: String) -> String {
+        guard configuration.keyboard.modes.contains(mode) else {
+            return "err: unknown mode: \(mode)"
+        }
+        tap.setMode(mode)
+        broadcast(.submap(mode == "default" ? "" : mode))
+        syncBorder()
+        return "ok"
     }
 
     private func focusMonitor(_ target: MonitorTarget) -> String {

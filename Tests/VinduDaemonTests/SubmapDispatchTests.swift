@@ -12,6 +12,15 @@ struct SubmapDispatchTests {
         #expect(manager.tap.activeMode == "default")
     }
 
+    @Test @MainActor func keybindingToUnknownModeIsRejectedLikeTheSubmapDispatcher() throws {
+        let manager = try makeDefaultWindowManager()
+
+        let reply = manager.dispatch(ConfiguredAction.window(.enterMode("rezise")))
+
+        #expect(reply == "err: unknown mode: rezise")
+        #expect(manager.tap.activeMode == "default")
+    }
+
     @Test @MainActor func configuredModeIsEnteredAndResetReturnsToDefault() throws {
         let manager = try makeDefaultWindowManager()
 
