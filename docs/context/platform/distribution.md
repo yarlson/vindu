@@ -4,7 +4,7 @@
 
 - SwiftPM only: `make build` (debug), `make release` (release plus ad-hoc codesign), `make install` (binaries and third-party notices under PREFIX, default `/usr/local`).
 - `VinduBorderEngine` is an internal C target linked into `vindud`. Its private WindowServer calls are dynamically resolved at runtime, so the binary has no SkyLight load command or direct private-symbol imports.
-- `make test` runs the Swift suite and a sanitizer-backed C harness for border callback lifetime, advisory transaction returns, and invalid geometry. It injects Command Line Tools framework and rpath flags when `Testing.framework` only exists in the CLT location, so tests work without full Xcode.
+- `make test` runs the Swift suite and a sanitizer-backed C harness for border callback lifetime, advisory transaction returns, and invalid geometry. It injects Command Line Tools framework and rpath flags only when the CLT are the active developer directory (`xcode-select -p`, which honors `DEVELOPER_DIR`) and ship `Testing.framework`, so tests work without full Xcode and never mix an Xcode compiler with the CLT framework.
 - `make test` also enforces the template invariant: the config template embedded in `DefaultConfig.swift` must be byte-identical to `examples/vindu.toml`.
 
 ## Code identity
