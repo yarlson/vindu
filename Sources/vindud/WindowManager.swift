@@ -91,8 +91,9 @@ final class WindowState {
 /// dispatch, and IPC requests all funnel here.
 final class WindowManager {
     let bridge = AXBridge()
+    private let geometryBackend: WindowGeometryBackend?
     lazy var geometry = WindowGeometryController(
-        backend: bridge,
+        backend: geometryBackend ?? bridge,
         onObservedFrame: { [weak self] id, frame in
             self?.windows[id]?.observedFrame = frame
         },
@@ -100,7 +101,7 @@ final class WindowManager {
             self?.reportGeometryOutcome(id, outcome)
         }
     )
-    let monitorMgr = MonitorManager()
+    let monitorMgr: MonitorManager
     let tap = HotkeyTap()
     let border = BorderController()
     let statusItem = StatusItem()
@@ -144,7 +145,11 @@ final class WindowManager {
          wroteCanonicalDefault: Bool,
          broadcastEvent: @escaping (WMEvent) -> Void,
          runtimeWarningsChanged: @escaping ([LocatedConfigDiagnostic]) -> Void,
-         quit: @escaping () -> Void) {
+         quit: @escaping () -> Void,
+         monitorMgr: MonitorManager = MonitorManager(),
+         geometryBackend: WindowGeometryBackend? = nil) {
+        self.monitorMgr = monitorMgr
+        self.geometryBackend = geometryBackend
         self.configuration = configuration
         self.configPath = configPath
         self.wroteCanonicalDefault = wroteCanonicalDefault

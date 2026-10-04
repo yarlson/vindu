@@ -75,7 +75,9 @@
 - Portable behavior belongs in `VinduCore`; daemon support that does not need
   live AX/AppKit window access belongs in `VinduDaemonSupport`. Deterministic
   daemon boundary helpers can be tested through the `vindud` module without
-  starting the daemon.
+  starting the daemon. `WindowManager` accepts a `MonitorManager` built from fixed
+  monitors and a `WindowGeometryBackend`, so workspace transitions and stash
+  moves run in tests without screens or Accessibility.
 - Use `make test`, which supplies the Command Line Tools framework paths when the
   CLT are the active developer directory and also runs the border sanitizer
   harness and template check.
