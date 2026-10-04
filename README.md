@@ -106,7 +106,7 @@ schema = 1
 
 [layout]
 kind = "dwindle"
-inner_gap = 5
+inner_gap = 5   # each tile side; tiles end up 2 × inner_gap apart
 outer_gap = 12
 
 [layout.dwindle]
