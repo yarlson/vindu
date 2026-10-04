@@ -2,7 +2,7 @@
 
 ## Event tap
 
-`HotkeyTap` creates a session CGEventTap (head-inserted, consuming) over keyboard, mouse buttons, drags, and mouse movement. Bound chords are swallowed before the frontmost app sees them — this is what lets ⌘-based binds shadow system shortcuts. The tap re-enables itself if the OS disables it (timeout or user input). All callbacks hop to the main queue.
+`HotkeyTap` creates a session CGEventTap (head-inserted, consuming) over keyboard, mouse buttons, drags, and mouse movement. Bound chords are swallowed before the frontmost app sees them — this is what lets ⌘-based binds shadow system shortcuts. The tap re-enables itself if the OS disables it (timeout or user input). Events can be lost while it is off, so re-enabling clears pressed-key and app-switcher tracking and ends an active pointer drag at the current cursor position. All callbacks hop to the main queue.
 
 While tiling is paused, only bindings whose typed action is `pause` match; every other chord, pointer binding, and raw-drag observation passes through untouched, so input belongs to apps until resume.
 
