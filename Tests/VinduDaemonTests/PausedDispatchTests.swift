@@ -4,10 +4,11 @@ import VinduCore
 
 struct PausedDispatchTests {
     @Test func keybindingAndDispatcherPathsExemptTheSameActionsFromPause() throws {
-        let command = try #require(try defaultConfiguration().keyboard.bindings.first {
-            if case .command = $0.action { return true }
-            return false
-        }?.action)
+        let command = try #require(try compileConfiguration("""
+        schema = 1
+        [keyboard]
+        bindings = [{ chord = "option+return", run = ["/usr/bin/true"] }]
+        """).keyboard.bindings.first?.action)
         let equivalents: [(ConfiguredAction, Dispatcher)] = [
             (command, .exec("open -a Terminal")),
             (.window(.pause(.toggle)), .pause(.toggle)),
@@ -24,7 +25,7 @@ struct PausedDispatchTests {
     }
 
     @Test @MainActor func pausedWorkspaceSwitchIsRejectedOnBothPaths() throws {
-        let manager = try makeDefaultWindowManager()
+        let manager = try makeTestWindowManager()
         manager.setPaused(true)
 
         let keybindingReply = manager.dispatch(ConfiguredAction.window(.workspace(.id(2))))

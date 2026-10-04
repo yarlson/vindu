@@ -6,7 +6,11 @@ import Testing
 struct HotkeyTapTests {
     @Test @MainActor func reenabledTapEndsTheLostPointerDragAndPassesTheNextRelease() async throws {
         let tap = HotkeyTap()
-        tap.rebuild(configuration: try defaultConfiguration().keyboard)
+        tap.rebuild(configuration: try compileConfiguration("""
+        schema = 1
+        [keyboard]
+        pointer_bindings = [{ modifiers = ["option"], button = "left", drag = "move" }]
+        """).keyboard)
         var endedDrags = 0
         tap.onMouseDrag = { _, _, phase in
             if phase == .ended { endedDrags += 1 }
