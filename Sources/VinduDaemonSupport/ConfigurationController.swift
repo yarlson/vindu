@@ -109,6 +109,9 @@ public final class ConfigurationController {
             }
         case .missing(let file):
             return [LocatedConfigDiagnostic(file: file, message: "configuration does not exist")]
+        case .danglingSymlink(let file, let target):
+            return [LocatedConfigDiagnostic(file: file,
+                                            message: "configuration symlink points to missing \(target)")]
         case .readFailed(let file, let reason):
             return [LocatedConfigDiagnostic(file: file, message: "cannot read configuration: \(reason)")]
         case .writeFailed(let file, let reason):

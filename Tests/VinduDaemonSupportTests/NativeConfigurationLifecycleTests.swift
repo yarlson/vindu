@@ -84,6 +84,23 @@ struct NativeConfigurationFileLoaderTests {
         #expect(try Data(contentsOf: URL(fileURLWithPath: nativePath)) == canonical)
     }
 
+    @Test func danglingConfigurationSymlinkIsReportedAndLeftInPlace() throws {
+        let directory = try NativeTemporaryDirectory()
+        let nativePath = directory.path("vindu.toml")
+        let target = directory.path("dotfiles/vindu.toml")
+        try FileManager.default.createSymbolicLink(atPath: nativePath, withDestinationPath: target)
+
+        #expect(throws: NativeConfigurationLoadError.danglingSymlink(path: nativePath, target: target)) {
+            try NativeConfigurationFileLoader().loadDefault(
+                nativePath: nativePath,
+                legacyPath: directory.path("vindu.conf"),
+                canonicalDefault: Data("schema = 1\n".utf8)
+            )
+        }
+        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: nativePath) == target)
+        #expect(!FileManager.default.fileExists(atPath: target))
+    }
+
     @Test func invalidCanonicalConfigurationIsNeverWritten() throws {
         let directory = try NativeTemporaryDirectory()
         let nativePath = directory.path("nested/vindu.toml")
