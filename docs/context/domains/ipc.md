@@ -23,6 +23,6 @@ Push stream using one `EVENT>>DATA` line per state change (workspace switches, f
 
 ## vinductl
 
-Thin client: joins its arguments into one request line, prints the reply, and exits 1 when the reply starts with `err` or `unknown`. `vinductl events` streams the event socket to stdout. Its command socket also suppresses `SIGPIPE`, so a daemon disconnect produces an error instead of terminating the process with a signal.
+Thin client: joins its arguments into one request line, prints the reply, and exits 1 when the reply starts with `err` or `unknown`. Every daemon reply ends with a newline, so a connection that closes before any byte arrives (oversized request, idle timeout, or client cap) is reported as an error with exit status 1. `vinductl events` streams the event socket to stdout. Its command socket also suppresses `SIGPIPE`, so a daemon disconnect produces an error instead of terminating the process with a signal.
 
 `vinductl config check [path]` is the exception: it resolves and compiles the file inside the CLI without opening a socket. It is read-only and uses the default native path when no path is supplied.

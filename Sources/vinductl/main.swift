@@ -82,14 +82,10 @@ func request(_ line: String) -> String {
         die("cannot write request to \(VinduPaths.commandSocketPath)")
     }
     shutdown(fd, SHUT_WR)
-    var out = Data()
-    var buf = [UInt8](repeating: 0, count: 64 * 1024)
-    while true {
-        let n = read(fd, &buf, buf.count)
-        guard n > 0 else { break }
-        out.append(contentsOf: buf[0..<n])
+    guard let reply = readCommandReply(fd) else {
+        die("vindud closed the connection without a reply")
     }
-    return String(decoding: out, as: UTF8.self)
+    return reply
 }
 
 func streamEvents() -> Never {

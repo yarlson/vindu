@@ -241,6 +241,23 @@ public func writeAll(_ fd: Int32, data: [UInt8]) -> Bool {
     return true
 }
 
+public func readCommandReply(_ fd: Int32) -> String? {
+    var reply: [UInt8] = []
+    var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+    while true {
+        let n = read(fd, &buffer, buffer.count)
+        if n > 0 {
+            reply.append(contentsOf: buffer[0..<n])
+            continue
+        }
+        if n < 0 && errno == EINTR {
+            continue
+        }
+        guard n == 0, !reply.isEmpty else { return nil }
+        return String(decoding: reply, as: UTF8.self)
+    }
+}
+
 public func writeOnce(_ fd: Int32, data: [UInt8]) -> Int {
     data.withUnsafeBytes { ptr -> Int in
         guard let base = ptr.baseAddress else { return -1 }
