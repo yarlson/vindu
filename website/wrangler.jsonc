@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "getvindu-app",
+  "compatibility_date": "2026-08-18",
+  "preview_urls": true,
+  "assets": {
+    "directory": "./public",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  },
+  "routes": [
+    {
+      "pattern": "getvindu.app",
+      "custom_domain": true
+    }
+  ]
+}
