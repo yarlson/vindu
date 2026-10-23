@@ -143,7 +143,7 @@ private final class UnconstrainedPanel: NSPanel {
     }
 }
 
-private final class DesktopBarView: NSView {
+final class DesktopBarView: NSView {
     var onWorkspaceSelected: ((Int) -> Void)?
 
     private let left = NSStackView()

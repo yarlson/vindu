@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Testing
 import VinduCore
@@ -38,6 +39,24 @@ func startedTestWindowManager(configuration: String,
     manager.ensureWorkspacesForMonitors()
     manager.focusedMonitorID = monitors[0].id
     return manager
+}
+
+func testDesktopBarSnapshot(monitors: [Monitor] = [],
+                            workspaces: [DesktopBarWorkspace],
+                            activeWorkspaces: [CGDirectDisplayID: Int] = [:],
+                            appProcessIdentifier: pid_t?) -> DesktopBarSnapshot {
+    DesktopBarSnapshot(monitors: monitors,
+                       workspaces: workspaces,
+                       activeWorkspaces: activeWorkspaces,
+                       appProcessIdentifier: appProcessIdentifier,
+                       appName: "",
+                       windowTitle: "",
+                       layout: .dwindle,
+                       submap: "",
+                       paused: false,
+                       system: DesktopBarSystemInfo(date: "", battery: nil, network: nil, keyboard: nil,
+                                                    volume: nil, weather: nil),
+                       plugins: [:])
 }
 
 func testWindowSnapshot(_ id: WindowID,

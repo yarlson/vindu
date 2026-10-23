@@ -11,6 +11,20 @@ struct DesktopBarWorkspaceButtonTests {
         return true
     }
 
+    private let blue = NSImage(size: NSSize(width: 64, height: 64), flipped: false) { rect in
+        NSColor.blue.setFill()
+        rect.fill()
+        return true
+    }
+
+    private let redOverBlue = NSImage(size: NSSize(width: 64, height: 64), flipped: false) { rect in
+        NSColor.blue.setFill()
+        rect.fill()
+        NSColor.red.setFill()
+        NSRect(x: 0, y: 32, width: 64, height: 32).fill()
+        return true
+    }
+
     // U+2588 fills its glyph box, so the pill center is title ink and a point
     // 7 pt left of it is inside the 20 pt icon square but outside the glyph.
     private let workspace = DesktopBarWorkspace(id: 1, name: "\u{2588}", windows: 1,
@@ -34,6 +48,24 @@ struct DesktopBarWorkspaceButtonTests {
                 "green: pill \(plain.green), 0.35 \(translucent.green), 1 \(opaque.green)")
     }
 
+    @Test func appIconScaleShrinksTheIcon() throws {
+        let plain = try pixel(render(button(icon: nil, configuration: iconOn)), offset: -7)
+        let halfSize = try pixel(render(button(icon: red, configuration: iconOn + "\napp_icon_scale = 0.5")),
+                                 offset: -7)
+
+        // Half of the 20 pt pill gives a 10 pt icon, which ends 5 pt left of center.
+        #expect(halfSize == plain)
+    }
+
+    @Test func appIconIsUpright() throws {
+        let bitmap = try render(button(icon: redOverBlue, configuration: iconOpaque))
+        let upper = try pixel(bitmap, offset: -7, rise: 5)
+        let lower = try pixel(bitmap, offset: -7, rise: -5)
+
+        #expect(upper.red > upper.blue, "upper half of the icon: \(upper)")
+        #expect(lower.blue > lower.red, "lower half of the icon: \(lower)")
+    }
+
     @Test func appIconIsNotDrawnWhileTheOptionIsOff() throws {
         let plain = try pixel(render(button(icon: nil, configuration: iconOff)), offset: -7)
         let withIcon = try pixel(render(button(icon: red, configuration: iconOff)), offset: -7)
@@ -46,10 +78,12 @@ struct DesktopBarWorkspaceButtonTests {
     }
 
     @Test func pressedPillKeepsTheAppIcon() throws {
+        let plain = try pixel(render(button(icon: nil, configuration: iconOn)), offset: -7)
         let button = try button(icon: red, configuration: iconOn)
         let normal = try pixel(render(button), offset: -7)
         let pressed = try pixel(render(button, highlighted: true), offset: -7)
 
+        #expect(normal != plain)
         #expect(pressed == normal)
     }
 
@@ -60,6 +94,33 @@ struct DesktopBarWorkspaceButtonTests {
                 == "active")
         #expect(try button(icon: red, configuration: iconOff).accessibilityValue() as? String
                 == "active")
+    }
+
+    @Test func barViewHandsCachedIconsToPillsAndTheAppItem() throws {
+        let configuration = try compileConfiguration("""
+        schema = 1
+        [ui.bar]
+        left = ["workspaces", "application"]
+        center = []
+        right = []
+        [ui.bar.workspaces]
+        app_icon = true
+        """).ui.bar
+        let monitor = Monitor(id: 1, index: 0, name: "Main",
+                              frame: CGRect(x: 0, y: 0, width: 800, height: 600),
+                              usable: CGRect(x: 0, y: 28, width: 800, height: 572),
+                              scale: 2, topObstruction: nil)
+        let snapshot = testDesktopBarSnapshot(monitors: [monitor], workspaces: [workspace],
+                                              activeWorkspaces: [1: 1], appProcessIdentifier: 9)
+        let view = DesktopBarView(frame: NSRect(x: 0, y: 0, width: 800, height: 28))
+
+        view.render(configuration: configuration, snapshot: snapshot, monitor: monitor,
+                    appIcons: [7: red, 9: blue])
+
+        let subviews = descendants(of: view)
+        let pill = try #require(subviews.compactMap { $0 as? WorkspaceButton }.first)
+        #expect(pill.accessibilityValue() as? String == "active, Notes")
+        #expect(subviews.compactMap { ($0 as? NSImageView)?.image }.contains { $0 === blue })
     }
 
     private var iconOn: String { "schema = 1\n[ui.bar.workspaces]\napp_icon = true" }
@@ -89,11 +150,17 @@ struct DesktopBarWorkspaceButtonTests {
         return bitmap
     }
 
-    private func pixel(_ bitmap: NSBitmapImageRep, offset: Int) throws -> Pixel {
+    /// `offset` and `rise` are points from the center; bitmap row 0 is the top.
+    private func pixel(_ bitmap: NSBitmapImageRep, offset: Int, rise: Int = 0) throws -> Pixel {
         let scale = bitmap.pixelsWide / 40
-        let color = try #require(bitmap.colorAt(x: (20 + offset) * scale, y: bitmap.pixelsHigh / 2))
+        let color = try #require(bitmap.colorAt(x: (20 + offset) * scale,
+                                                y: bitmap.pixelsHigh / 2 - rise * scale))
         return Pixel(red: color.redComponent, green: color.greenComponent,
                      blue: color.blueComponent, alpha: color.alphaComponent)
+    }
+
+    private func descendants(of view: NSView) -> [NSView] {
+        view.subviews + view.subviews.flatMap(descendants)
     }
 
     private struct Pixel: Equatable {
