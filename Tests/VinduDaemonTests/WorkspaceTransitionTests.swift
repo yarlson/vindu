@@ -14,9 +14,10 @@ struct WorkspaceTransitionTests {
                                         scale: 2, topObstruction: nil)
 
     @Test @MainActor func switchingWorkspaceStashesTheOldWindowsAndRecordsThePrevious() throws {
-        let backend = GeometryBackendStub(frame: windowFrame)
-        let manager = try started(configuration: "schema = 1\n", monitors: [Self.main], backend: backend)
-        manager.windowAppeared(window(42))
+        let backend = GeometryBackendStub(frame: testWindowFrame)
+        let manager = try startedTestWindowManager(configuration: "schema = 1\n",
+                                                   monitors: [Self.main], backend: backend)
+        manager.windowAppeared(testWindowSnapshot(42))
 
         #expect(manager.switchWorkspace(to: .id(2)) == "ok")
 
@@ -27,12 +28,12 @@ struct WorkspaceTransitionTests {
     }
 
     @Test @MainActor func reselectingTheCurrentWorkspaceReturnsToThePrevious() throws {
-        let manager = try started(configuration: """
+        let manager = try startedTestWindowManager(configuration: """
         schema = 1
         [workspaces]
         back_and_forth = true
-        """, monitors: [Self.main], backend: GeometryBackendStub(frame: windowFrame))
-        manager.windowAppeared(window(42))
+        """, monitors: [Self.main], backend: GeometryBackendStub(frame: testWindowFrame))
+        manager.windowAppeared(testWindowSnapshot(42))
         _ = manager.switchWorkspace(to: .id(2))
 
         #expect(manager.switchWorkspace(to: .id(2)) == "ok")
@@ -42,9 +43,9 @@ struct WorkspaceTransitionTests {
     }
 
     @Test @MainActor func pinnedFloatingWindowFollowsTheSwitch() throws {
-        let manager = try started(configuration: "schema = 1\n", monitors: [Self.main],
-                                  backend: GeometryBackendStub(frame: windowFrame))
-        manager.windowAppeared(window(42, resizeCapability: .fixed))
+        let manager = try startedTestWindowManager(configuration: "schema = 1\n", monitors: [Self.main],
+                                                   backend: GeometryBackendStub(frame: testWindowFrame))
+        manager.windowAppeared(testWindowSnapshot(42, resizeCapability: .fixed))
         #expect(manager.dispatch(ConfiguredAction.window(.pin)) == "ok")
         try #require(manager.windows[42]?.pinned == true)
 
@@ -55,10 +56,10 @@ struct WorkspaceTransitionTests {
     }
 
     @Test @MainActor func hiddenWorkspaceAssignedWhilePausedMovesOnlyAfterResume() throws {
-        let backend = GeometryBackendStub(frame: windowFrame)
-        let manager = try started(configuration: "schema = 1\n",
-                                  monitors: [Self.main, Self.second], backend: backend)
-        manager.windowAppeared(window(42))
+        let backend = GeometryBackendStub(frame: testWindowFrame)
+        let manager = try startedTestWindowManager(configuration: "schema = 1\n",
+                                                   monitors: [Self.main, Self.second], backend: backend)
+        manager.windowAppeared(testWindowSnapshot(42))
         #expect(manager.dispatch(Dispatcher.movetoworkspacesilent(.id(3))) == "ok")
         try #require(manager.windows[42]?.hidden == true)
         manager.setPaused(true)
@@ -77,33 +78,5 @@ struct WorkspaceTransitionTests {
         manager.setPaused(false)
 
         #expect(backend.writes.last == .position(CGPoint(x: 3838, y: 1078)))
-    }
-
-    private var windowFrame: CGRect { CGRect(x: 100, y: 100, width: 800, height: 600) }
-
-    @MainActor
-    private func started(configuration: String,
-                         monitors: [Monitor],
-                         backend: GeometryBackendStub) throws -> WindowManager {
-        let manager = try makeTestWindowManager(configuration: compileConfiguration(configuration),
-                                                   monitors: monitors,
-                                                   geometryBackend: backend)
-        manager.ensureWorkspacesForMonitors()
-        manager.focusedMonitorID = Self.main.id
-        return manager
-    }
-
-    private func window(_ id: WindowID,
-                        resizeCapability: WindowResizeCapability = .resizable) -> WindowSnapshot {
-        WindowSnapshot(id: id,
-                       pid: 1,
-                       bundleID: "com.example.app",
-                       clazz: "Example",
-                       title: "Window",
-                       frame: windowFrame,
-                       kind: .standard,
-                       resizeCapability: resizeCapability,
-                       windowLevel: nil,
-                       isMinimized: false)
     }
 }

@@ -22,6 +22,12 @@ public final class WorkspaceState {
 
     public var tiled: [WindowID] { master.windows }
     public var allWindows: [WindowID] { master.windows + floating }
+    /// The last-focused window only while `allWindows` still counts it: a
+    /// minimized tiled window stays `lastFocused` after it leaves the layout.
+    public var representativeWindow: WindowID? {
+        if let lastFocused, allWindows.contains(lastFocused) { return lastFocused }
+        return allWindows.first
+    }
 
     public init(id: Int, name: String, monitor: CGDirectDisplayID, isSpecial: Bool = false) {
         self.id = id

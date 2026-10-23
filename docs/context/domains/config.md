@@ -55,7 +55,8 @@ partly changes runtime state.
 - `ui.focus_border`: width, fallback corner radius, active gradient colors and
   angle, and mode colors.
 - `ui.bar`: enabled state, top or bottom placement, height, three item zones,
-  colors, optional weather coordinates, and script plugins.
+  colors, the workspace app icon, optional weather coordinates, and script
+  plugins.
 - `keyboard`: typed keyboard bindings and pointer drags.
 - `startup`: ordered commands run when the window-management runtime starts.
 - `windows`: ordered appearance-time rules.
@@ -84,6 +85,11 @@ across zones.
 Built-ins are `workspaces`, `application`, `pause`, `mode`, `layout`, `windows`,
 `date`, `battery`, `network`, `keyboard`, `volume`, and `weather`. Weather needs
 validated coordinates and sends them to Open-Meteo when refreshed.
+
+`ui.bar.workspaces.app_icon` (default false) draws an app icon behind each
+workspace pill's label. `app_icon_opacity` (0.05 to 1, default 0.35) and
+`app_icon_scale` (0.5 to 1 of the pill height, default 1) are validated even
+while the icon is off. The table has no effect unless `workspaces` is in a zone.
 
 Custom items use `plugin:<id>` and a matching `ui.bar.plugins.<id>` table. At
 most 16 plugins can be configured. A plugin chooses either `run` or `shell`, plus

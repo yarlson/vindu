@@ -48,6 +48,11 @@ foreground = "#eeeeeeff"
 inactive = "#8a8a8aff"
 active = "#33ccffee"
 
+[ui.bar.workspaces]
+app_icon = false
+app_icon_opacity = 0.35
+app_icon_scale = 1.0
+
 [keyboard]
 bindings = [
   { chord = "option+return", run = ["/usr/bin/open", "-a", "Terminal"] },

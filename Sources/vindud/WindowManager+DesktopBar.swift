@@ -51,15 +51,18 @@ extension WindowManager {
                           primaryHeight: monitorMgr.primaryHeight)
     }
 
-    private func desktopBarSnapshot() -> DesktopBarSnapshot {
+    func desktopBarSnapshot() -> DesktopBarSnapshot {
         let existing = registry.sorted.filter { !$0.isSpecial }
         let positiveIDs = Set(Array(1...9) + existing.map(\.id).filter { $0 > 0 }).sorted()
         let namedIDs = existing.map(\.id).filter { $0 <= 0 }
         let workspaces = (positiveIDs + namedIDs).map { id -> DesktopBarWorkspace in
             if let ws = registry.existing(id) {
-                return DesktopBarWorkspace(id: id, name: ws.name, windows: ws.allWindows.count)
+                let app = ws.representativeWindow.flatMap { windows[$0] }
+                return DesktopBarWorkspace(id: id, name: ws.name, windows: ws.allWindows.count,
+                                           appProcessIdentifier: app?.pid, appName: app?.clazz ?? "")
             }
-            return DesktopBarWorkspace(id: id, name: String(id), windows: 0)
+            return DesktopBarWorkspace(id: id, name: String(id), windows: 0,
+                                       appProcessIdentifier: nil, appName: "")
         }
 
         let active = focusedWindow.flatMap { windows[$0] }

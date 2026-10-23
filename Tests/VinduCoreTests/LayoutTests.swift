@@ -376,6 +376,7 @@ struct BarGeometryTests {
             right: [],
             colors: NativeBarColors(background: color, foreground: color,
                                     inactive: color, active: color),
+            workspaceAppIcon: nil,
             weather: nil,
             plugins: [:]
         )

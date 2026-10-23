@@ -179,6 +179,35 @@ struct WorkspaceStateMembershipTests {
         #expect(ws.allWindows == [1])
     }
 
+    @Test func representativeWindowIsNilForAnEmptyWorkspace() {
+        #expect(makeWorkspace(tiled: []).representativeWindow == nil)
+    }
+
+    @Test func representativeWindowIsTheLastFocusedTiledWindow() {
+        let ws = makeWorkspace(tiled: [1, 2])
+        ws.lastFocused = 2
+        #expect(ws.representativeWindow == 2)
+    }
+
+    @Test func representativeWindowIsTheLastFocusedFloatingWindow() {
+        let ws = makeWorkspace(tiled: [1])
+        ws.floating.append(5)
+        ws.lastFocused = 5
+        #expect(ws.representativeWindow == 5)
+    }
+
+    @Test func representativeWindowIsTheFirstWindowWithoutFocus() {
+        let ws = makeWorkspace(tiled: [1, 2])
+        #expect(ws.representativeWindow == 1)
+    }
+
+    @Test func representativeWindowSkipsALastFocusedWindowRemovedFromTiling() {
+        let ws = makeWorkspace(tiled: [1, 2])
+        ws.lastFocused = 1
+        ws.removeTiled(1)
+        #expect(ws.representativeWindow == 2)
+    }
+
     @Test func nativeConfigurationsFeedBothLayoutStructures() {
         let workspace = WorkspaceState(id: 1, name: "1", monitor: 0)
         let dwindle = DwindleConfiguration(newWindowFraction: 0.25,

@@ -149,6 +149,11 @@ foreground = "#eeeeeeff"
 inactive = "#8a8a8aff"
 active = "#33ccffee"
 
+[ui.bar.workspaces]
+app_icon = false
+app_icon_opacity = 0.35
+app_icon_scale = 1.0
+
 [keyboard]
 bindings = [
   { chord = "option+return", run = ["/usr/bin/open", "-a", "Terminal"] },
@@ -206,6 +211,21 @@ center. Empty zones are valid.
 Built-in items are `workspaces`, `application`, `pause`, `mode`, `layout`,
 `windows`, `date`, `battery`, `network`, `keyboard`, `volume`, and `weather`.
 An item can appear in only one zone.
+
+Each workspace pill can show an app icon behind the workspace number. The icon
+shows the app of the window you last focused on that workspace or moved there.
+If that window closes, another window on the workspace takes its place. Empty
+workspaces show no icon. The icon is off by default:
+
+```toml
+[ui.bar.workspaces]
+app_icon = true
+app_icon_opacity = 0.35
+app_icon_scale = 1.0
+```
+
+`app_icon_opacity` is between 0.05 and 1. `app_icon_scale` is the icon size as
+a fraction of the pill height, between 0.5 and 1.
 
 Weather is opt-in. Add `weather` to a zone and configure coordinates:
 

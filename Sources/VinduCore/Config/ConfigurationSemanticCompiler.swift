@@ -163,6 +163,15 @@ enum ConfigurationSemanticCompiler {
             throw invalid("ui.bar.weather", "weather bar item requires ui.bar.weather coordinates")
         }
 
+        let workspaces = file?.workspaces
+        let appIconOpacity = workspaces?.appIconOpacity?.double ?? 0.35
+        let appIconScale = workspaces?.appIconScale?.double ?? 1
+        try requireFiniteRange(appIconOpacity, 0.05...1, path: "ui.bar.workspaces.app_icon_opacity")
+        try requireFiniteRange(appIconScale, 0.5...1, path: "ui.bar.workspaces.app_icon_scale")
+        let workspaceAppIcon = workspaces?.appIcon == true
+            ? NativeBarWorkspaceAppIcon(opacity: appIconOpacity, scale: appIconScale)
+            : nil
+
         return NativeBarConfiguration(
             enabled: file?.enabled ?? false,
             position: position,
@@ -176,6 +185,7 @@ enum ConfigurationSemanticCompiler {
                 inactive: try compileColor(colors?.inactive ?? "#8a8a8aff", path: "ui.bar.colors.inactive"),
                 active: try compileColor(colors?.active ?? "#33ccffee", path: "ui.bar.colors.active")
             ),
+            workspaceAppIcon: workspaceAppIcon,
             weather: weather,
             plugins: plugins
         )

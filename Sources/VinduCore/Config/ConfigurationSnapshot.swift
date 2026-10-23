@@ -118,6 +118,7 @@ public struct NativeBarConfiguration: Equatable {
     public let center: [NativeBarItem]
     public let right: [NativeBarItem]
     public let colors: NativeBarColors
+    public let workspaceAppIcon: NativeBarWorkspaceAppIcon?
     public let weather: NativeBarWeather?
     public let plugins: [String: NativeBarPlugin]
 
@@ -163,6 +164,11 @@ public struct NativeBarColors: Equatable {
     public let foreground: ConfigurationColor
     public let inactive: ConfigurationColor
     public let active: ConfigurationColor
+}
+
+public struct NativeBarWorkspaceAppIcon: Equatable {
+    public let opacity: Double
+    public let scale: Double
 }
 
 public struct NativeBarWeather: Equatable {

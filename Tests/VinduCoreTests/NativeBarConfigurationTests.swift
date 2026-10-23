@@ -11,6 +11,7 @@ struct NativeBarConfigurationTests {
             center: [.layout, .weather],
             right: [.plugin("right"), .date],
             colors: colors,
+            workspaceAppIcon: nil,
             weather: nil,
             plugins: [:]
         )
