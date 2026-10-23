@@ -113,6 +113,7 @@ struct NativeBarFile: Decodable {
     let center: [String]?
     let right: [String]?
     let colors: BarColorsFile?
+    let workspaces: BarWorkspacesFile?
     let weather: BarWeatherFile?
     let plugins: [String: BarPluginFile]?
 }
@@ -122,6 +123,18 @@ struct BarColorsFile: Decodable {
     let foreground: String?
     let inactive: String?
     let active: String?
+}
+
+struct BarWorkspacesFile: Decodable {
+    let appIcon: Bool?
+    let appIconOpacity: NumberValue?
+    let appIconScale: NumberValue?
+
+    enum CodingKeys: String, CodingKey {
+        case appIcon = "app_icon"
+        case appIconOpacity = "app_icon_opacity"
+        case appIconScale = "app_icon_scale"
+    }
 }
 
 struct BarWeatherFile: Decodable {

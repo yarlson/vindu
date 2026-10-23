@@ -50,6 +50,11 @@ struct NativeConfigurationTests {
         center = ["layout"]
         right = ["pause", "plugin:mail"]
 
+        [ui.bar.workspaces]
+        app_icon = true
+        app_icon_opacity = 0.5
+        app_icon_scale = 0.8
+
         [ui.bar.weather]
         latitude = 56.9496
         longitude = 24.1052
@@ -89,6 +94,7 @@ struct NativeConfigurationTests {
         #expect(snapshot.ui.bar.left == [.workspaces, .application])
         #expect(snapshot.ui.bar.center == [.layout])
         #expect(snapshot.ui.bar.right == [.pause, .plugin("mail")])
+        #expect(snapshot.ui.bar.workspaceAppIcon == NativeBarWorkspaceAppIcon(opacity: 0.5, scale: 0.8))
         #expect(snapshot.ui.bar.plugins["mail"]?.command.argv == ["~/.config/vindu/bar/mail"])
         #expect(snapshot.keyboard.bindings.count == 5)
         #expect(snapshot.keyboard.bindings[1].action == .window(.focus(.left)))
@@ -171,6 +177,35 @@ struct NativeConfigurationTests {
         _ = try compile(barPluginsConfiguration(count: 16))
         expectFailure(barPluginsConfiguration(count: 17),
                       contains: "at most 16 bar plugins can be configured")
+    }
+
+    @Test func workspaceAppIconIsOffUnlessEnabled() throws {
+        #expect(try compile("schema = 1\n").ui.bar.workspaceAppIcon == nil)
+        #expect(try compile("""
+        schema = 1
+        [ui.bar.workspaces]
+        app_icon = false
+        app_icon_opacity = 0.8
+        """).ui.bar.workspaceAppIcon == nil)
+    }
+
+    @Test func enabledWorkspaceAppIconDefaultsToTranslucentPillHeight() throws {
+        let snapshot = try compile("schema = 1\n[ui.bar.workspaces]\napp_icon = true")
+
+        #expect(snapshot.ui.bar.workspaceAppIcon == NativeBarWorkspaceAppIcon(opacity: 0.35, scale: 1))
+    }
+
+    @Test func validatesWorkspaceAppIconEvenWhenOff() {
+        expectFailure("schema = 1\n[ui.bar.workspaces]\napp_icon = false\napp_icon_opacity = 0.04",
+                      contains: "ui.bar.workspaces.app_icon_opacity must be between 0.05 and 1")
+        expectFailure("schema = 1\n[ui.bar.workspaces]\napp_icon_scale = 1.1",
+                      contains: "ui.bar.workspaces.app_icon_scale must be between 0.5 and 1")
+        expectFailure("schema = 1\n[ui.bar.workspaces]\napp_icon_opacity = nan",
+                      contains: "ui.bar.workspaces.app_icon_opacity must be finite")
+        expectFailure("schema = 1\n[ui.bar.workspaces]\napp_icon = \"yes\"",
+                      contains: "Invalid boolean value for key 'app_icon'")
+        expectFailure("schema = 1\n[ui.bar.workspaces]\nicon = true",
+                      contains: "unknown key 'ui.bar.workspaces.icon'")
     }
 
     @Test func validatesWorkspaceAssignments() {

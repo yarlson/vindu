@@ -61,8 +61,9 @@ enum ConfigurationKeyValidation {
         case "ui": return ["menu_bar", "focus_border", "bar"]
         case "ui.menu_bar": return ["enabled"]
         case "ui.focus_border": return ["width", "fallback_corner_radius", "active_colors", "active_angle", "mode_colors"]
-        case "ui.bar": return ["enabled", "position", "height", "left", "center", "right", "colors", "weather", "plugins"]
+        case "ui.bar": return ["enabled", "position", "height", "left", "center", "right", "colors", "workspaces", "weather", "plugins"]
         case "ui.bar.colors": return ["background", "foreground", "inactive", "active"]
+        case "ui.bar.workspaces": return ["app_icon", "app_icon_opacity", "app_icon_scale"]
         case "ui.bar.weather": return ["latitude", "longitude", "refresh_minutes"]
         case let value where value.hasPrefix("ui.bar.plugins."):
             return ["run", "shell", "env", "refresh_seconds", "events", "timeout_ms"]

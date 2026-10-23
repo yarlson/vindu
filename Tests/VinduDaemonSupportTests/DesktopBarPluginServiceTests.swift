@@ -131,6 +131,7 @@ struct DesktopBarPluginServiceTests {
                 inactive: color,
                 active: color
             ),
+            workspaceAppIcon: nil,
             weather: nil,
             plugins: plugins
         )
