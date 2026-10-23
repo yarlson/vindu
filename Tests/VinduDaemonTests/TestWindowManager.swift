@@ -41,11 +41,13 @@ func startedTestWindowManager(configuration: String,
 }
 
 func testWindowSnapshot(_ id: WindowID,
+                        pid: pid_t = 1,
+                        clazz: String = "Example",
                         resizeCapability: WindowResizeCapability = .resizable) -> WindowSnapshot {
     WindowSnapshot(id: id,
-                   pid: 1,
+                   pid: pid,
                    bundleID: "com.example.app",
-                   clazz: "Example",
+                   clazz: clazz,
                    title: "Window",
                    frame: testWindowFrame,
                    kind: .standard,

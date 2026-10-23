@@ -6,6 +6,8 @@ struct DesktopBarWorkspace {
     let id: Int
     let name: String
     let windows: Int
+    let appProcessIdentifier: pid_t?
+    let appName: String
 }
 
 struct DesktopBarSnapshot {
