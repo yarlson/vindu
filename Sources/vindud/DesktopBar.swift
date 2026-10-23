@@ -31,6 +31,7 @@ final class DesktopBar {
 
     private var panels: [CGDirectDisplayID: NSPanel] = [:]
     private var views: [CGDirectDisplayID: DesktopBarView] = [:]
+    private var appIcons: [pid_t: NSImage] = [:]
 
     func update(configuration: NativeBarConfiguration, snapshot: DesktopBarSnapshot,
                 primaryHeight: Double) {
@@ -39,6 +40,7 @@ final class DesktopBar {
             return
         }
 
+        refreshAppIcons(configuration: configuration, snapshot: snapshot)
         let live = Set(snapshot.monitors.map(\.id))
         for id in Array(panels.keys) where !live.contains(id) {
             removePanel(for: id)
@@ -52,7 +54,8 @@ final class DesktopBar {
             }
             panel.setFrame(Self.panelFrame(for: monitor, configuration: configuration,
                                            primaryHeight: primaryHeight), display: true)
-            view.render(configuration: configuration, snapshot: snapshot, monitor: monitor)
+            view.render(configuration: configuration, snapshot: snapshot, monitor: monitor,
+                        appIcons: appIcons)
             panel.orderFrontRegardless()
         }
     }
@@ -60,6 +63,30 @@ final class DesktopBar {
     func hide() {
         for id in Array(panels.keys) {
             removePanel(for: id)
+        }
+        appIcons.removeAll()
+    }
+
+    static func appIconProcessIdentifiers(configuration: NativeBarConfiguration,
+                                          snapshot: DesktopBarSnapshot) -> Set<pid_t> {
+        var pids: Set<pid_t> = []
+        if configuration.contains(.application), let pid = snapshot.appProcessIdentifier {
+            pids.insert(pid)
+        }
+        if configuration.workspaceAppIcon != nil, configuration.contains(.workspaces) {
+            pids.formUnion(snapshot.workspaces.compactMap(\.appProcessIdentifier))
+        }
+        return pids
+    }
+
+    /// Reading `icon` from a fresh `NSRunningApplication` takes about 0.25 ms,
+    /// and the bar renders every pill on each focus and title change.
+    private func refreshAppIcons(configuration: NativeBarConfiguration,
+                                 snapshot: DesktopBarSnapshot) {
+        let pids = Self.appIconProcessIdentifiers(configuration: configuration, snapshot: snapshot)
+        appIcons = appIcons.filter { pids.contains($0.key) }
+        for pid in pids where appIcons[pid] == nil {
+            appIcons[pid] = NSRunningApplication(processIdentifier: pid)?.icon
         }
     }
 
@@ -135,7 +162,7 @@ private final class DesktopBarView: NSView {
     }
 
     func render(configuration: NativeBarConfiguration, snapshot: DesktopBarSnapshot,
-                monitor: Monitor) {
+                monitor: Monitor, appIcons: [pid_t: NSImage]) {
         let metrics = DesktopBarMetrics(
             height: BarGeometry.resolvedHeight(displayFrame: monitor.frame,
                                                usable: monitor.usable,
@@ -157,11 +184,11 @@ private final class DesktopBarView: NSView {
         center.isHidden = false
 
         render(configuration.left, into: left, configuration: configuration,
-               snapshot: snapshot, monitor: monitor, metrics: metrics)
+               snapshot: snapshot, monitor: monitor, metrics: metrics, appIcons: appIcons)
         render(configuration.center, into: center, configuration: configuration,
-               snapshot: snapshot, monitor: monitor, metrics: metrics)
+               snapshot: snapshot, monitor: monitor, metrics: metrics, appIcons: appIcons)
         render(configuration.right, into: right, configuration: configuration,
-               snapshot: snapshot, monitor: monitor, metrics: metrics)
+               snapshot: snapshot, monitor: monitor, metrics: metrics, appIcons: appIcons)
 
         layoutSubtreeIfNeeded()
         center.isHidden = !BarZoneGeometry.centerIsVisible(
@@ -222,7 +249,7 @@ private final class DesktopBarView: NSView {
     private func render(_ items: [NativeBarItem], into stack: NSStackView,
                         configuration: NativeBarConfiguration,
                         snapshot: DesktopBarSnapshot, monitor: Monitor,
-                        metrics: DesktopBarMetrics) {
+                        metrics: DesktopBarMetrics, appIcons: [pid_t: NSImage]) {
         for item in items {
             switch item {
             case .workspaces:
@@ -230,6 +257,9 @@ private final class DesktopBarView: NSView {
                     let active = snapshot.activeWorkspaces[monitor.id] == workspace.id
                     let button = WorkspaceButton(workspace: workspace,
                                                  active: active,
+                                                 appIcon: workspace.appProcessIdentifier
+                                                     .flatMap { appIcons[$0] },
+                                                 appIconStyle: configuration.workspaceAppIcon,
                                                  colors: configuration.colors,
                                                  metrics: metrics)
                     button.onClick = { [weak self] id in self?.onWorkspaceSelected?(id) }
@@ -238,7 +268,7 @@ private final class DesktopBarView: NSView {
             case .application:
                 appView.render(title: appTitle(snapshot, configuration: configuration,
                                                metrics: metrics),
-                               processIdentifier: snapshot.appProcessIdentifier,
+                               icon: snapshot.appProcessIdentifier.flatMap { appIcons[$0] },
                                metrics: metrics)
                 stack.addArrangedSubview(appView)
             default:
@@ -376,18 +406,13 @@ private final class DesktopBarAppView: NSStackView {
         configure()
     }
 
-    func render(title: NSAttributedString, processIdentifier: pid_t?,
-                metrics: DesktopBarMetrics) {
+    func render(title: NSAttributedString, icon: NSImage?, metrics: DesktopBarMetrics) {
         spacing = metrics.iconTextSpacing
         label.attributedStringValue = title
         iconWidth?.constant = metrics.appIconSize
         iconHeight?.constant = metrics.appIconSize
-
-        let image = processIdentifier.flatMap {
-            NSRunningApplication(processIdentifier: $0)?.icon
-        }
-        iconView.image = image
-        iconView.isHidden = image == nil
+        iconView.image = icon
+        iconView.isHidden = icon == nil
     }
 
     private func configure() {
@@ -476,13 +501,18 @@ struct DesktopBarMetrics {
     }
 }
 
-private final class WorkspaceButton: NSButton {
+final class WorkspaceButton: NSButton {
     let workspaceID: Int
     var onClick: ((Int) -> Void)?
+    private let appIcon: NSImage?
+    private let appIconStyle: NativeBarWorkspaceAppIcon?
 
-    init(workspace: DesktopBarWorkspace, active: Bool, colors: NativeBarColors,
+    init(workspace: DesktopBarWorkspace, active: Bool, appIcon: NSImage?,
+         appIconStyle: NativeBarWorkspaceAppIcon?, colors: NativeBarColors,
          metrics: DesktopBarMetrics) {
         self.workspaceID = workspace.id
+        self.appIcon = appIcon
+        self.appIconStyle = appIconStyle
         super.init(frame: .zero)
 
         let foreground = active
@@ -507,7 +537,8 @@ private final class WorkspaceButton: NSButton {
             : NSColor.clear.cgColor
         contentTintColor = foreground
         setAccessibilityLabel("Workspace \(workspace.name)")
-        setAccessibilityValue(active ? "active" : "\(workspace.windows) windows")
+        let state = active ? "active" : "\(workspace.windows) windows"
+        setAccessibilityValue(drawsAppIcon ? "\(state), \(workspace.appName)" : state)
         setAccessibilityHelp("Switch to workspace \(workspace.name)")
         translatesAutoresizingMaskIntoConstraints = false
         heightAnchor.constraint(equalToConstant: metrics.pillHeight).isActive = true
@@ -517,6 +548,23 @@ private final class WorkspaceButton: NSButton {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    private var drawsAppIcon: Bool {
+        appIcon != nil && appIconStyle != nil
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // Drawn before super so the title stays on top; a subview or sublayer
+        // would cover it.
+        if let appIcon, let appIconStyle {
+            let side = bounds.height * CGFloat(appIconStyle.scale)
+            let rect = NSRect(x: bounds.midX - side / 2, y: bounds.midY - side / 2,
+                              width: side, height: side)
+            appIcon.draw(in: rect, from: .zero, operation: .sourceOver,
+                         fraction: CGFloat(appIconStyle.opacity), respectFlipped: true, hints: nil)
+        }
+        super.draw(dirtyRect)
     }
 
     @objc private func activateWorkspace() {

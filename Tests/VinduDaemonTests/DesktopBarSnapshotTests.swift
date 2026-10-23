@@ -39,4 +39,35 @@ struct DesktopBarSnapshotTests {
         #expect(first.appProcessIdentifier == nil)
         #expect(first.appName == "")
     }
+
+    @Test(arguments: [
+        ("[ui.bar]\nleft = [\"workspaces\", \"application\"]\n[ui.bar.workspaces]\napp_icon = true",
+         Set<pid_t>([7, 8, 9])),
+        ("[ui.bar]\nleft = [\"workspaces\", \"application\"]", Set<pid_t>([9])),
+        ("[ui.bar]\nleft = [\"workspaces\"]\n[ui.bar.workspaces]\napp_icon = true", Set<pid_t>([7, 8])),
+    ])
+    func barLoadsIconsOnlyForAppsItShows(bar: String, expected: Set<pid_t>) throws {
+        let configuration = try compileConfiguration("schema = 1\n" + bar).ui.bar
+        let snapshot = DesktopBarSnapshot(
+            monitors: [],
+            workspaces: [
+                DesktopBarWorkspace(id: 1, name: "1", windows: 1, appProcessIdentifier: 7, appName: "Notes"),
+                DesktopBarWorkspace(id: 2, name: "2", windows: 1, appProcessIdentifier: 8, appName: "Mail"),
+                DesktopBarWorkspace(id: 3, name: "3", windows: 0, appProcessIdentifier: nil, appName: ""),
+            ],
+            activeWorkspaces: [:],
+            appProcessIdentifier: 9,
+            appName: "Terminal",
+            windowTitle: "",
+            layout: .dwindle,
+            submap: "",
+            paused: false,
+            system: DesktopBarSystemInfo(date: "", battery: nil, network: nil, keyboard: nil,
+                                         volume: nil, weather: nil),
+            plugins: [:]
+        )
+
+        #expect(DesktopBar.appIconProcessIdentifiers(configuration: configuration, snapshot: snapshot)
+                == expected)
+    }
 }
