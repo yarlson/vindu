@@ -15,10 +15,9 @@ class Vindu < Formula
     doc.install "README.md"
   end
 
-  def post_install
-    log_dir = Pathname.new("~/Library/Logs/vindu").expand_path
-    log_dir.mkpath
-    chmod 0700, log_dir
+  post_install_steps do
+    mkdir_p "Library/Logs/vindu", base: :home
+    set_permissions "Library/Logs/vindu", "0700", base: :home, recursive: false
   end
 
   service do
