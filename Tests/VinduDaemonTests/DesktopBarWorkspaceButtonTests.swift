@@ -41,6 +41,10 @@ struct DesktopBarWorkspaceButtonTests {
         #expect(withIcon == plain)
     }
 
+    @Test func pillsWithoutTheOptionKeepAppKitLayerRendering() throws {
+        #expect(try button(icon: red, configuration: iconOff).wantsUpdateLayer)
+    }
+
     @Test func pressedPillKeepsTheAppIcon() throws {
         let button = try button(icon: red, configuration: iconOn)
         let normal = try pixel(render(button), offset: -7)

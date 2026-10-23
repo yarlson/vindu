@@ -554,6 +554,12 @@ final class WorkspaceButton: NSButton {
         appIcon != nil && appIconStyle != nil
     }
 
+    // Overriding draw(_:) moves AppKit off its updateLayer path, which renders
+    // the title lighter. Keyed on the style so every pill in a bar matches.
+    override var wantsUpdateLayer: Bool {
+        appIconStyle == nil
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         // Drawn before super so the title stays on top; a subview or sublayer
         // would cover it.
