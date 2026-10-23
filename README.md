@@ -213,10 +213,9 @@ Built-in items are `workspaces`, `application`, `pause`, `mode`, `layout`,
 An item can appear in only one zone.
 
 Each workspace pill can show an app icon behind the workspace number. The icon
-shows the app of the window you last focused on that workspace. When that window
-closes, or leaves the layout because it is a minimized tiled window, the icon
-shows the app of the workspace's first window. Empty workspaces show no icon.
-The icon is off by default:
+shows the app of the window you last focused on that workspace or moved there.
+If that window closes, another window on the workspace takes its place. Empty
+workspaces show no icon. The icon is off by default:
 
 ```toml
 [ui.bar.workspaces]
